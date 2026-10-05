@@ -3,6 +3,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
   </ItemGroup>
 
 </Project>

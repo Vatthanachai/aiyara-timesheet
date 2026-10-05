@@ -1,0 +1,375 @@
+services:
+  gateway-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/gateways/Aiyara.Gateways.Api/Aiyara.Gateways.Api.csproj
+        APP_DLL: Aiyara.Gateways.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "${GATEWAY_API_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  identities-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/identities/Aiyara.Identities.Api/Aiyara.Identities.Api.csproj
+        APP_DLL: Aiyara.Identities.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  timesheet-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/timesheet/Aiyara.Timesheet.Api/Aiyara.Timesheet.Api.csproj
+        APP_DLL: Aiyara.Timesheet.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  reports-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/reports/Aiyara.Report.Api/Aiyara.Report.Api.csproj
+        APP_DLL: Aiyara.Report.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  notifications-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/notifications/Aiyara.Notifications.Api/Aiyara.Notifications.Api.csproj
+        APP_DLL: Aiyara.Notifications.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  report-worker:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/reports/Aiyara.Report.Worker/Aiyara.Report.Worker.csproj
+        APP_DLL: Aiyara.Report.Worker.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  timesheet-remote:
+    build:
+      context: ./src/Frontend/remotes/timesheet
+      dockerfile: ../../app/Dockerfile
+    environment:
+      NITRO_PORT: 3002
+    ports:
+      - "${TIMESHEET_REMOTE_PORT:-3002}:3002"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3002').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  reporting-remote:
+    build:
+      context: ./src/Frontend/remotes/reporting
+      dockerfile: ../../app/Dockerfile
+    environment:
+      NITRO_PORT: 3003
+    ports:
+      - "${REPORTING_REMOTE_PORT:-3003}:3003"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3003').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  administration-remote:
+    build:
+      context: ./src/Frontend/remotes/administration
+      dockerfile: ../../app/Dockerfile
+    environment:
+      NITRO_PORT: 3004
+    ports:
+      - "${ADMINISTRATION_REMOTE_PORT:-3004}:3004"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3004').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  identity-profile-remote:
+    build:
+      context: ./src/Frontend/remotes/identity-profile
+      dockerfile: ../../app/Dockerfile
+    environment:
+      NITRO_PORT: 3005
+    ports:
+      - "${IDENTITY_PROFILE_REMOTE_PORT:-3005}:3005"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3005').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  frontend:
+    build:
+      context: ./src/Frontend/app
+      dockerfile: Dockerfile
+    depends_on:
+      gateway-api:
+        condition: service_healthy
+      timesheet-remote:
+        condition: service_healthy
+      reporting-remote:
+        condition: service_healthy
+      administration-remote:
+        condition: service_healthy
+      identity-profile-remote:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a $$REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  rustfs:
+    image: ghcr.io/rustfs/rustfs:1.0.0-glibc
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?Set RUSTFS_ACCESS_KEY in .env}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?Set RUSTFS_SECRET_KEY in .env}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "${RUSTFS_API_PORT:-9000}:9000"
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  maildev:
+    image: maildev/maildev:2.1.0
+    profiles: [maildev]
+    ports:
+      - "${MAILDEV_SMTP_PORT:-1025}:1025"
+      - "${MAILDEV_WEB_PORT:-8080}:1080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:1080/healthz || wget -q --spider http://localhost:1080"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    networks: [timesheet]
+
+networks:
+  timesheet:
+    name: aiyara-timesheet
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  rustfs-data:
+  prometheus-data:
+  grafana-data:

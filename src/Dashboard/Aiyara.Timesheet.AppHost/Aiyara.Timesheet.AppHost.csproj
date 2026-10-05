@@ -8,15 +8,15 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.JavaScript" />
-    <PackageReference Include="Aspire.Hosting.Kafka" />
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
-    <PackageReference Include="Aspire.Hosting.RabbitMQ" />
-    <PackageReference Include="Aspire.Hosting.Redis" />
     <PackageReference Include="Scalar.Aspire" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Backend\gateways\Aiyara.Gateways.Api\Aiyara.Gateways.Api.csproj" />
     <ProjectReference Include="..\..\Backend\identities\Aiyara.Identities.Api\Aiyara.Identities.Api.csproj" />
+    <ProjectReference Include="..\..\Backend\notifications\Aiyara.Notifications.Api\Aiyara.Notifications.Api.csproj" />
+    <ProjectReference Include="..\..\Backend\reports\Aiyara.Report.Api\Aiyara.Report.Api.csproj" />
+    <ProjectReference Include="..\..\Backend\reports\Aiyara.Report.Worker\Aiyara.Report.Worker.csproj" />
     <ProjectReference Include="..\..\Backend\timesheet\Aiyara.Timesheet.Api\Aiyara.Timesheet.Api.csproj" />
   </ItemGroup>
 
