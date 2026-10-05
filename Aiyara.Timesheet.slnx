@@ -1,13 +1,24 @@
 <Solution>
   <Folder Name="/src/" />
   <Folder Name="/src/Backend/" />
+  <Folder Name="/src/Backend/gateways/">
+    <Project Path="src/Backend/gateways/Aiyara.Gateways.Api/Aiyara.Gateways.Api.csproj" />
+  </Folder>
   <Folder Name="/src/Backend/identities/">
     <Project Path="src/Backend/identities/Aiyara.Identities.Api/Aiyara.Identities.Api.csproj" />
     <Project Path="src/Backend/identities/Aiyara.Identities.Databases/Aiyara.Identities.Databases.csproj" />
     <Project Path="src/Backend/identities/Aiyara.Identities.Handlers/Aiyara.Identities.Handlers.csproj" />
     <Project Path="src/Backend/identities/Aiyara.Identities.Models/Aiyara.Identities.Models.csproj" />
-    <Project Path="src/Backend/identities/Aiyara.Identities.Servives/Aiyara.Identities.Servives.csproj" />
+    <Project Path="src/Backend/identities/Aiyara.Identities.Servives/Aiyara.Identities.Services.csproj" />
     <Project Path="src/Backend/identities/Aiyara.Identities.Utilities/Aiyara.Identities.Utilities.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/reports/">
+    <Project Path="src/Backend/reports/Aiyara.Report.Api/Aiyara.Report.Api.csproj" />
+    <Project Path="src/Backend/reports/Aiyara.Report.Databases/Aiyara.Report.Databases.csproj" />
+    <Project Path="src/Backend/reports/Aiyara.Report.Handlers/Aiyara.Report.Handlers.csproj" />
+    <Project Path="src/Backend/reports/Aiyara.Report.Models/Aiyara.Report.Models.csproj" />
+    <Project Path="src/Backend/reports/Aiyara.Report.Services/Aiyara.Report.Services.csproj" />
+    <Project Path="src/Backend/reports/Aiyara.Report.Utilities/Aiyara.Report.Utilities.csproj" />
   </Folder>
   <Folder Name="/src/Backend/timesheet/">
     <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Api/Aiyara.Timesheet.Api.csproj" />
