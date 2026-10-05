@@ -4,16 +4,18 @@
 
 | Project | Role | Current state |
 | --- | --- | --- |
-| `Aiyara.Timesheet.AppHost` | Aspire local-development orchestrator | Starts PostgreSQL/pgAdmin, two APIs, and Nuxt frontend. |
-| `Aiyara.Identities.Api` | Identity service HTTP API | Template controller only; references shared service defaults. |
-| `Aiyara.Timesheet.Api` | Timesheet service HTTP API | Template controller only; references shared service defaults. |
+| `Aiyara.Timesheet.AppHost` | Aspire local-development orchestrator | Starts PostgreSQL/pgAdmin, Identity API, Timesheet API, and Nuxt frontend. |
+| `Aiyara.Gateways.Api` | Gateway HTTP API | Template controller only; included in the solution but not orchestrated by AppHost. |
+| `Aiyara.Identities.Api` | Identity service HTTP API | Template controller only; references shared service defaults and is orchestrated by AppHost. |
+| `Aiyara.Timesheet.Api` | Timesheet service HTTP API | Template controller only; references shared service defaults and is orchestrated by AppHost. |
+| `Aiyara.Report.Api` | Reporting HTTP API | Template controller only; included in the solution but not orchestrated by AppHost. |
 | `src/Frontend/app` | User interface | Standard Nuxt starter; scripts support dev, build, generate, and preview. |
 
 ## Backend Module Layout
 
-The `identities` and `timesheet` areas each have projects for `Api`, `Databases`, `Handlers`, `Models`, `Services`/`Servives`, and `Utilities`.
+The `identities`, `timesheet`, and `reports` areas each have projects for `Api`, `Databases`, `Handlers`, `Models`, `Services`/`Servives`, and `Utilities`.
 
-Only the API projects currently have source behavior. The other module projects are empty SDK-style placeholders, ready for domain code and dependency boundaries.
+Only the API projects currently have source behavior. The other module projects are empty SDK-style placeholders, ready for domain code and dependency boundaries. The spelling `Servives` is present only in the identities directory; its assembly/project file remains `Aiyara.Identities.Services`.
 
 ## Shared Utilities
 
@@ -25,7 +27,7 @@ Only the API projects currently have source behavior. The other module projects 
 
 ## Naming Notes
 
-Several existing paths use `Componenet` while assembly names use `Component`; the identities service project is named `Aiyara.Identities.Servives`. These are current repository names and should be treated carefully if renamed, because solution and project references must be updated together.
+Several existing paths use `Componenet` while assembly names use `Component`; the identities service directory is named `Aiyara.Identities.Servives`. These are current repository names and should be treated carefully if renamed, because solution and project references must be updated together.
 
 ## Related
 
