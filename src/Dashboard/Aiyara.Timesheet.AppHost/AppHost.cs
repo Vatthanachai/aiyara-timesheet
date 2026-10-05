@@ -1,12 +1,16 @@
-var builder = DistributedApplication.CreateBuilder(args);
+using Scalar.Aspire;
 
-var postgres = builder.AddPostgres("postgres")
-    .WithPgAdmin(options => options.WithImage("9.17"))
-    .WithDataVolume();
+var builder = DistributedApplication.CreateBuilder(args);
 
 var identityApi = builder.AddProject<Projects.Aiyara_Identities_Api>("aiyara-identities-api");
 
 var timesheetApi = builder.AddProject<Projects.Aiyara_Timesheet_Api>("aiyara-timesheet-api");
+
+// Docker Compose owns shared development infrastructure. Keep AppHost focused on
+// starting/debugging application projects and exposing their development API docs.
+var apiReference = builder.AddScalarApiReference("api-reference", options => options.AllowSelfSignedCertificates())
+    .WithApiReference(identityApi, "https")
+    .WithApiReference(timesheetApi, "https");
 
 var frontend = builder.AddJavaScriptApp("aiyara-timesheet-frontend", "../../frontend/app")
     .WithBun()
