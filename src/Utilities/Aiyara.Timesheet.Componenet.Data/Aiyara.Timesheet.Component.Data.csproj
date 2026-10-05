@@ -11,6 +11,7 @@
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Npgsql.NetTopologySuite" />
+    <PackageReference Include="Serilog" />
   </ItemGroup>
 
 </Project>
