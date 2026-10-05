@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Aiyara.Timesheet.Component.Abstractions.Controllers;
 
+[ApiController]
 public class BaseController : ControllerBase
 {
     protected IActionResult ReturnResponseWithHttpStatus(ServiceResponse response)

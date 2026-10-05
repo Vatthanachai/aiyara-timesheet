@@ -14,8 +14,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-using Newtonsoft.Json;
-
 namespace Aiyara.Timesheet.Component.Abstractions.Extensions;
 
 public static class CommonExtension

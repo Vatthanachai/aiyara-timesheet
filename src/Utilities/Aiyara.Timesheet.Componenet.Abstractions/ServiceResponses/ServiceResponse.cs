@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json;
-
-namespace Aiyara.Timesheet.Component.Abstractions.ServiceResponses;
+﻿namespace Aiyara.Timesheet.Component.Abstractions.ServiceResponses;
 
 [Serializable, JsonObject]
 public class ServiceResponse;
