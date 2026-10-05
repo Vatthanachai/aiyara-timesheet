@@ -59,6 +59,7 @@
 
 ## Acceptance Rules That Apply To Every Phase
 
+- Development follows the repository's root `AGENTS.md`: every implementation starts on a Git Flow branch and the primary agent must validate passing checks before merge into `develop`.
 - No service may read another service's database.
 - Every new tenant-owned record and query enforces tenant isolation.
 - Secrets never enter Git, logs, traces, test snapshots, API documentation, or Obsidian notes.
