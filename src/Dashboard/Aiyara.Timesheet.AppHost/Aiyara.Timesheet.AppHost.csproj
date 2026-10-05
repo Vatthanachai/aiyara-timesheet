@@ -12,7 +12,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Backend\gateways\Aiyara.Gateways.Api\Aiyara.Gateways.Api.csproj" />
     <ProjectReference Include="..\..\Backend\identities\Aiyara.Identities.Api\Aiyara.Identities.Api.csproj" />
+    <ProjectReference Include="..\..\Backend\reports\Aiyara.Report.Api\Aiyara.Report.Api.csproj" />
     <ProjectReference Include="..\..\Backend\timesheet\Aiyara.Timesheet.Api\Aiyara.Timesheet.Api.csproj" />
   </ItemGroup>
 
