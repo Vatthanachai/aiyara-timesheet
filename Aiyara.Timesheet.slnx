@@ -1,0 +1,28 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Backend/" />
+  <Folder Name="/src/Backend/identities/">
+    <Project Path="src/Backend/identities/Aiyara.Identities.Api/Aiyara.Identities.Api.csproj" />
+    <Project Path="src/Backend/identities/Aiyara.Identities.Databases/Aiyara.Identities.Databases.csproj" />
+    <Project Path="src/Backend/identities/Aiyara.Identities.Handlers/Aiyara.Identities.Handlers.csproj" />
+    <Project Path="src/Backend/identities/Aiyara.Identities.Models/Aiyara.Identities.Models.csproj" />
+    <Project Path="src/Backend/identities/Aiyara.Identities.Servives/Aiyara.Identities.Servives.csproj" />
+    <Project Path="src/Backend/identities/Aiyara.Identities.Utilities/Aiyara.Identities.Utilities.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/timesheet/">
+    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Api/Aiyara.Timesheet.Api.csproj" />
+    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Databases/Aiyara.Timesheet.Databases.csproj" />
+    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Handlers/Aiyara.Timesheet.Handlers.csproj" />
+    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Models/Aiyara.Timesheet.Models.csproj" />
+    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Services/Aiyara.Timesheet.Services.csproj" />
+    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Utilities/Aiyara.Timesheet.Utilities.csproj" />
+  </Folder>
+  <Folder Name="/src/Dashboard/">
+    <Project Path="src/Dashboard/Aiyara.Timesheet.AppHost/Aiyara.Timesheet.AppHost.csproj" />
+  </Folder>
+  <Folder Name="/src/Utilities/">
+    <Project Path="src/Utilities/Aiyara.Timesheet.Componenet.Abstractions/Aiyara.Timesheet.Component.Abstractions.csproj" />
+    <Project Path="src/Utilities/Aiyara.Timesheet.Componenet.Data/Aiyara.Timesheet.Component.Data.csproj" />
+    <Project Path="src/Utilities/Aiyara.Timesheet.ServiceDefault/Aiyara.Timesheet.ServiceDefault.csproj" />
+  </Folder>
+</Solution>

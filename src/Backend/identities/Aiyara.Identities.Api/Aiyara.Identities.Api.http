@@ -1,0 +1,6 @@
+@Aiyara.Identities.Api_HostAddress = http://localhost:5027
+
+GET {{Aiyara.Identities.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
