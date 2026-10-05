@@ -1,4 +1,115 @@
 services:
+  gateway-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/gateways/Aiyara.Gateways.Api/Aiyara.Gateways.Api.csproj
+        APP_DLL: Aiyara.Gateways.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "${GATEWAY_API_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/WeatherForecast"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  identities-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/identities/Aiyara.Identities.Api/Aiyara.Identities.Api.csproj
+        APP_DLL: Aiyara.Identities.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${IDENTITIES_API_PORT:-8082}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  timesheet-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/timesheet/Aiyara.Timesheet.Api/Aiyara.Timesheet.Api.csproj
+        APP_DLL: Aiyara.Timesheet.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${TIMESHEET_API_PORT:-8083}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  reports-api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        PROJECT_PATH: src/Backend/reports/Aiyara.Report.Api/Aiyara.Report.Api.csproj
+        APP_DLL: Aiyara.Report.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${REPORTS_API_PORT:-8084}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/WeatherForecast"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
+  frontend:
+    build:
+      context: ./src/Frontend/app
+      dockerfile: Dockerfile
+    depends_on:
+      gateway-api:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks: [timesheet]
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -21,13 +132,15 @@ services:
 
   redis:
     image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a '$$REDIS_PASSWORD' ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a $$REDIS_PASSWORD ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -55,7 +168,7 @@ services:
     networks: [timesheet]
 
   rustfs:
-    image: rustfs/rustfs-x86-musl:v2.3.1
+    image: ghcr.io/rustfs/rustfs:1.0.0-glibc
     command: ["/data"]
     environment:
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?Set RUSTFS_ACCESS_KEY in .env}

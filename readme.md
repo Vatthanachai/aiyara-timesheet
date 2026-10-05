@@ -2,10 +2,11 @@
 
 ## Local infrastructure
 
-Docker Compose is the source of truth for the local shared infrastructure. It
-starts PostgreSQL (with one database per service), Redis, RabbitMQ, and RustFS.
-MailDev and the observability stack are optional profiles. The pinned RustFS
-image targets x86-64 development hosts.
+Docker Compose is the source of truth for the local platform. It starts Gateway,
+Identity, Timesheet, Report, and frontend containers alongside PostgreSQL (with
+one database per service), Redis, RabbitMQ, and RustFS. MailDev and the
+observability stack are optional profiles. The pinned RustFS image targets
+x86-64 development hosts.
 
 1. Copy `.env.example` to `.env` and replace every `change-this-*` value. Never
    commit `.env` or reuse development secrets outside a local machine.
@@ -15,7 +16,7 @@ image targets x86-64 development hosts.
 4. Start Prometheus and Grafana when needed with:
    `docker compose --profile observability up -d`.
 
-The services are reachable from the host through the ports set in `.env`.
+The frontend and APIs are reachable from the host through the ports set in `.env`.
 Containers use the service DNS names (`postgres`, `redis`, `rabbitmq`, and
 `rustfs`) on the `aiyara-timesheet` network. The current development MailDev
 instance may remain external at `localhost:1025` (SMTP) and
