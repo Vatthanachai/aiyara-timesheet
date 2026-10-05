@@ -8,7 +8,7 @@ COPY . .
 RUN dotnet restore "${PROJECT_PATH}"
 RUN dotnet publish "${PROJECT_PATH}" --configuration Release --no-restore --output /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS final
 ARG APP_DLL
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080 \

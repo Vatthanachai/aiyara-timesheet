@@ -10,4 +10,8 @@
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
+	</ItemGroup>
+
 </Project>
