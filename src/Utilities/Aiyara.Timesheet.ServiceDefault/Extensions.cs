@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Compliance.Classification;
+using Microsoft.Extensions.Compliance.Redaction;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -20,6 +22,14 @@ public static class Extensions
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
+        builder.ConfigureStructuredLogging();
+
+        builder.Services.AddRedaction(redaction =>
+        {
+            redaction.SetRedactor<ErasingRedactor>(TimesheetDataClassification.Sensitive);
+            redaction.SetFallbackRedactor<ErasingRedactor>();
+        });
+
         builder.ConfigureOpenTelemetry();
 
         builder.AddDefaultHealthChecks();
@@ -40,6 +50,20 @@ public static class Extensions
         // {
         //     options.AllowedSchemes = ["https"];
         // });
+
+        return builder;
+    }
+
+    private static TBuilder ConfigureStructuredLogging<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
+    {
+        builder.Logging.ClearProviders();
+        builder.Logging.AddJsonConsole(options =>
+        {
+            options.IncludeScopes = true;
+            options.TimestampFormat = "O";
+            options.JsonWriterOptions = new() { Indented = false };
+        });
+        builder.Logging.EnableRedaction();
 
         return builder;
     }
@@ -124,4 +148,13 @@ public static class Extensions
 
         return app;
     }
+}
+
+/// <summary>
+/// Classification applied to secrets and credentials before they are passed to logging.
+/// Registered redaction erases the corresponding value from every enabled logger.
+/// </summary>
+public static class TimesheetDataClassification
+{
+    public static DataClassification Sensitive { get; } = new("Aiyara.Timesheet", "Sensitive");
 }

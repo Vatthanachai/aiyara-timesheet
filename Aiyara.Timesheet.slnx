@@ -19,6 +19,13 @@
     <Project Path="src/Backend/reports/Aiyara.Report.Models/Aiyara.Report.Models.csproj" />
     <Project Path="src/Backend/reports/Aiyara.Report.Services/Aiyara.Report.Services.csproj" />
     <Project Path="src/Backend/reports/Aiyara.Report.Utilities/Aiyara.Report.Utilities.csproj" />
+    <Project Path="src/Backend/reports/Aiyara.Report.Worker/Aiyara.Report.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/notifications/">
+    <Project Path="src/Backend/notifications/Aiyara.Notifications.Api/Aiyara.Notifications.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/contracts/">
+    <Project Path="src/Backend/contracts/Aiyara.Timesheet.Contracts/Aiyara.Timesheet.Contracts.csproj" />
   </Folder>
   <Folder Name="/src/Backend/timesheet/">
     <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Api/Aiyara.Timesheet.Api.csproj" />

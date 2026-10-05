@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Versioned transport contracts shared between Timesheet services.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="Protos\identity_validation.v1.proto" />
+  </ItemGroup>
+
+</Project>
