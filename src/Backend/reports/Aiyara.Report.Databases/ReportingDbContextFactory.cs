@@ -10,6 +10,6 @@ public sealed class ReportingDbContextFactory : IDesignTimeDbContextFactory<Repo
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__ReportingDb")
             ?? throw new InvalidOperationException("Set ConnectionStrings__ReportingDb for design-time operations.");
         var options = new DbContextOptionsBuilder<ReportingDbContext>().UseNpgsql(connectionString).Options;
-        return new ReportingDbContext(options);
+        return new ReportingDbContext(options, new ReportingTenantScope());
     }
 }

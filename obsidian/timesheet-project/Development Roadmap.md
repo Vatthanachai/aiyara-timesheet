@@ -47,6 +47,14 @@ review passed before the `develop` merge; this is not a release.
 
 ## Phase 4 — Reporting And Signed Documents
 
+Implementation status (2026-10-06): the independent reporting foundation is
+underway on `feature/phase-four-report-foundation`: tenant-scoped definitions,
+schedules, run state, snapshots, object metadata and retention policy have an
+EF migration, and a timezone-aware calendar calculator covers the scheduled
+weekly/monthly/annual boundaries. Quartz persistence/dispatch, RabbitMQ,
+generation, RustFS upload, signed PDFs and Reports UI remain pending; Phase 3
+must supply immutable time-entry source data before report output can be built.
+
 1. Model report definitions, schedule configuration, Quartz persistence, run state, report snapshots, RustFS object metadata, and retention configuration.
 2. Configure tenant-timezone schedules: Monday weekly reports, closed-month reports at 00:15 on the following month's first day, and annual reports on 1 January.
 3. Publish report commands to RabbitMQ; implement idempotent Reporting worker generation of PDF/XLSX, retry handling, and notifications.

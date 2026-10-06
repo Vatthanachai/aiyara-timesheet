@@ -47,5 +47,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Aiyara.Phase1.Tests/Aiyara.Phase1.Tests.csproj" />
     <Project Path="tests/Aiyara.Phase2.Tests/Aiyara.Phase2.Tests.csproj" />
+    <Project Path="tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj" />
   </Folder>
 </Solution>

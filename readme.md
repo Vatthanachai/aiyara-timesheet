@@ -142,3 +142,15 @@ URL defaults to `http://127.0.0.1:1081` to avoid the common local 8080 conflict;
 pass `-MailDevUrl http://127.0.0.1:8080` for the default Compose profile.
 Pass `-BootstrapEmail address@example.test` to verify the optional Platform
 Admin bootstrap message without displaying its one-time password.
+
+## Phase 4 reporting foundation (in progress)
+
+The Reporting database now has tenant-scoped definitions, schedules, runs,
+immutable snapshot records, object metadata, and retention settings. Its
+calendar helper computes Monday weekly, first-of-next-month 00:15, and
+1-January annual fire times in each tenant's timezone. Weekly and annual local
+times default to 00:15 until schedule configuration is exposed. Run
+`dotnet test tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj` to check
+calendar boundaries and tenant isolation. Quartz scheduling, RabbitMQ dispatch,
+generation, RustFS files, signed uploads, and the Reports UI are not yet wired;
+they depend partly on Phase 3's immutable timesheet data.

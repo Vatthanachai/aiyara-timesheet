@@ -5,6 +5,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddTcpDependencyHealthCheck("Postgres", 5432);
+builder.Services.AddScoped<ReportingTenantScope>();
 builder.Services.AddDbContext<ReportingDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("ReportingDb")
     ?? throw new InvalidOperationException("ConnectionStrings:ReportingDb is required.")));

@@ -102,7 +102,11 @@
 
 ## Not Yet Implemented
 
-- Time-entry, approval, and reporting domain models and endpoints.
+- Phase 4 has started with reporting data models and calendar rules; Quartz,
+  RabbitMQ dispatch, PDF/XLSX generation, RustFS storage, signed upload, and
+  Reports UI remain pending. Phase 3 time-entry snapshots are a prerequisite
+  for meaningful generated reports.
+- Time-entry and approval domain models/endpoints, and reporting generation endpoints.
 - Frontend product screens, API client integration, and end-to-end flows.
 - Frontend API integration and product workflows.
 - Application clients for RabbitMQ and RustFS beyond dependency probes.
