@@ -8,6 +8,22 @@ services:
         APP_DLL: Aiyara.Gateways.Api.dll
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Cors__FrontendOrigin: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      Services__Identity__BaseUrl: http://identities-api:8080
+      IdentityGrpc__Url: http://identities-api:8082
+      ReverseProxy__Clusters__identity__Destinations__primary__Address: http://identities-api:8080/
+      ReverseProxy__Clusters__timesheet__Destinations__primary__Address: http://timesheet-api:8080/
+      ReverseProxy__Clusters__reporting__Destinations__primary__Address: http://reports-api:8080/
+      ReverseProxy__Clusters__notification__Destinations__primary__Address: http://notifications-api:8080/
+    depends_on:
+      identities-api:
+        condition: service_healthy
+      timesheet-api:
+        condition: service_healthy
+      reports-api:
+        condition: service_healthy
+      notifications-api:
+        condition: service_healthy
     ports:
       - "${GATEWAY_API_PORT:-8081}:8080"
     healthcheck:
@@ -30,9 +46,13 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Dependencies__Postgres__Host: postgres
       Dependencies__Redis__Host: redis
+      ConnectionStrings__IdentityDb: Host=postgres;Database=identity_db;Username=identity_app;Password=${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD in .env}
+      ASPNETCORE_Kestrel__Endpoints__Http__Url: http://+:8080
+      ASPNETCORE_Kestrel__Endpoints__Grpc__Url: http://+:8082
+      ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols: Http2
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-provisioner:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
@@ -55,9 +75,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Dependencies__Postgres__Host: postgres
       Dependencies__Redis__Host: redis
+      ConnectionStrings__TimesheetDb: Host=postgres;Database=timesheet_db;Username=timesheet_app;Password=${TIMESHEET_DB_PASSWORD:?Set TIMESHEET_DB_PASSWORD in .env}
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-provisioner:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
@@ -79,9 +100,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       Dependencies__Postgres__Host: postgres
+      ConnectionStrings__ReportingDb: Host=postgres;Database=reporting_db;Username=reporting_app;Password=${REPORTING_DB_PASSWORD:?Set REPORTING_DB_PASSWORD in .env}
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-provisioner:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 15s
@@ -101,7 +123,11 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       Dependencies__RabbitMq__Host: rabbitmq
+      Dependencies__Postgres__Host: postgres
+      ConnectionStrings__NotificationDb: Host=postgres;Database=notification_db;Username=notification_app;Password=${NOTIFICATION_DB_PASSWORD:?Set NOTIFICATION_DB_PASSWORD in .env}
     depends_on:
+      db-provisioner:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
     healthcheck:
@@ -252,6 +278,25 @@ services:
     restart: unless-stopped
     networks: [timesheet]
 
+  db-provisioner:
+    image: postgres:17-alpine
+    command: ["sh", "/scripts/provision-service-roles.sh"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD in .env}
+      TIMESHEET_DB_PASSWORD: ${TIMESHEET_DB_PASSWORD:?Set TIMESHEET_DB_PASSWORD in .env}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD:?Set REPORTING_DB_PASSWORD in .env}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Set NOTIFICATION_DB_PASSWORD in .env}
+    volumes:
+      - ./infrastructure/postgres/provision-service-roles.sh:/scripts/provision-service-roles.sh:ro
+      - ./infrastructure/postgres/provision-service-roles.sql:/scripts/provision-service-roles.sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [timesheet]
+
   redis:
     image: redis:7.4-alpine
     environment:
@@ -372,7 +417,7 @@ services:
 
 networks:
   timesheet:
-    name: aiyara-timesheet
+    name: ${COMPOSE_NETWORK_NAME:-aiyara-timesheet}
 
 volumes:
   postgres-data:

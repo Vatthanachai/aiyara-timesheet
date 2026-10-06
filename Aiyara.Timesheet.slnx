@@ -23,6 +23,7 @@
   </Folder>
   <Folder Name="/src/Backend/notifications/">
     <Project Path="src/Backend/notifications/Aiyara.Notifications.Api/Aiyara.Notifications.Api.csproj" />
+    <Project Path="src/Backend/notifications/Aiyara.Notifications.Databases/Aiyara.Notifications.Databases.csproj" />
   </Folder>
   <Folder Name="/src/Backend/contracts/">
     <Project Path="src/Backend/contracts/Aiyara.Timesheet.Contracts/Aiyara.Timesheet.Contracts.csproj" />
@@ -42,5 +43,8 @@
     <Project Path="src/Utilities/Aiyara.Timesheet.Componenet.Abstractions/Aiyara.Timesheet.Component.Abstractions.csproj" />
     <Project Path="src/Utilities/Aiyara.Timesheet.Componenet.Data/Aiyara.Timesheet.Component.Data.csproj" />
     <Project Path="src/Utilities/Aiyara.Timesheet.ServiceDefault/Aiyara.Timesheet.ServiceDefault.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Aiyara.Phase1.Tests/Aiyara.Phase1.Tests.csproj" />
   </Folder>
 </Solution>

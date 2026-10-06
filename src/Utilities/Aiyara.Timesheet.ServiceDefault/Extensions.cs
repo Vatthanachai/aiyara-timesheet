@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.ServiceDiscovery;
+using Microsoft.EntityFrameworkCore;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -144,6 +145,16 @@ public static class Extensions
             ["ready"],
             TimeSpan.FromSeconds(3)));
 
+        return builder;
+    }
+
+    public static TBuilder AddDatabaseHealthCheck<TBuilder, TContext>(
+        this TBuilder builder, string name)
+        where TBuilder : IHostApplicationBuilder
+        where TContext : DbContext
+    {
+        builder.Services.AddHealthChecks().AddCheck<DatabaseConnectivityHealthCheck<TContext>>(
+            name, failureStatus: HealthStatus.Unhealthy, tags: ["ready"]);
         return builder;
     }
 

@@ -4,14 +4,17 @@ package aiyara.timesheet.identity.v1;
 
 option csharp_namespace = "Aiyara.Timesheet.Contracts.Identity.V1";
 
-// This schema is deliberately checked in before code generation is enabled.
+import "google/protobuf/timestamp.proto";
+
 // Identity is the only service that may implement this synchronous contract.
 service IdentityValidationService {
   rpc ValidateAccessToken (ValidateAccessTokenRequest) returns (ValidateAccessTokenResponse);
+  rpc LookupProfile (LookupProfileRequest) returns (LookupProfileResponse);
 }
 
 message ValidateAccessTokenRequest {
   string access_token = 1;
+  string correlation_id = 2;
 }
 
 message ValidateAccessTokenResponse {
@@ -19,6 +22,26 @@ message ValidateAccessTokenResponse {
   string subject_id = 2;
   string tenant_id = 3;
   repeated string roles = 4;
-  string expires_at_utc = 5;
+  google.protobuf.Timestamp expires_at_utc = 5;
   string failure_reason = 6;
+  string token_id = 7;
+  int64 session_version = 8;
+  bool must_change_password = 9;
+}
+
+message LookupProfileRequest {
+  string subject_id = 1;
+  string tenant_id = 2;
+  string correlation_id = 3;
+}
+
+message LookupProfileResponse {
+  bool found = 1;
+  string subject_id = 2;
+  string tenant_id = 3;
+  string email = 4;
+  string first_name = 5;
+  string last_name = 6;
+  repeated string roles = 7;
+  bool is_active = 8;
 }

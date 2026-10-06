@@ -1,13 +1,26 @@
+using Aiyara.Notifications.Databases;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddTcpDependencyHealthCheck("RabbitMq", 5672);
+builder.AddTcpDependencyHealthCheck("Postgres", 5432);
+builder.Services.AddDbContext<NotificationDbContext>(options => options.UseNpgsql(
+    builder.Configuration.GetConnectionString("NotificationDb")
+    ?? throw new InvalidOperationException("ConnectionStrings:NotificationDb is required.")));
+builder.AddDatabaseHealthCheck<WebApplicationBuilder, NotificationDbContext>("notification-db");
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHostedService<NotificationDispatchWorker>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    await scope.ServiceProvider.GetRequiredService<NotificationDbContext>().Database.MigrateAsync();
+}
 
 app.MapDefaultEndpoints();
 

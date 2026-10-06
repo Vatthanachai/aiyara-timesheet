@@ -22,8 +22,22 @@ function Invoke-Compose {
 
 Invoke-Compose -Arguments @('config', '--quiet')
 if ($Start) {
-    Invoke-Compose -Arguments @('up', '-d', '--build', '--wait')
+    Invoke-Compose -Arguments @('up', '-d', '--build')
 }
+
+$provisioner = & docker compose @compose ps --all -q db-provisioner
+if ($LASTEXITCODE -ne 0 -or -not $provisioner) { throw 'Database provisioner is missing.' }
+$provisioned = $false
+for ($attempt = 0; $attempt -lt 90; $attempt++) {
+    $state = & docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' $provisioner
+    if ($state -eq 'exited:0') {
+        $provisioned = $true
+        break
+    }
+    if ($state -like 'exited:*') { throw "Database provisioner ended with $state." }
+    Start-Sleep -Seconds 1
+}
+if (-not $provisioned) { throw 'Database provisioner did not finish.' }
 
 $services = @(
     'gateway-api', 'identities-api', 'timesheet-api', 'reports-api',
@@ -38,10 +52,17 @@ foreach ($service in $services) {
         throw "$service is not running."
     }
 
-    $health = & docker inspect --format '{{.State.Health.Status}}' $containerId
-    if ($LASTEXITCODE -ne 0 -or $health -ne 'healthy') {
-        throw "$service is $health."
+    $healthy = $false
+    for ($attempt = 0; $attempt -lt 90; $attempt++) {
+        $health = & docker inspect --format '{{.State.Health.Status}}' $containerId
+        if ($health -eq 'healthy') {
+            $healthy = $true
+            break
+        }
+        if ($health -eq 'unhealthy') { throw "$service is unhealthy." }
+        Start-Sleep -Seconds 1
     }
+    if (-not $healthy) { throw "$service is $health." }
     Write-Host "$service healthy"
 }
 
