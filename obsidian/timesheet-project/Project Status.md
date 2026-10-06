@@ -93,13 +93,19 @@
   delivery outcomes without recording the secret. Phase 2 unit tests pass
   11/11; Compose smoke covers registration, invitation, activation, login,
   refresh replay, logout, reset, policy migration, and rate limiting.
+- Primary-agent validation on 6 October 2026: solution build passed with no
+  errors (74 existing utility warnings); Phase 1/2 tests passed 18/18;
+  Identity migrations have no pending model changes; Compose configuration,
+  Phase 1 and Phase 2 smoke tests, container health, diff whitespace checks,
+  and Obsidian links passed. The feature diff was reviewed against the roadmap
+  and repository standards before merge into `develop`.
 
 ## Not Yet Implemented
 
 - Time-entry, approval, and reporting domain models and endpoints.
 - Frontend product screens, API client integration, and end-to-end flows.
 - Frontend API integration and product workflows.
-- Application clients for Redis, RabbitMQ, and RustFS beyond dependency probes.
+- Application clients for RabbitMQ and RustFS beyond dependency probes.
 - Domain and end-to-end test suites for later phases.
 
 ## Agreed Direction
