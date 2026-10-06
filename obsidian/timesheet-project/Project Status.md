@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 6 October 2026. Phase 0 and Phase 1 are complete; Phase 2 identity and notification flows have been validated on the feature branch described in [[Development Roadmap]].
+> Updated 6 October 2026. Phases 0–2 are complete; Phase 4 reporting foundation is in progress while Phase 3 time-entry work remains pending. See [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
