@@ -4,7 +4,12 @@ public enum ReportKind { Weekly, Monthly, Annual, Performance }
 public enum ReportFormat { Pdf, Xlsx }
 public enum ReportRunStatus { Queued, Running, Succeeded, Failed }
 
-public sealed class ReportDefinition
+public interface ITenantOwnedReportRecord
+{
+    Guid TenantId { get; }
+}
+
+public sealed class ReportDefinition : ITenantOwnedReportRecord
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
@@ -15,7 +20,7 @@ public sealed class ReportDefinition
     public DateTime CreatedAtUtc { get; set; }
 }
 
-public sealed class ReportSchedule
+public sealed class ReportSchedule : ITenantOwnedReportRecord
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
@@ -27,11 +32,12 @@ public sealed class ReportSchedule
     public bool IsEnabled { get; set; } = true;
 }
 
-public sealed class ReportRun
+public sealed class ReportRun : ITenantOwnedReportRecord
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid ReportDefinitionId { get; set; }
+    public Guid? SubjectUserId { get; set; }
     public required string IdempotencyKey { get; set; }
     public ReportRunStatus Status { get; set; } = ReportRunStatus.Queued;
     public DateTime PeriodStartUtc { get; set; }
@@ -41,7 +47,7 @@ public sealed class ReportRun
     public DateTime? CompletedAtUtc { get; set; }
 }
 
-public sealed class ReportSnapshot
+public sealed class ReportSnapshot : ITenantOwnedReportRecord
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
@@ -51,7 +57,7 @@ public sealed class ReportSnapshot
     public DateTime CreatedAtUtc { get; set; }
 }
 
-public sealed class ReportObject
+public sealed class ReportObject : ITenantOwnedReportRecord
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
@@ -66,7 +72,7 @@ public sealed class ReportObject
     public DateTime RetainUntilUtc { get; set; }
 }
 
-public sealed class ReportRetentionPolicy
+public sealed class ReportRetentionPolicy : ITenantOwnedReportRecord
 {
     public Guid TenantId { get; set; }
     public int Years { get; set; } = 7;

@@ -152,6 +152,9 @@ namespace Aiyara.Report.Databases.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid?>("SubjectUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("PeriodEndUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -175,6 +178,8 @@ namespace Aiyara.Report.Databases.Migrations
                         .IsUnique();
 
                     b.HasIndex("TenantId", "ReportDefinitionId");
+
+                    b.HasIndex("TenantId", "SubjectUserId", "CreatedAtUtc");
 
                     b.HasIndex("TenantId", "Status", "CreatedAtUtc");
 

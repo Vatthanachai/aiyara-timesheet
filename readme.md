@@ -147,7 +147,10 @@ Admin bootstrap message without displaying its one-time password.
 
 The Reporting database now has tenant-scoped definitions, schedules, runs,
 immutable snapshot records, object metadata, and retention settings. Its
-calendar helper computes Monday weekly, first-of-next-month 00:15, and
+run records carry an optional subject user ID for employee-specific reports;
+null is reserved for tenant-wide reports. Database writes require a matching
+tenant scope, and snapshots are append-only. The calendar helper computes
+Monday weekly, first-of-next-month 00:15, and
 1-January annual fire times in each tenant's timezone. Weekly and annual local
 times default to 00:15 until schedule configuration is exposed. Run
 `dotnet test tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj` to check

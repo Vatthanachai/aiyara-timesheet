@@ -61,9 +61,15 @@ public sealed class ReportFoundationTests
         var second = Guid.NewGuid();
         var firstDefinition = NewDefinition(first);
         var secondDefinition = NewDefinition(second);
-        db.ReportDefinitions.AddRange(firstDefinition, secondDefinition);
+        db.ReportDefinitions.Add(firstDefinition);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        scope.TenantId = first;
+        await db.SaveChangesAsync();
+        scope.TenantId = second;
+        db.ReportDefinitions.Add(secondDefinition);
         await db.SaveChangesAsync();
 
+        scope.TenantId = null;
         Assert.Empty(await db.ReportDefinitions.ToListAsync());
         scope.TenantId = first;
         Assert.Equal(firstDefinition.Id, Assert.Single(await db.ReportDefinitions.ToListAsync()).Id);
@@ -123,6 +129,43 @@ public sealed class ReportFoundationTests
         db.ChangeTracker.Clear();
         db.ReportDefinitions.Remove(await db.ReportDefinitions.SingleAsync());
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Mismatched_tenant_write_and_snapshot_update_are_rejected()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
+        await connection.OpenAsync();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var scope = new ReportingTenantScope { TenantId = first };
+        var options = new DbContextOptionsBuilder<ReportingDbContext>()
+            .UseSqlite(connection).Options;
+        await using var db = new ReportingDbContext(options, scope);
+        await db.Database.EnsureCreatedAsync();
+        var definition = NewDefinition(first);
+        db.ReportDefinitions.Add(definition);
+        await db.SaveChangesAsync();
+        var run = NewRun(first, definition.Id, "immutable-snapshot");
+        var employee = Guid.NewGuid();
+        run.SubjectUserId = employee;
+        var snapshot = new ReportSnapshot
+        {
+            Id = Guid.NewGuid(), TenantId = first, ReportRunId = run.Id,
+            PayloadJson = "{}", Sha256 = new string('a', 64), CreatedAtUtc = DateTime.UtcNow
+        };
+        db.ReportRuns.Add(run);
+        db.ReportSnapshots.Add(snapshot);
+        await db.SaveChangesAsync();
+        Assert.Equal(run.Id, (await db.ReportRuns.SingleAsync(x =>
+            x.SubjectUserId == employee)).Id);
+
+        snapshot.PayloadJson = "{\"changed\":true}";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        db.Entry(snapshot).Reload();
+        scope.TenantId = second;
+        definition.Name = "Cross-tenant edit";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
     }
 
     private static ReportDefinition NewDefinition(Guid tenantId) => new()

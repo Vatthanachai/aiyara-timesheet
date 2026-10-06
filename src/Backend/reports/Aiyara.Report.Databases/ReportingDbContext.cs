@@ -15,6 +15,32 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
 
     public Guid? CurrentTenantId => tenantScope.TenantId;
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        ValidateWrites();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateWrites();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void ValidateWrites()
+    {
+        foreach (var entry in ChangeTracker.Entries<ITenantOwnedReportRecord>())
+        {
+            if (entry.State is EntityState.Unchanged or EntityState.Detached) continue;
+            if (tenantScope.TenantId is not { } tenantId || tenantId == Guid.Empty ||
+                entry.Entity.TenantId != tenantId)
+                throw new InvalidOperationException("Report writes require a matching tenant scope.");
+            if (entry.Entity is ReportSnapshot && entry.State != EntityState.Added)
+                throw new InvalidOperationException("Report snapshots are append-only.");
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ReportDefinition>(entity =>
@@ -50,6 +76,7 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
             entity.Property(x => x.IdempotencyKey).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.SubjectUserId, x.CreatedAtUtc });
             entity.HasIndex(x => new { x.TenantId, x.Status, x.CreatedAtUtc });
             entity.HasOne<ReportDefinition>().WithMany()
                 .HasForeignKey(x => new { x.TenantId, x.ReportDefinitionId })

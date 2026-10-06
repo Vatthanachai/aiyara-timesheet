@@ -49,6 +49,7 @@ namespace Aiyara.Report.Databases.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     TenantId = table.Column<Guid>(type: "uuid", nullable: false),
                     ReportDefinitionId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SubjectUserId = table.Column<Guid>(type: "uuid", nullable: true),
                     IdempotencyKey = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     PeriodStartUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
@@ -169,6 +170,11 @@ namespace Aiyara.Report.Databases.Migrations
                 name: "IX_report_runs_TenantId_ReportDefinitionId",
                 table: "report_runs",
                 columns: new[] { "TenantId", "ReportDefinitionId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_report_runs_TenantId_SubjectUserId_CreatedAtUtc",
+                table: "report_runs",
+                columns: new[] { "TenantId", "SubjectUserId", "CreatedAtUtc" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_report_runs_TenantId_Status_CreatedAtUtc",
