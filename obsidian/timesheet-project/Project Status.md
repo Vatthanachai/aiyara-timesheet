@@ -15,6 +15,12 @@
 - `tests/platform/Smoke.ps1` verifies the runnable Compose stack and API docs.
   TCP readiness probes establish reachability; authenticated protocol probes
   belong with the Phase 1 client integration.
+- Validation on 6 October 2026: solution restore/build and Compose configuration
+  passed; all 17 core containers became healthy; backend health and OpenAPI
+  paths passed the smoke test. With Redis stopped, Identity returned 200 from
+  `/alive` and 503 from `/health`, then recovered after Redis restarted.
+  AppHost published a manifest containing the external Compose endpoints and
+  Scalar reference. The solution build has 76 existing warnings and no errors.
 
 ## Implemented Foundation
 
