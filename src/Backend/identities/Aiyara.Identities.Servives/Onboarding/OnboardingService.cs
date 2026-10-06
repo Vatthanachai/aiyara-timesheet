@@ -39,14 +39,24 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
             Role = TenantRole.TenantAdmin, Status = MembershipStatus.PendingActivation,
             CreatedAtUtc = now
         };
+        var onboardingKey = InvitationCode.Generate();
+        var onboardingKeyExpiresAtUtc = now.AddDays(7);
+        var capability = new OnboardingCapability
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, AccountId = account.Id,
+            KeyHash = InvitationCode.Hash(onboardingKey), CreatedAtUtc = now,
+            ExpiresAtUtc = onboardingKeyExpiresAtUtc
+        };
 
         db.Tenants.Add(tenant);
         db.Memberships.Add(membership);
+        db.OnboardingCapabilities.Add(capability);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new CreateTenantResponse(tenant.Id, account.Id, membership.Id,
-            membership.Role.ToString(), membership.Status.ToString(), tenant.TimeZoneId);
+            membership.Role.ToString(), membership.Status.ToString(), tenant.TimeZoneId,
+            onboardingKey, onboardingKeyExpiresAtUtc);
     }
 
     public async Task<AcceptInvitationResponse> AcceptInvitationAsync(
@@ -130,6 +140,33 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         db.Invitations.Add(invitation);
         await db.SaveChangesAsync(cancellationToken);
         return new IssueInvitationResponse(invitation.Id, tenantId, invitation.ExpiresAtUtc, code);
+    }
+
+    public async Task<IssueInvitationResponse> IssueInvitationWithKeyAsync(
+        Guid tenantId, string? onboardingKey, IssueInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (tenantId == Guid.Empty || string.IsNullOrWhiteSpace(onboardingKey) ||
+            onboardingKey.Length > 200)
+        {
+            throw new OnboardingException(OnboardingFailure.Unauthorized,
+                "Valid onboarding key is required.");
+        }
+
+        var keyHash = InvitationCode.Hash(onboardingKey);
+        var capability = await db.OnboardingCapabilities.IgnoreQueryFilters()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.KeyHash == keyHash && x.TenantId == tenantId,
+                cancellationToken);
+        if (capability is null || capability.RevokedAtUtc is not null ||
+            capability.ExpiresAtUtc <= DateTime.UtcNow)
+        {
+            throw new OnboardingException(OnboardingFailure.Unauthorized,
+                "Valid onboarding key is required.");
+        }
+
+        return await IssueInvitationAsync(tenantId, capability.AccountId, request,
+            cancellationToken);
     }
 
     private async Task<Account> FindOrCreateAccountAsync(string email, DateTime now,

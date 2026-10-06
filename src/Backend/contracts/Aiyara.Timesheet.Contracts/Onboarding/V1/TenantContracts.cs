@@ -8,14 +8,27 @@ public sealed record CreateTenantResponse(
     Guid MembershipId,
     string Role,
     string Status,
-    string TimeZoneId);
+    string TimeZoneId,
+    string OnboardingKey,
+    DateTime OnboardingKeyExpiresAtUtc)
+{
+    public override string ToString() =>
+        $"CreateTenantResponse {{ TenantId = {TenantId}, OnboardingKey = [REDACTED] }}";
+}
 
-public sealed record AcceptInvitationRequest(string Code);
+public sealed record AcceptInvitationRequest(string Code)
+{
+    public override string ToString() => "AcceptInvitationRequest { Code = [REDACTED] }";
+}
 
 public sealed record IssueInvitationRequest(string Email, string Role);
 
 public sealed record IssueInvitationResponse(Guid InvitationId, Guid TenantId,
-    DateTime ExpiresAtUtc, string Code);
+    DateTime ExpiresAtUtc, string Code)
+{
+    public override string ToString() =>
+        $"IssueInvitationResponse {{ InvitationId = {InvitationId}, Code = [REDACTED] }}";
+}
 
 public sealed record AcceptInvitationResponse(
     Guid TenantId,

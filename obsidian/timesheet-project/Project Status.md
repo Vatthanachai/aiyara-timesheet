@@ -43,8 +43,10 @@
   cannot connect to another service database.
 - Tenant creation and one-time invitation acceptance create pending memberships
   with Tenant Admin or Employee role. Identity requires a tenant administrator
-  to issue an invitation; no public issue endpoint is exposed before Phase 2
-  implements login and activation. New tenant IDs originate in Identity;
+  to issue an invitation. Phase 1's seven-day onboarding key is returned once
+  at tenant creation, stored only as a hash, and authorizes a tenant-bound
+  invitation route until Phase 2 replaces it with login-based authorization.
+  New tenant IDs originate in Identity;
   invitation tenant IDs come from the stored invitation hash, not request
   headers. Tenant-owned queries return nothing without an established scope.
 - Gateway routes the four APIs, strips caller-supplied tenant/user headers,
@@ -53,8 +55,8 @@
   Identity's Phase 1 validation service deliberately rejects tokens until the
   Phase 2 identity flow exists.
 - `Aiyara.Phase1.Tests` covers tenant isolation, create/invite/accept rules,
-  and gRPC/messaging contract shapes. A Compose-backed check created a tenant
-  and accepted a seeded invitation through Gateway without crossing tenants.
+  and gRPC/messaging contract shapes. A Compose-backed check creates two tenants,
+  issues and accepts an invitation through Gateway, and rejects cross-tenant keys.
 - Primary-agent validation on 6 October 2026: `dotnet build Aiyara.Timesheet.slnx`
   passed with 76 pre-existing warnings and no errors; `dotnet test
   Aiyara.Timesheet.slnx` passed 5/5; `docker compose --env-file .env.example
@@ -62,13 +64,19 @@
   `tests/platform/Smoke.ps1` (including the Redis failure/recovery check) and
   `tests/phase1/Smoke.ps1`; `git diff --check develop...HEAD` passed. The
   validation diff was reviewed for service ownership, tenant isolation,
-  secrets, and build artifacts. Phase 2 owns authenticated request-scope
-  resolution and the complete invitation/login flow.
+  secrets, and build artifacts. Phase 2 owns token-backed request-scope
+  resolution, activation, login, and email delivery.
+- Phase 1 completion follow-up on 6 October 2026: the seed-only invitation
+  fixture was replaced with the tenant-bound onboarding-key issuance API.
+  `dotnet test Aiyara.Timesheet.slnx` now passes 7/7; the rebuilt Compose
+  Identity/Gateway stack passes `tests/phase1/Smoke.ps1` for create → issue →
+  accept, missing/cross-tenant keys, spoofed tenant headers, invitation replay,
+  DB role isolation, protected routes, and OpenAPI discovery. Identity's
+  onboarding-capability migration reports no pending model changes.
 
 ## Not Yet Implemented
 
-- Login, activation, token issuance/validation, and public authenticated
-  invitation issuance (Phase 2).
+- Login, activation, token issuance/validation, and email delivery (Phase 2).
 - Time-entry, approval, and reporting domain models and endpoints.
 - Frontend product screens, API client integration, and end-to-end flows.
 - Frontend API integration and product workflows.

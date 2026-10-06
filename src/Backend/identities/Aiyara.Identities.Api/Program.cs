@@ -44,17 +44,25 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    TenantScopeResolver.Resolve(context.User,
+        context.RequestServices.GetRequiredService<TenantScope>());
+    await next();
+});
 
 app.MapControllers();
 app.MapGrpcService<IdentityValidationGrpcService>();
 
 var onboarding = app.MapGroup("/api/v1").WithTags("Onboarding");
-onboarding.MapPost("/tenants", async (CreateTenantRequest request, OnboardingService service,
+onboarding.MapPost("/tenants", async (CreateTenantRequest request, HttpContext context,
+    OnboardingService service,
     CancellationToken cancellationToken) =>
 {
     try
     {
         var result = await service.CreateTenantAsync(request, cancellationToken);
+        context.Response.Headers.CacheControl = "no-store";
         return Results.Json(result, statusCode: StatusCodes.Status201Created);
     }
     catch (OnboardingException exception)
@@ -85,6 +93,36 @@ onboarding.MapPost("/invitations/accept", async (AcceptInvitationRequest request
 .WithName("AcceptInvitationV1")
 .Produces<AcceptInvitationResponse>(StatusCodes.Status200OK)
 .ProducesProblem(StatusCodes.Status400BadRequest)
+.ProducesProblem(StatusCodes.Status409Conflict);
+
+onboarding.MapPost("/tenants/{tenantId:guid}/invitations", async (
+    Guid tenantId, IssueInvitationRequest request, HttpContext context,
+    OnboardingService service, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var key = context.Request.Headers["X-Onboarding-Key"].ToString();
+        var result = await service.IssueInvitationWithKeyAsync(tenantId, key, request,
+            cancellationToken);
+        context.Response.Headers.CacheControl = "no-store";
+        return Results.Json(result, statusCode: StatusCodes.Status201Created);
+    }
+    catch (OnboardingException exception)
+    {
+        var status = exception.Failure switch
+        {
+            OnboardingFailure.Unauthorized => StatusCodes.Status401Unauthorized,
+            OnboardingFailure.Conflict => StatusCodes.Status409Conflict,
+            _ => StatusCodes.Status400BadRequest
+        };
+        return Results.Problem(exception.Message, statusCode: status);
+    }
+})
+.WithName("IssueInvitationV1")
+.WithDescription("Requires a valid tenant-bound X-Onboarding-Key. The key is returned once at tenant creation and expires after seven days.")
+.Produces<IssueInvitationResponse>(StatusCodes.Status201Created)
+.ProducesProblem(StatusCodes.Status400BadRequest)
+.ProducesProblem(StatusCodes.Status401Unauthorized)
 .ProducesProblem(StatusCodes.Status409Conflict);
 
 app.Run();

@@ -20,6 +20,7 @@ builder.Services.AddReverseProxy()
     {
         transformBuilder.AddRequestHeaderRemove("X-Tenant-Id");
         transformBuilder.AddRequestHeaderRemove("X-User-Id");
+        transformBuilder.AddRequestHeaderRemove("X-Onboarding-Key");
         if (transformBuilder.Route.AuthorizationPolicy == "TenantMember")
         {
             transformBuilder.AddRequestTransform(context =>
@@ -93,10 +94,29 @@ app.MapControllers();
 var onboarding = app.MapGroup("/api/v1").WithTags("Onboarding")
     .RequireCors("frontend").RequireRateLimiting("onboarding");
 onboarding.MapPost("/tenants", (CreateTenantRequest request, IdentityOnboardingClient client,
-    CancellationToken cancellationToken) => client.CreateTenantAsync(request, cancellationToken))
+    HttpContext context, CancellationToken cancellationToken) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return client.CreateTenantAsync(request, cancellationToken);
+})
     .WithName("GatewayCreateTenantV1")
     .Produces<CreateTenantResponse>(StatusCodes.Status201Created)
     .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status409Conflict)
+    .ProducesProblem(StatusCodes.Status502BadGateway);
+onboarding.MapPost("/tenants/{tenantId:guid}/invitations", (
+    Guid tenantId, IssueInvitationRequest request, HttpContext context,
+    IdentityOnboardingClient client, CancellationToken cancellationToken) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return client.IssueInvitationAsync(tenantId, request,
+        context.Request.Headers["X-Onboarding-Key"].ToString(), cancellationToken);
+})
+    .WithName("GatewayIssueInvitationV1")
+    .WithDescription("Requires the tenant-bound X-Onboarding-Key returned once when the tenant was created. The key expires after seven days.")
+    .Produces<IssueInvitationResponse>(StatusCodes.Status201Created)
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status401Unauthorized)
     .ProducesProblem(StatusCodes.Status409Conflict)
     .ProducesProblem(StatusCodes.Status502BadGateway);
 onboarding.MapPost("/invitations/accept", (AcceptInvitationRequest request,

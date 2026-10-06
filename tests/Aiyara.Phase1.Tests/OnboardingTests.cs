@@ -1,4 +1,5 @@
 using Aiyara.Identities.Databases;
+using System.Security.Claims;
 using Aiyara.Identities.Services.Onboarding;
 using Aiyara.Timesheet.Contracts.Onboarding.V1;
 using Microsoft.Data.Sqlite;
@@ -20,12 +21,15 @@ public sealed class OnboardingTests
 
         Assert.Empty(await fixture.Db.Tenants.AsNoTracking().ToListAsync());
         Assert.Empty(await fixture.Db.Memberships.AsNoTracking().ToListAsync());
+        Assert.Empty(await fixture.Db.OnboardingCapabilities.AsNoTracking().ToListAsync());
         fixture.Scope.TenantId = first.TenantId;
         Assert.Equal(first.TenantId, Assert.Single(await fixture.Db.Tenants.AsNoTracking().ToListAsync()).Id);
         Assert.Equal(first.MembershipId, Assert.Single(await fixture.Db.Memberships.AsNoTracking().ToListAsync()).Id);
+        Assert.Single(await fixture.Db.OnboardingCapabilities.AsNoTracking().ToListAsync());
         fixture.Scope.TenantId = second.TenantId;
         Assert.Equal(second.TenantId, Assert.Single(await fixture.Db.Tenants.AsNoTracking().ToListAsync()).Id);
         Assert.Equal(second.MembershipId, Assert.Single(await fixture.Db.Memberships.AsNoTracking().ToListAsync()).Id);
+        Assert.Single(await fixture.Db.OnboardingCapabilities.AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -71,6 +75,67 @@ public sealed class OnboardingTests
         var invalid = await Assert.ThrowsAsync<OnboardingException>(() => fixture.Service.AcceptInvitationAsync(
             new AcceptInvitationRequest("unknown"), default));
         Assert.Equal(OnboardingFailure.InvalidInvitation, invalid.Failure);
+    }
+
+    [Fact]
+    public async Task Onboarding_key_authorizes_only_its_tenant_and_expires()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var first = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("First", "first", "admin@first.test"), default);
+        var second = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Second", "second", "admin@second.test"), default);
+        var request = new IssueInvitationRequest("invite@first.test", "Employee");
+
+        Assert.NotEmpty(first.OnboardingKey);
+        Assert.DoesNotContain(first.OnboardingKey, first.ToString());
+        Assert.DoesNotContain(first.OnboardingKey,
+            await fixture.Db.OnboardingCapabilities.IgnoreQueryFilters()
+                .Where(x => x.TenantId == first.TenantId)
+                .Select(x => x.KeyHash).SingleAsync());
+        var missing = await Assert.ThrowsAsync<OnboardingException>(() =>
+            fixture.Service.IssueInvitationWithKeyAsync(first.TenantId, null, request, default));
+        Assert.Equal(OnboardingFailure.Unauthorized, missing.Failure);
+        var crossTenant = await Assert.ThrowsAsync<OnboardingException>(() =>
+            fixture.Service.IssueInvitationWithKeyAsync(second.TenantId,
+                first.OnboardingKey, request, default));
+        Assert.Equal(OnboardingFailure.Unauthorized, crossTenant.Failure);
+
+        var issued = await fixture.Service.IssueInvitationWithKeyAsync(first.TenantId,
+            first.OnboardingKey, request, default);
+        Assert.Equal(first.TenantId, issued.TenantId);
+        Assert.DoesNotContain(issued.Code, issued.ToString());
+        Assert.DoesNotContain(issued.Code, new AcceptInvitationRequest(issued.Code).ToString());
+        fixture.Scope.TenantId = first.TenantId;
+        var capability = await fixture.Db.OnboardingCapabilities.SingleAsync();
+        capability.ExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await fixture.Db.SaveChangesAsync();
+        var expired = await Assert.ThrowsAsync<OnboardingException>(() =>
+            fixture.Service.IssueInvitationWithKeyAsync(first.TenantId,
+                first.OnboardingKey, request, default));
+        Assert.Equal(OnboardingFailure.Unauthorized, expired.Failure);
+    }
+
+    [Fact]
+    public void Request_tenant_scope_requires_an_authenticated_tenant_claim()
+    {
+        var tenantId = Guid.NewGuid();
+        var scope = new TenantScope();
+        TenantScopeResolver.Resolve(new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("tenant_id", tenantId.ToString())])), scope);
+        Assert.Null(scope.TenantId);
+
+        TenantScopeResolver.Resolve(new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("tenant_id", "not-a-guid")], "test")), scope);
+        Assert.Null(scope.TenantId);
+
+        TenantScopeResolver.Resolve(new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("tenant_id", tenantId.ToString())], "test")), scope);
+        Assert.Equal(tenantId, scope.TenantId);
+
+        TenantScopeResolver.Resolve(new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("tenant_id", "not-a-guid")], "test")), scope);
+        Assert.Null(scope.TenantId);
     }
 
     private sealed class Fixture : IAsyncDisposable

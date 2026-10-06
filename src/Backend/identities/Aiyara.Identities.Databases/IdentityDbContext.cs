@@ -10,6 +10,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<OnboardingCapability> OnboardingCapabilities => Set<OnboardingCapability>();
     public Guid? CurrentTenantId => tenantScope.TenantId;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -55,6 +56,17 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(40);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
             entity.HasOne<Account>().WithMany().HasForeignKey(x => x.InvitedByAccountId);
+            entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<OnboardingCapability>(entity =>
+        {
+            entity.ToTable("onboarding_capabilities");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.KeyHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(x => x.KeyHash).IsUnique();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
+            entity.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId);
             entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
         });
     }

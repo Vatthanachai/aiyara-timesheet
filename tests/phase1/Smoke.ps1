@@ -33,19 +33,18 @@ if ($first.tenantId -eq $second.tenantId -or $first.status -ne 'PendingActivatio
 $duplicate = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/tenants" -Method Post -ContentType 'application/json' -Body $firstBody -SkipHttpErrorCheck
 if ($duplicate.StatusCode -ne 409) { throw "Duplicate slug returned $($duplicate.StatusCode), expected 409." }
 
-$code = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
-$hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($code)))
-$invitationId = [Guid]::NewGuid()
-$sql = @"
-insert into invitations ("Id", "TenantId", "Email", "TokenHash", "Role", "InvitedByAccountId", "CreatedAtUtc", "ExpiresAtUtc")
-values ('$invitationId', '$($first.tenantId)', 'invite-$suffix@example.test', '$hash', 'Employee', '$($first.accountId)', now(), now() + interval '1 day')
-"@
-& docker compose @compose exec -T postgres psql -U $postgresUser -d identity_db -c $sql | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Could not seed Phase 1 invitation fixture.' }
+$inviteBody = @{email="invite-$suffix@example.test";role='Employee'} | ConvertTo-Json
+$inviteUrl = "$GatewayUrl/api/v1/tenants/$($first.tenantId)/invitations"
+$missingKey = Invoke-WebRequest -Uri $inviteUrl -Method Post -ContentType 'application/json' -Body $inviteBody -SkipHttpErrorCheck
+if ($missingKey.StatusCode -ne 401) { throw "Missing key returned $($missingKey.StatusCode), expected 401." }
+$wrongTenant = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/tenants/$($second.tenantId)/invitations" -Method Post -ContentType 'application/json' -Body $inviteBody -Headers @{'X-Onboarding-Key'=$first.onboardingKey} -SkipHttpErrorCheck
+if ($wrongTenant.StatusCode -ne 401) { throw "Cross-tenant key returned $($wrongTenant.StatusCode), expected 401." }
+$issued = Invoke-RestMethod -Uri $inviteUrl -Method Post -ContentType 'application/json' -Body $inviteBody -Headers @{'X-Onboarding-Key'=$first.onboardingKey;'X-Tenant-Id'=$second.tenantId}
+if ($issued.tenantId -ne $first.tenantId -or -not $issued.code) { throw 'Invitation issuance returned the wrong tenant or no code.' }
 $grants = & docker compose @compose exec -T postgres psql -U $postgresUser -d postgres -tAc "select has_database_privilege('identity_app','identity_db','CONNECT'), has_database_privilege('identity_app','timesheet_db','CONNECT'), has_database_privilege('timesheet_app','identity_db','CONNECT')"
 if ($LASTEXITCODE -ne 0 -or $grants.Trim() -ne 't|f|f') { throw "Service database isolation failed: $grants" }
 
-$acceptBody = @{code=$code} | ConvertTo-Json
+$acceptBody = @{code=$issued.code} | ConvertTo-Json
 $accepted = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/invitations/accept" -Method Post -ContentType 'application/json' -Body $acceptBody -Headers @{'X-Tenant-Id'=$second.tenantId}
 if ($accepted.tenantId -ne $first.tenantId -or $accepted.status -ne 'PendingActivation') {
     throw 'Invitation acceptance returned the wrong tenant or status.'
@@ -58,6 +57,10 @@ foreach ($path in @('/health', '/openapi/v1.json', '/api-docs/identity/openapi/v
     '/api-docs/notification/openapi/v1.json')) {
     $result = Invoke-WebRequest -Uri "$GatewayUrl$path" -SkipHttpErrorCheck
     if ($result.StatusCode -ne 200) { throw "$path returned $($result.StatusCode)." }
+}
+$openApi = Invoke-RestMethod -Uri "$GatewayUrl/openapi/v1.json"
+if (-not $openApi.paths.PSObject.Properties['/api/v1/tenants/{tenantId}/invitations']) {
+    throw 'Gateway OpenAPI is missing the invitation issuance route.'
 }
 $protected = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" -Headers @{'X-Tenant-Id'=$first.tenantId} -SkipHttpErrorCheck
 if ($protected.StatusCode -ne 401) { throw "Protected route returned $($protected.StatusCode), expected 401." }
