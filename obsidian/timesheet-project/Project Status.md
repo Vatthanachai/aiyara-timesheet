@@ -44,7 +44,9 @@
 - Tenant creation and one-time invitation acceptance create pending memberships
   with Tenant Admin or Employee role. Identity requires a tenant administrator
   to issue an invitation; no public issue endpoint is exposed before Phase 2
-  implements login and activation.
+  implements login and activation. New tenant IDs originate in Identity;
+  invitation tenant IDs come from the stored invitation hash, not request
+  headers. Tenant-owned queries return nothing without an established scope.
 - Gateway routes the four APIs, strips caller-supplied tenant/user headers,
   uses Identity gRPC validation for protected routes, and provides CORS, rate
   limits, one Scalar portal, and links to each service's OpenAPI document.

@@ -46,7 +46,7 @@ $grants = & docker compose @compose exec -T postgres psql -U $postgresUser -d po
 if ($LASTEXITCODE -ne 0 -or $grants.Trim() -ne 't|f|f') { throw "Service database isolation failed: $grants" }
 
 $acceptBody = @{code=$code} | ConvertTo-Json
-$accepted = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/invitations/accept" -Method Post -ContentType 'application/json' -Body $acceptBody
+$accepted = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/invitations/accept" -Method Post -ContentType 'application/json' -Body $acceptBody -Headers @{'X-Tenant-Id'=$second.tenantId}
 if ($accepted.tenantId -ne $first.tenantId -or $accepted.status -ne 'PendingActivation') {
     throw 'Invitation acceptance returned the wrong tenant or status.'
 }
@@ -61,5 +61,7 @@ foreach ($path in @('/health', '/openapi/v1.json', '/api-docs/identity/openapi/v
 }
 $protected = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" -Headers @{'X-Tenant-Id'=$first.tenantId} -SkipHttpErrorCheck
 if ($protected.StatusCode -ne 401) { throw "Protected route returned $($protected.StatusCode), expected 401." }
+$invalidToken = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" -Headers @{Authorization='Bearer invalid';'X-Tenant-Id'=$first.tenantId} -SkipHttpErrorCheck
+if ($invalidToken.StatusCode -ne 401) { throw "Invalid token returned $($invalidToken.StatusCode), expected 401." }
 
 Write-Host 'Phase 1 Compose smoke test passed.'

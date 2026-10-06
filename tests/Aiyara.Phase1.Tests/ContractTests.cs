@@ -15,6 +15,10 @@ public sealed class ContractTests
         Assert.Contains("LookupProfile", methods);
         Assert.Equal("aiyara.timesheet.identity.v1",
             ValidateAccessTokenRequest.Descriptor.File.Package);
+        Assert.Equal(1, ValidateAccessTokenRequest.Descriptor.FindFieldByName("access_token").FieldNumber);
+        Assert.Equal(2, ValidateAccessTokenRequest.Descriptor.FindFieldByName("correlation_id").FieldNumber);
+        Assert.Equal(3, ValidateAccessTokenResponse.Descriptor.FindFieldByName("tenant_id").FieldNumber);
+        Assert.Equal(9, ValidateAccessTokenResponse.Descriptor.FindFieldByName("must_change_password").FieldNumber);
     }
 
     [Fact]
@@ -26,8 +30,11 @@ public sealed class ContractTests
             "tenant-created:test", tenantId, DateTime.UtcNow, MessageTypes.TenantCreated,
             new TenantCreatedV1(tenantId, "test", "Asia/Bangkok"));
 
-        var copy = JsonSerializer.Deserialize<MessageEnvelope<TenantCreatedV1>>(
-            JsonSerializer.Serialize(envelope));
+        var json = JsonSerializer.Serialize(envelope);
+        Assert.Contains("\"CorrelationId\"", json);
+        Assert.Contains("\"IdempotencyKey\"", json);
+        Assert.Contains("\"TenantId\"", json);
+        var copy = JsonSerializer.Deserialize<MessageEnvelope<TenantCreatedV1>>(json);
         Assert.NotNull(copy);
         Assert.Equal(tenantId, copy.TenantId);
         Assert.Equal(correlationId, copy.CorrelationId);
