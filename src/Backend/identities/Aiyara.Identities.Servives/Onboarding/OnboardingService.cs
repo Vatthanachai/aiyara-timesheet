@@ -16,7 +16,8 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         var slug = request.Slug?.Trim().ToLowerInvariant();
         var email = NormalizeEmail(request.AdminEmail);
         if (string.IsNullOrWhiteSpace(name) || name.Length > 200 ||
-            slug is null || !Regex.IsMatch(slug, "^[a-z0-9][a-z0-9-]{2,79}$"))
+            slug is null || slug == "platform-system" ||
+            !Regex.IsMatch(slug, "^[a-z0-9][a-z0-9-]{2,79}$"))
         {
             throw new OnboardingException(OnboardingFailure.InvalidInput, "Invalid tenant details.");
         }
@@ -165,7 +166,33 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
                 "Valid onboarding key is required.");
         }
 
+        tenantScope.TenantId = tenantId;
+        var membership = await db.Memberships.SingleOrDefaultAsync(x =>
+            x.AccountId == capability.AccountId && x.Role == TenantRole.TenantAdmin,
+            cancellationToken);
+        if (membership?.Status != MembershipStatus.PendingActivation)
+            throw new OnboardingException(OnboardingFailure.Unauthorized,
+                "Valid onboarding key is required.");
+
         return await IssueInvitationAsync(tenantId, capability.AccountId, request,
+            cancellationToken);
+    }
+
+    public async Task<IssueInvitationResponse> IssueInvitationAuthorizedAsync(
+        Guid tenantId, Guid actorAccountId, long sessionVersion,
+        IssueInvitationRequest request, CancellationToken cancellationToken)
+    {
+        tenantScope.TenantId = tenantId;
+        var account = await db.Accounts.SingleOrDefaultAsync(x => x.Id == actorAccountId,
+            cancellationToken);
+        var membership = await db.Memberships.SingleOrDefaultAsync(x =>
+            x.AccountId == actorAccountId && x.Role == TenantRole.TenantAdmin &&
+            x.Status == MembershipStatus.Active, cancellationToken);
+        if (account is null || account.SessionVersion != sessionVersion ||
+            membership is null)
+            throw new OnboardingException(OnboardingFailure.Unauthorized,
+                "Active tenant administrator is required.");
+        return await IssueInvitationAsync(tenantId, actorAccountId, request,
             cancellationToken);
     }
 

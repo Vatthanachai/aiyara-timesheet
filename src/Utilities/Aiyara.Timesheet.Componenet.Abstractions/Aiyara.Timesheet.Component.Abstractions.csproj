@@ -13,6 +13,7 @@
     <PackageReference Include="Autofac.Extras.DynamicProxy" />
     <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" />
     <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
 
     <PackageReference Include="Paseto.Core" />
     <PackageReference Include="Scalar.AspNetCore" />

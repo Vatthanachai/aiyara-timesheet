@@ -4,5 +4,6 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <ProjectReference Include="..\Aiyara.Identities.Databases\Aiyara.Identities.Databases.csproj" />
     <ProjectReference Include="..\..\contracts\Aiyara.Timesheet.Contracts\Aiyara.Timesheet.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.Componenet.Abstractions\Aiyara.Timesheet.Component.Abstractions.csproj" />
   </ItemGroup>
 </Project>

@@ -3,6 +3,7 @@ using System;
 using Aiyara.Identities.Databases;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Aiyara.Identities.Databases.Migrations
 {
     [DbContext(typeof(IdentityDbContext))]
-    partial class IdentityDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261006095356_AddCredentialsAndSessions")]
+    partial class AddCredentialsAndSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -101,12 +104,10 @@ namespace Aiyara.Identities.Databases.Migrations
 
                     b.HasIndex("AccountId");
 
+                    b.HasIndex("TenantId");
+
                     b.HasIndex("TokenHash")
                         .IsUnique();
-
-                    b.HasIndex("TenantId", "AccountId", "Purpose")
-                        .IsUnique()
-                        .HasFilter("\"UsedAtUtc\" IS NULL");
 
                     b.ToTable("credential_challenges", (string)null);
                 });
@@ -252,9 +253,6 @@ namespace Aiyara.Identities.Databases.Migrations
 
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("SessionVersion")
-                        .HasColumnType("bigint");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");

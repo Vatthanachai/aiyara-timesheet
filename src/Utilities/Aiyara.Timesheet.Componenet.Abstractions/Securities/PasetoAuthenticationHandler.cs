@@ -41,8 +41,9 @@ public class PasetoAuthenticationHandler(
         var identity = new ClaimsIdentity(
             [
                 new Claim(ClaimTypes.NameIdentifier, claims.UserId.ToString()),
+                new Claim("tenant_id", claims.TenantId.ToString()),
                 new Claim(ClaimTypes.Email, claims.Email ?? string.Empty),
-                new Claim("security_stamp", claims.SecurityStamp ?? string.Empty),
+                new Claim("session_version", claims.SessionVersion.ToString()),
                 new Claim("must_change_password", claims.MustChangePassword.ToString()),
                 new Claim(ClaimTypes.Role, claims.Role ?? string.Empty),
             ],

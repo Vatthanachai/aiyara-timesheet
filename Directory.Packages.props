@@ -14,6 +14,7 @@
     <PackageVersion Include="Grpc.AspNetCore" Version="2.83.0" />
     <PackageVersion Include="Grpc.Net.Client" Version="2.83.0" />
     <PackageVersion Include="Grpc.Tools" Version="2.83.0" />
+    <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
     <PackageVersion Include="Autofac" Version="9.3.4" />
     <PackageVersion Include="Autofac.Extras.DynamicProxy" Version="8.1.0" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
@@ -44,6 +45,7 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
     <PackageVersion Include="Paseto.Core" Version="1.6.0" />
+    <PackageVersion Include="StackExchange.Redis" Version="3.3.1" />
     <PackageVersion Include="Scalar.Aspire" Version="0.11.29" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.17.13" />
     <PackageVersion Include="Scalar.AspNetCore.Swashbuckle" Version="2.17.13" />

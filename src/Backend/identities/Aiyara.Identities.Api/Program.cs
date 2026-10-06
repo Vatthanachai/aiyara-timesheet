@@ -1,7 +1,11 @@
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Services.Onboarding;
+using Aiyara.Identities.Services.Authentication;
+using Aiyara.Timesheet.Component.Abstractions.Securities;
+using Aiyara.Timesheet.Component.Abstractions.Securities.Options;
 using Aiyara.Timesheet.Contracts.Onboarding.V1;
 using Microsoft.EntityFrameworkCore;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,7 +18,27 @@ builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(
     ?? throw new InvalidOperationException("ConnectionStrings:IdentityDb is required.")));
 builder.AddDatabaseHealthCheck<WebApplicationBuilder, IdentityDbContext>("identity-db");
 builder.Services.AddScoped<OnboardingService>();
+builder.Services.AddScoped<AuthenticationService>();
+builder.Services.AddScoped<PlatformAdminBootstrap>();
+builder.Services.AddSingleton<ISessionRevocationPublisher, RedisSessionRevocationPublisher>();
+builder.Services.Configure<PasswordGenerateSetting>(builder.Configuration.GetSection("PasswordGeneration"));
+builder.Services.Configure<PasetoSetting>(builder.Configuration.GetSection("Paseto"));
+builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
+builder.Services.AddSingleton<IPasetoTokenService, PasetoTokenService>();
+builder.Services.AddHttpClient<ICredentialNotificationSender, NotificationCredentialSender>(client =>
+    client.BaseAddress = new Uri(builder.Configuration["Notification:BaseUrl"]
+        ?? "http://localhost:57087"));
 builder.Services.AddGrpc();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+        }));
+});
 
 // Add services to the container.
 
@@ -26,9 +50,19 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+var signingSeed = app.Configuration["Paseto:Key"];
+if (signingSeed is null || !Convert.TryFromBase64String(signingSeed,
+    new byte[32], out var signingSeedLength) || signingSeedLength != 32)
+    throw new InvalidOperationException("Paseto:Key must be a base64-encoded 32-byte seed.");
+if (app.Configuration["Notification:InternalKey"] is not { Length: >= 32 })
+    throw new InvalidOperationException("Notification:InternalKey must contain at least 32 characters.");
+
 using (var scope = app.Services.CreateScope())
 {
     await scope.ServiceProvider.GetRequiredService<IdentityDbContext>().Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<PlatformAdminBootstrap>()
+        .EnsureAsync(app.Configuration["Bootstrap:PlatformAdminEmail"],
+            CancellationToken.None);
 }
 
 app.MapDefaultEndpoints();
@@ -42,6 +76,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseRateLimiter();
 
 app.UseAuthorization();
 app.Use(async (context, next) =>
@@ -97,12 +132,15 @@ onboarding.MapPost("/invitations/accept", async (AcceptInvitationRequest request
 
 onboarding.MapPost("/tenants/{tenantId:guid}/invitations", async (
     Guid tenantId, IssueInvitationRequest request, HttpContext context,
-    OnboardingService service, CancellationToken cancellationToken) =>
+    OnboardingService service, ICredentialNotificationSender notifications,
+    CancellationToken cancellationToken) =>
 {
     try
     {
         var key = context.Request.Headers["X-Onboarding-Key"].ToString();
         var result = await service.IssueInvitationWithKeyAsync(tenantId, key, request,
+            cancellationToken);
+        await TrySendInvitationAsync(notifications, request.Email, result.Code,
             cancellationToken);
         context.Response.Headers.CacheControl = "no-store";
         return Results.Json(result, statusCode: StatusCodes.Status201Created);
@@ -125,4 +163,107 @@ onboarding.MapPost("/tenants/{tenantId:guid}/invitations", async (
 .ProducesProblem(StatusCodes.Status401Unauthorized)
 .ProducesProblem(StatusCodes.Status409Conflict);
 
+var auth = app.MapGroup("/api/v1/auth").WithTags("Authentication")
+    .RequireRateLimiting("auth");
+auth.MapPost("/activation/request", async (RequestCredentialEmail request,
+    AuthenticationService service, CancellationToken cancellationToken) =>
+    await RunAsync(async () => { await service.RequestActivationAsync(request, cancellationToken);
+        return Results.Accepted(); }));
+auth.MapPost("/activate", async (CompleteCredentialChallenge request,
+    AuthenticationService service, CancellationToken cancellationToken) =>
+    await RunAsync(async () => { await service.CompleteActivationAsync(request, cancellationToken);
+        return Results.NoContent(); }));
+auth.MapPost("/login", async (LoginRequest request, AuthenticationService service,
+    HttpContext context, CancellationToken cancellationToken) =>
+    await RunAsync(async () => { var result = await service.LoginAsync(request, cancellationToken);
+        context.Response.Headers.CacheControl = "no-store"; return Results.Ok(result); }));
+auth.MapPost("/refresh", async (RefreshRequest request, AuthenticationService service,
+    HttpContext context, CancellationToken cancellationToken) =>
+    await RunAsync(async () => { var result = await service.RefreshAsync(request, cancellationToken);
+        context.Response.Headers.CacheControl = "no-store"; return Results.Ok(result); }));
+auth.MapPost("/logout", async (LogoutRequest request, AuthenticationService service,
+    CancellationToken cancellationToken) =>
+    await RunAsync(async () => { await service.LogoutAsync(request, cancellationToken);
+        return Results.NoContent(); }));
+auth.MapPost("/password/forgot", async (RequestCredentialEmail request,
+    AuthenticationService service, CancellationToken cancellationToken) =>
+    await RunAsync(async () => { await service.RequestPasswordResetAsync(request, cancellationToken);
+        return Results.Accepted(); }));
+auth.MapPost("/password/reset", async (CompleteCredentialChallenge request,
+    AuthenticationService service, CancellationToken cancellationToken) =>
+    await RunAsync(async () => { await service.CompletePasswordResetAsync(request, cancellationToken);
+        return Results.NoContent(); }));
+auth.MapPut("/tenants/{tenantId:guid}/password-policy", async (Guid tenantId,
+    TenantPasswordPolicyRequest request, HttpContext context,
+    AuthenticationService service, IPasetoTokenService tokens,
+    CancellationToken cancellationToken) =>
+    await RunAsync(async () =>
+    {
+        var authorization = context.Request.Headers.Authorization.ToString();
+        var claims = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? tokens.ValidateToken(authorization[7..].Trim()) : null;
+        if (claims is null || claims.TenantId != tenantId || claims.Role != "TenantAdmin")
+            return Results.Unauthorized();
+        await service.UpdateTenantPolicyAsync(tenantId, claims.UserId,
+            claims.SessionVersion, request, cancellationToken);
+        return Results.NoContent();
+    }));
+auth.MapPost("/tenants/{tenantId:guid}/invitations", async (
+    Guid tenantId, IssueInvitationRequest request, HttpContext context,
+    OnboardingService service, IPasetoTokenService tokens,
+    ICredentialNotificationSender notifications, CancellationToken cancellationToken) =>
+{
+    var authorization = context.Request.Headers.Authorization.ToString();
+    var claims = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+        ? tokens.ValidateToken(authorization[7..].Trim()) : null;
+    if (claims is null || claims.TenantId != tenantId || claims.Role != "TenantAdmin" ||
+        claims.MustChangePassword) return Results.Unauthorized();
+    try
+    {
+        var result = await service.IssueInvitationAuthorizedAsync(tenantId,
+            claims.UserId, claims.SessionVersion, request, cancellationToken);
+        await TrySendInvitationAsync(notifications, request.Email, result.Code,
+            cancellationToken);
+        context.Response.Headers.CacheControl = "no-store";
+        return Results.Json(result, statusCode: StatusCodes.Status201Created);
+    }
+    catch (OnboardingException exception)
+    {
+        var status = exception.Failure switch
+        {
+            OnboardingFailure.Unauthorized => 401,
+            OnboardingFailure.Conflict => 409,
+            _ => 400
+        };
+        return Results.Problem(exception.Message, statusCode: status);
+    }
+});
+
 app.Run();
+
+static async Task<IResult> RunAsync(Func<Task<IResult>> action)
+{
+    try { return await action(); }
+    catch (AuthenticationException exception)
+    {
+        var status = exception.Failure switch
+        {
+            AuthenticationFailure.InvalidCredentials => 401,
+            AuthenticationFailure.Conflict => 409,
+            AuthenticationFailure.Unavailable => 503,
+            _ => 400
+        };
+        return Results.Problem(exception.Message, statusCode: status);
+    }
+}
+
+static async Task TrySendInvitationAsync(ICredentialNotificationSender sender,
+    string email, string code, CancellationToken cancellationToken)
+{
+    try { await sender.SendAsync(email, "invitation", code, cancellationToken); }
+    catch (AuthenticationException exception) when
+        (exception.Failure == AuthenticationFailure.Unavailable)
+    {
+        // The one-time code remains in the response for a local/manual handoff.
+    }
+}

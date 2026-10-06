@@ -14,6 +14,7 @@
 
 - Self-registration can create a new tenant or accept a tenant invitation. Joining an existing tenant by typing a company name is forbidden.
 - New accounts, password resets, and the bootstrap Platform Admin use a generated temporary password delivered by email. It is valid for 24 hours and one use; issuing a replacement invalidates the old one.
+- Activation and reset temporary passwords are stored only as SHA-256 challenge hashes. The user supplies a new policy-compliant password when redeeming one. Identity stores the resulting Argon2id PHC string; Notification stores only the delivery outcome, recipient, and template. MailDev is a local-only inbox.
 - The bootstrap Platform Admin account follows the same activation and forced-password-change flow as other accounts. Bootstrap credentials must be supplied through runtime secrets, never committed.
 - Platform Admin manages the platform, Tenant Admin manages only its tenant, and Employee manages only their own profile/timesheet data.
 
@@ -22,6 +23,7 @@
 - Replace the existing `EncryptionService` password implementation. It is not suitable for the target design: it uses PBKDF2 rather than Argon2id, does not verify using the embedded iteration value, does not compare in constant time, and uses non-cryptographic randomness when generating passwords.
 - Use Argon2id and store one PHC-format value in `password_hash`; the value contains algorithm, parameters, salt, and hash. Do not have a separate salt column and never log plaintext or temporary passwords.
 - Generate temporary passwords with `RandomNumberGenerator` and validate them with the same password-policy engine.
+- An Account has one credential across tenant memberships. Reset or activation increments the Account session version for every tenant; old refresh tokens in any tenant cannot rotate, and Identity publishes a revocation version for every membership's tenant.
 - Password policy is configured per tenant by Tenant Admin: minimum length and lower-case, upper-case, numeric, and symbol requirements. New passwords comply immediately; when a stricter policy makes an existing password noncompliant, mark the account `must_change_password` and require a change on the next login.
 - Rate-limit sign-in and secret-request endpoints by account and IP; store only hashed activation, invitation, refresh, and reset secrets.
 

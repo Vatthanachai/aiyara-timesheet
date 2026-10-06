@@ -7,12 +7,14 @@ namespace Aiyara.Timesheet.Component.Abstractions.Securities.Options;
 public class PasetoSetting
 {
     /// <summary>
-    /// Base64-encoded 32-byte symmetric key used for PASETO v4.local encryption
+    /// Base64-encoded 32-byte Ed25519 seed. Configure only on Identity.
     /// </summary>
     public string Key { get; set; }
 
     /// <summary>
     /// Token lifetime in minutes
     /// </summary>
-    public int ExpireMinutes { get; set; } = 60;
+    public int ExpireMinutes { get; set; } = 15;
+    public string Issuer { get; set; } = "aiyara-identity";
+    public string Audience { get; set; } = "aiyara-api";
 }

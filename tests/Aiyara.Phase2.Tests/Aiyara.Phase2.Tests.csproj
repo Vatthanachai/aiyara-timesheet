@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <ProjectReference Include="..\..\src\Utilities\Aiyara.Timesheet.Componenet.Abstractions\Aiyara.Timesheet.Component.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Backend\identities\Aiyara.Identities.Servives\Aiyara.Identities.Services.csproj" />
+  </ItemGroup>
+</Project>

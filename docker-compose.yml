@@ -11,6 +11,7 @@ services:
       Cors__FrontendOrigin: ${FRONTEND_ORIGIN:-http://localhost:3000}
       Services__Identity__BaseUrl: http://identities-api:8080
       IdentityGrpc__Url: http://identities-api:8082
+      Redis__ConnectionString: redis:6379,password=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
       ReverseProxy__Clusters__identity__Destinations__primary__Address: http://identities-api:8080/
       ReverseProxy__Clusters__timesheet__Destinations__primary__Address: http://timesheet-api:8080/
       ReverseProxy__Clusters__reporting__Destinations__primary__Address: http://reports-api:8080/
@@ -47,6 +48,11 @@ services:
       Dependencies__Postgres__Host: postgres
       Dependencies__Redis__Host: redis
       ConnectionStrings__IdentityDb: Host=postgres;Database=identity_db;Username=identity_app;Password=${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD in .env}
+      Redis__ConnectionString: redis:6379,password=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      Paseto__Key: ${PASETO_SIGNING_SEED:?Set PASETO_SIGNING_SEED in .env}
+      Notification__InternalKey: ${NOTIFICATION_INTERNAL_KEY:?Set NOTIFICATION_INTERNAL_KEY in .env}
+      Notification__BaseUrl: http://notifications-api:8080
+      Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
       ASPNETCORE_Kestrel__Endpoints__Http__Url: http://+:8080
       ASPNETCORE_Kestrel__Endpoints__Grpc__Url: http://+:8082
       ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols: Http2
@@ -125,6 +131,13 @@ services:
       Dependencies__RabbitMq__Host: rabbitmq
       Dependencies__Postgres__Host: postgres
       ConnectionStrings__NotificationDb: Host=postgres;Database=notification_db;Username=notification_app;Password=${NOTIFICATION_DB_PASSWORD:?Set NOTIFICATION_DB_PASSWORD in .env}
+      InternalApi__Key: ${NOTIFICATION_INTERNAL_KEY:?Set NOTIFICATION_INTERNAL_KEY in .env}
+      Smtp__Host: ${SMTP_HOST:-maildev}
+      Smtp__Port: ${SMTP_PORT:-1025}
+      Smtp__UseTls: ${SMTP_USE_TLS:-false}
+      Smtp__From: ${SMTP_FROM:-no-reply@aiyara.local}
+      Smtp__Username: ${SMTP_USERNAME:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
     depends_on:
       db-provisioner:
         condition: service_completed_successfully

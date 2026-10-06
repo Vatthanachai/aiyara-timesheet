@@ -38,6 +38,7 @@ builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
     builder.Configuration["IdentityGrpc:Url"] ?? "http://localhost:8082"));
 builder.Services.AddSingleton(provider =>
     new IdentityValidationService.IdentityValidationServiceClient(provider.GetRequiredService<GrpcChannel>()));
+builder.Services.AddSingleton<RedisIdentityValidationCache>();
 builder.Services.AddAuthentication("IdentityGrpc")
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions,
         IdentityGrpcAuthenticationHandler>("IdentityGrpc", _ => { });
@@ -57,6 +58,14 @@ builder.Services.AddRateLimiter(options =>
         _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 60,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));

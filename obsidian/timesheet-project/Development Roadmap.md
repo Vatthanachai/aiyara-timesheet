@@ -22,6 +22,12 @@
 
 ## Phase 2 — Identity And Notification
 
+Implementation status (2026-10-06): Identity activation/login/reset, rotating
+refresh sessions, policy migration, PASETO v4.public, gRPC validation, Redis
+cache/revocation and local SMTP delivery are implemented on
+`feature/phase-two-identity-notification`. Unit and Compose smoke validation
+are required before merging to `develop`; the branch is not a release.
+
 1. Replace `EncryptionService` password behavior with Argon2id PHC storage and a cryptographically secure temporary-password generator.
 2. Implement tenant password policies, email-only login, activation, forced password reset, forgot-password, refresh-token rotation, session revocation, and the bootstrap Platform Admin flow.
 3. Implement PASETO `v4.public`, signing-key configuration, Identity gRPC validation, Redis validation cache, and revocation events.

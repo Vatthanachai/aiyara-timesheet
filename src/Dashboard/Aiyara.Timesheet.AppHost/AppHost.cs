@@ -9,6 +9,15 @@ var postgresPort = builder.Configuration["POSTGRES_PORT"] ?? "5432";
 var redisPort = builder.Configuration["REDIS_PORT"] ?? "6379";
 var rabbitMqPort = builder.Configuration["RABBITMQ_AMQP_PORT"] ?? "5672";
 var rustFsPort = builder.Configuration["RUSTFS_API_PORT"] ?? "9000";
+var mailDevSmtpPort = builder.Configuration["MAILDEV_SMTP_PORT"] ?? "1025";
+var notificationInternalKey = builder.Configuration["NOTIFICATION_INTERNAL_KEY"]
+    ?? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+var pasetoSigningSeed = builder.Configuration["PASETO_SIGNING_SEED"]
+    ?? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+var redisPassword = builder.AddParameterFromConfiguration(
+    "redis-password", "REDIS_PASSWORD", secret: true);
+var redisConnectionString = ReferenceExpression.Create(
+    $"localhost:{redisPort},password={redisPassword}");
 
 var identityDbPassword = builder.AddParameterFromConfiguration(
     "identity-db-password", "IDENTITY_DB_PASSWORD", secret: true);
@@ -44,6 +53,12 @@ var identityApi = builder.AddProject<Projects.Aiyara_Identities_Api>("aiyara-ide
     .WithEnvironment("Dependencies__Postgres__Port", postgresPort)
     .WithEnvironment("Dependencies__Redis__Host", "localhost")
     .WithEnvironment("Dependencies__Redis__Port", redisPort);
+identityApi
+    .WithEnvironment("Paseto__Key", pasetoSigningSeed)
+    .WithEnvironment("Notification__InternalKey", notificationInternalKey)
+    .WithEnvironment("Redis__ConnectionString", redisConnectionString);
+if (builder.Configuration["BOOTSTRAP_PLATFORM_ADMIN_EMAIL"] is { Length: > 0 } bootstrapEmail)
+    identityApi.WithEnvironment("Bootstrap__PlatformAdminEmail", bootstrapEmail);
 
 var timesheetApi = builder.AddProject<Projects.Aiyara_Timesheet_Api>("aiyara-timesheet-api")
     .WithReference(composePostgres)
@@ -68,6 +83,13 @@ var notificationApi = builder.AddProject<Projects.Aiyara_Notifications_Api>("aiy
     .WithEnvironment("Dependencies__RabbitMq__Port", rabbitMqPort)
     .WithEnvironment("Dependencies__Postgres__Host", "localhost")
     .WithEnvironment("Dependencies__Postgres__Port", postgresPort);
+notificationApi
+    .WithEnvironment("InternalApi__Key", notificationInternalKey)
+    .WithEnvironment("Smtp__Host", "localhost")
+    .WithEnvironment("Smtp__Port", mailDevSmtpPort)
+    .WithEnvironment("Smtp__UseTls", "false")
+    .WithEnvironment("Smtp__From", "no-reply@aiyara.local");
+identityApi.WithEnvironment("Notification__BaseUrl", notificationApi.GetEndpoint("https"));
 
 var reportWorker = builder.AddProject<Projects.Aiyara_Report_Worker>("aiyara-report-worker")
     .WithReference(composeRabbitMq)
@@ -83,6 +105,7 @@ gatewayApi
     .WithReference(reportApi)
     .WithReference(notificationApi)
     .WithEnvironment("Services__Identity__BaseUrl", identityApi.GetEndpoint("http"))
+    .WithEnvironment("Redis__ConnectionString", redisConnectionString)
     .WithEnvironment("IdentityGrpc__Url", identityApi.GetEndpoint("https"))
     .WithEnvironment("ReverseProxy__Clusters__identity__Destinations__primary__Address",
         ReferenceExpression.Create($"{identityApi.GetEndpoint("http")}/"))

@@ -5,14 +5,13 @@ namespace Aiyara.Timesheet.Component.Abstractions.Securities;
 /// </summary>
 public class PasetoTokenClaims
 {
-    public int UserId { get; set; }
+    public Guid UserId { get; set; }
+    public Guid TenantId { get; set; }
+    public string TokenId { get; set; }
+    public long SessionVersion { get; set; }
+    public DateTimeOffset ExpiresAtUtc { get; set; }
 
     public string Email { get; set; }
-
-    /// <summary>
-    /// Mirrors the user's current SecurityStamp, allowing a future validator to reject tokens issued before a password change
-    /// </summary>
-    public string SecurityStamp { get; set; }
 
     public bool MustChangePassword { get; set; }
 

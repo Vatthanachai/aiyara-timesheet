@@ -9,7 +9,8 @@ internal sealed class IdentityGrpcAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory loggerFactory,
     UrlEncoder encoder,
-    IdentityValidationService.IdentityValidationServiceClient identity)
+    IdentityValidationService.IdentityValidationServiceClient identity,
+    RedisIdentityValidationCache cache)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -26,11 +27,14 @@ internal sealed class IdentityGrpcAuthenticationHandler(
         ValidateAccessTokenResponse validation;
         try
         {
-            validation = await identity.ValidateAccessTokenAsync(new ValidateAccessTokenRequest
-            {
-                AccessToken = token,
-                CorrelationId = Context.TraceIdentifier
-            }, cancellationToken: Context.RequestAborted);
+            validation = await cache.GetAsync(token, Context.RequestAborted) ??
+                await identity.ValidateAccessTokenAsync(new ValidateAccessTokenRequest
+                {
+                    AccessToken = token,
+                    CorrelationId = Context.TraceIdentifier
+                }, cancellationToken: Context.RequestAborted);
+            if (validation.IsValid)
+                await cache.SetAsync(token, validation, Context.RequestAborted);
         }
         catch (RpcException)
         {

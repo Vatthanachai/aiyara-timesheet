@@ -1,6 +1,6 @@
 namespace Aiyara.Identities.Models.Tenancy;
 
-public enum TenantRole { TenantAdmin, Employee }
+public enum TenantRole { TenantAdmin, Employee, PlatformAdmin }
 
 public enum MembershipStatus { PendingActivation, Active }
 
