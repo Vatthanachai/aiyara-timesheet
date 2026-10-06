@@ -297,7 +297,10 @@ public sealed class AuthenticationService(
         PasswordPolicy.ValidateSettings(tenant);
         if (stricter)
         {
-            tenant.PasswordPolicyUpdatedAtUtc = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
+            tenant.PasswordPolicyUpdatedAtUtc = new DateTime(
+                Math.Max(now.Ticks - now.Ticks % 10,
+                    tenant.PasswordPolicyUpdatedAtUtc.Ticks + 10), DateTimeKind.Utc);
             await db.Memberships.Where(x => x.Status == MembershipStatus.Active)
                 .ExecuteUpdateAsync(x => x.SetProperty(m => m.MustChangePassword, true),
                     cancellationToken);
@@ -310,7 +313,8 @@ public sealed class AuthenticationService(
             await revocations.PublishTenantPolicyAsync(tenantId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         if (stricter)
-            await revocations.CompleteTenantPolicyAsync(tenantId, cancellationToken);
+            await revocations.CompleteTenantPolicyAsync(tenantId,
+                tenant.PasswordPolicyUpdatedAtUtc.Ticks / 10, cancellationToken);
     }
 
     private async Task<AuthenticationResponse> CreateSessionAsync(Account account,

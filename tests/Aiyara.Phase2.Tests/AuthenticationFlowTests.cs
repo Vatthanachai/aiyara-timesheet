@@ -132,10 +132,12 @@ public sealed class AuthenticationFlowTests
                 bootstrap.Email, "Correct-Password-123!"), default));
         await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
             PlatformAdminBootstrap.PlatformTenantId, bootstrap.Email), default);
-        Assert.Null(await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
-            .EnsureAsync("operator@platform.test", default));
+        Assert.Equal("operator@platform.test", await new PlatformAdminBootstrap(
+            fixture.Db, fixture.Scope).EnsureAsync("operator@platform.test", default));
         await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
             fixture.Notifications.Messages.Single().Code, "Correct-Password-123!"), default);
+        Assert.Null(await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+            .EnsureAsync("operator@platform.test", default));
         var login = await fixture.Auth.LoginAsync(new LoginRequest(
             PlatformAdminBootstrap.PlatformTenantId, bootstrap.Email,
             "Correct-Password-123!"), default);
@@ -250,7 +252,8 @@ public sealed class AuthenticationFlowTests
         }
         public Task PublishTenantPolicyAsync(Guid tenantId, CancellationToken cancellationToken)
             => Task.CompletedTask;
-        public Task CompleteTenantPolicyAsync(Guid tenantId, CancellationToken cancellationToken)
+        public Task CompleteTenantPolicyAsync(Guid tenantId, long policyVersion,
+            CancellationToken cancellationToken)
             => Task.CompletedTask;
     }
 

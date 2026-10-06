@@ -33,8 +33,9 @@ internal sealed class IdentityGrpcAuthenticationHandler(
                     AccessToken = token,
                     CorrelationId = Context.TraceIdentifier
                 }, cancellationToken: Context.RequestAborted);
-            if (validation.IsValid)
-                await cache.SetAsync(token, validation, Context.RequestAborted);
+            if (validation.IsValid &&
+                !await cache.SetAsync(token, validation, Context.RequestAborted))
+                return AuthenticateResult.Fail("Access token was revoked.");
         }
         catch (RpcException)
         {

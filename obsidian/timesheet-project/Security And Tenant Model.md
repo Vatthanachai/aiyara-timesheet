@@ -7,7 +7,7 @@
 - Login uses email only. UI and reports display a person's first and last name from their profile.
 - Identity issues PASETO `v4.public` access tokens signed with Ed25519. Access tokens are short-lived (target: 15 minutes); refresh tokens are opaque, one-time rotating secrets stored only as hashes.
 - Token claims include subject, tenant context, role, security/session version, token ID, password-change state, issuer, audience, issued-at, and expiry.
-- Gateway and internal APIs validate access tokens through Identity's gRPC API. They cache validation by token ID and session version in Redis for 1–5 minutes. Logout, password reset, account disable, or policy-forced password change publishes an event that revokes the session and invalidates the cache.
+- Gateway and internal APIs validate access tokens through Identity's gRPC API. They cache validation by token ID and session version in Redis for 1–5 minutes. The gRPC response carries the tenant policy version so an in-flight pre-change validation cannot be cached after a policy update. Logout, password reset, account disable, or policy-forced password change publishes an event that revokes the session and invalidates the cache.
 - Gateway owns public token handling; only the Identity service holds the private PASETO signing key.
 
 ## Accounts And Roles

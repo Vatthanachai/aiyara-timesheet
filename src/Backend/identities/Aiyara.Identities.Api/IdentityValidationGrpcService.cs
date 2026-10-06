@@ -37,6 +37,7 @@ internal sealed class IdentityValidationGrpcService(
             IsValid = true, SubjectId = account.Id.ToString(),
             TenantId = membership.TenantId.ToString(), TokenId = claims.TokenId,
             SessionVersion = account.SessionVersion,
+            PolicyVersion = tenant.PasswordPolicyUpdatedAtUtc.Ticks / 10,
             ExpiresAtUtc = Timestamp.FromDateTimeOffset(claims.ExpiresAtUtc),
             MustChangePassword = false,
             Roles = { membership.Role.ToString() }

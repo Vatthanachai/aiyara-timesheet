@@ -56,13 +56,13 @@ internal sealed class RedisSessionRevocationPublisher(IConfiguration configurati
         }
     }
 
-    public async Task CompleteTenantPolicyAsync(Guid tenantId,
+    public async Task CompleteTenantPolicyAsync(Guid tenantId, long policyVersion,
         CancellationToken cancellationToken)
     {
         try
         {
             var redis = await connection.Value.WaitAsync(cancellationToken);
-            var epoch = Guid.NewGuid().ToString("N");
+            var epoch = policyVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
             await redis.GetDatabase().StringSetAsync(
                 IdentityCacheKeys.TenantPolicyEpoch(tenantId), epoch,
                 TimeSpan.FromHours(2));

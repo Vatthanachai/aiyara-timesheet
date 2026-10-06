@@ -39,7 +39,7 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
             var versions = await db.StringGetAsync([
                 IdentityCacheKeys.AccountVersion(tenantId, accountId),
                 IdentityCacheKeys.TenantPolicyEpoch(tenantId)]);
-            if (versions[1] == "blocked" ||
+            if (PolicyVersionChanged(versions[1].ToString(), response) ||
                 (long.TryParse(versions[0].ToString(), out var minimumVersion) &&
                  response.SessionVersion < minimumVersion)) return null;
             return versions[0].ToString() == entry.AccountVersion &&
@@ -52,11 +52,11 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
         }
     }
 
-    public async Task SetAsync(string token, ValidateAccessTokenResponse response,
+    public async Task<bool> SetAsync(string token, ValidateAccessTokenResponse response,
         CancellationToken cancellationToken)
     {
         if (!response.IsValid || !Guid.TryParse(response.SubjectId, out var accountId) ||
-            !Guid.TryParse(response.TenantId, out var tenantId)) return;
+            !Guid.TryParse(response.TenantId, out var tenantId)) return false;
         try
         {
             var redis = await connection.Value.WaitAsync(cancellationToken);
@@ -64,23 +64,30 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
             var versions = await db.StringGetAsync([
                 IdentityCacheKeys.AccountVersion(tenantId, accountId),
                 IdentityCacheKeys.TenantPolicyEpoch(tenantId)]);
-            if (versions[1] == "blocked" ||
+            if (PolicyVersionChanged(versions[1].ToString(), response) ||
                 (long.TryParse(versions[0].ToString(), out var minimumVersion) &&
-                 response.SessionVersion < minimumVersion)) return;
+                 response.SessionVersion < minimumVersion)) return false;
             var entry = new Entry(Convert.ToBase64String(response.ToByteArray()),
                 versions[0].ToString(), versions[1].ToString());
             var ttl = response.ExpiresAtUtc.ToDateTimeOffset() - DateTimeOffset.UtcNow;
-            if (ttl <= TimeSpan.Zero) return;
+            if (ttl <= TimeSpan.Zero) return false;
             if (ttl > TimeSpan.FromMinutes(1)) ttl = TimeSpan.FromMinutes(1);
             var cacheKey = ValidationKey(response.TokenId, response.SessionVersion);
             await db.StringSetAsync(cacheKey, JsonSerializer.Serialize(entry), ttl);
             await db.StringSetAsync(TokenLookupKey(token), cacheKey, ttl);
+            return true;
         }
         catch (Exception exception) when (exception is RedisException or TimeoutException)
         {
             // Identity gRPC remains authoritative when Redis is unavailable.
+            return true;
         }
     }
+
+    private static bool PolicyVersionChanged(string marker,
+        ValidateAccessTokenResponse response) => marker == "blocked" ||
+        (marker.Length > 0 && marker != response.PolicyVersion.ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
 
     private static string TokenLookupKey(string token)
         => "identity:validation:lookup:" + Convert.ToHexString(

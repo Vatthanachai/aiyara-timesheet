@@ -85,7 +85,9 @@
   Platform Admin does the same when Notification is ready.
 - Gateway validates protected tokens through Identity gRPC and caches positive
   results in Redis by token ID and session version. Revocation and stricter
-  policy changes invalidate sessions; Redis limits credential attempts per
+  policy changes invalidate sessions; the gRPC policy version prevents an
+  in-flight pre-policy validation from being cached after the change. Redis
+  limits credential attempts per
   tenant/account alongside the edge IP limit.
 - Notification sends credential templates through local MailDev SMTP and stores
   delivery outcomes without recording the secret. Phase 2 unit tests pass

@@ -55,10 +55,7 @@ public sealed class PlatformAdminBootstrap(IdentityDbContext db, TenantScope ten
         }
         account.IsPlatformAdmin = true;
         await db.SaveChangesAsync(cancellationToken);
-        var shouldSendActivation = membership.Status == MembershipStatus.PendingActivation &&
-            !await db.CredentialChallenges.AnyAsync(x => x.AccountId == account.Id &&
-                x.Purpose == CredentialChallengePurpose.Activation && x.UsedAtUtc == null &&
-                x.ExpiresAtUtc > DateTime.UtcNow, cancellationToken);
+        var shouldSendActivation = membership.Status == MembershipStatus.PendingActivation;
         await transaction.CommitAsync(cancellationToken);
         return shouldSendActivation ? email : null;
     }

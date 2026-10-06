@@ -29,7 +29,10 @@ public sealed class PasetoTokenTests
         Assert.Equal(claims.SessionVersion, parsed.SessionVersion);
         Assert.True(parsed.MustChangePassword);
         Assert.Null(CreateService(RandomNumberGenerator.GetBytes(32)).ValidateToken(issued.Value));
-        Assert.Null(service.ValidateToken(issued.Value[..^1] + (issued.Value[^1] == 'A' ? 'B' : 'A')));
+        var tamperAt = "v4.public.".Length + 8;
+        var tampered = issued.Value[..tamperAt] +
+            (issued.Value[tamperAt] == 'A' ? 'B' : 'A') + issued.Value[(tamperAt + 1)..];
+        Assert.Null(service.ValidateToken(tampered));
     }
 
     private static PasetoTokenService CreateService(byte[] seed) => new(Options.Create(new PasetoSetting

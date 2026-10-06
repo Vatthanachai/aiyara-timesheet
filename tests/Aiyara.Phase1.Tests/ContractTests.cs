@@ -19,6 +19,7 @@ public sealed class ContractTests
         Assert.Equal(2, ValidateAccessTokenRequest.Descriptor.FindFieldByName("correlation_id").FieldNumber);
         Assert.Equal(3, ValidateAccessTokenResponse.Descriptor.FindFieldByName("tenant_id").FieldNumber);
         Assert.Equal(9, ValidateAccessTokenResponse.Descriptor.FindFieldByName("must_change_password").FieldNumber);
+        Assert.Equal(10, ValidateAccessTokenResponse.Descriptor.FindFieldByName("policy_version").FieldNumber);
     }
 
     [Fact]

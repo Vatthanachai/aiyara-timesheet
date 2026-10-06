@@ -128,7 +128,9 @@ but not message body or temporary password. Optional
 `BOOTSTRAP_PLATFORM_ADMIN_EMAIL` provisions a pending Platform Admin in tenant
 `00000000-0000-0000-0000-000000000001`; its initial activation email is sent
 automatically once Notification is healthy. If delivery is unavailable, the
-same activation-request endpoint can retry. No default Platform Admin
+same activation-request endpoint can retry; restarting Identity while the
+Platform Admin is still pending issues and emails a replacement challenge.
+No default Platform Admin
 credential exists.
 
 Run `dotnet test tests/Aiyara.Phase2.Tests/Aiyara.Phase2.Tests.csproj` for
