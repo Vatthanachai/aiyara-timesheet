@@ -133,11 +133,7 @@ public static class Extensions
     public static TBuilder AddTcpDependencyHealthCheck<TBuilder>(
         this TBuilder builder, string dependency, int defaultPort) where TBuilder : IHostApplicationBuilder
     {
-        var host = builder.Configuration[$"Dependencies:{dependency}:Host"];
-        if (string.IsNullOrWhiteSpace(host))
-        {
-            return builder;
-        }
+        var host = builder.Configuration[$"Dependencies:{dependency}:Host"] ?? "localhost";
 
         var configuredPort = builder.Configuration[$"Dependencies:{dependency}:Port"];
         var port = string.IsNullOrWhiteSpace(configuredPort) ? defaultPort : int.Parse(configuredPort);

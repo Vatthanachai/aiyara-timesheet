@@ -38,6 +38,9 @@ Backend `/alive` checks only the process. Backend `/health` also checks TCP
 reachability of the dependencies configured for that service in Compose. These
 baseline probes detect an unavailable dependency; protocol authentication and
 database-specific checks will be added when Phase 1 wires the clients.
+When launching a backend directly, dependency hosts default to `localhost` and
+their standard ports. Override `Dependencies__<Name>__Host` and
+`Dependencies__<Name>__Port` if the dependencies use different endpoints.
 
 The Aspire AppHost starts application projects for debugging and displays the
 Compose infrastructure as external resources. Start Compose infrastructure
