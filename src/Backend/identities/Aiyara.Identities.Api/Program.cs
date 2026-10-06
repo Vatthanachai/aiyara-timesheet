@@ -304,8 +304,9 @@ static async Task TrySendActivationAsync(AuthenticationService authentication,
             cancellationToken);
     }
     catch (AuthenticationException exception) when
-        (exception.Failure == AuthenticationFailure.Unavailable)
+        (exception.Failure is AuthenticationFailure.Unavailable or
+            AuthenticationFailure.RateLimited)
     {
-        // The activation request endpoint remains available for retrying delivery.
+        // The activation request endpoint remains available after delivery recovers.
     }
 }
