@@ -1,6 +1,8 @@
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.AddTcpDependencyHealthCheck("RabbitMq", 5672);
+builder.AddTcpDependencyHealthCheck("RustFs", 9000);
 builder.Services.AddSingleton<IReportGenerationQueue, InMemoryReportGenerationQueue>();
 builder.Services.AddHostedService<ReportGenerationWorker>();
 

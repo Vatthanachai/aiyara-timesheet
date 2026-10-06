@@ -1,14 +1,28 @@
 # Project Status
 
-> Assessed from repository contents on 5 October 2026. This is a code inspection, not a runtime test.
+> Updated 6 October 2026. The Phase 0 Compose baseline is tracked in [[Development Roadmap]].
+
+## Phase 0 Platform Baseline
+
+- The Compose topology includes backend APIs, Report Worker, frontend Shell and
+  remotes, PostgreSQL, Redis, RabbitMQ, RustFS, optional MailDev, Prometheus,
+  and Grafana. Every container has a health check.
+- APIs and Report Worker share structured JSON logging, redaction support,
+  OpenTelemetry instrumentation, liveness, and dependency reachability checks.
+- AppHost represents Compose infrastructure as external resources and provides
+  dependency endpoints to locally launched application projects. It also hosts
+  the Scalar API reference.
+- `tests/platform/Smoke.ps1` verifies the runnable Compose stack and API docs.
+  TCP readiness probes establish reachability; authenticated protocol probes
+  belong with the Phase 1 client integration.
 
 ## Implemented Foundation
 
 - .NET solution structure, central build configuration, and central package version management.
-- Aspire AppHost that launches the Identity and Timesheet APIs and a Bun-powered Nuxt application.
-- PostgreSQL resource declaration with pgAdmin and persistent storage.
-- Shared operational defaults—currently applied only to Identity and Timesheet—for health checks, OpenTelemetry, service discovery, and HTTP resilience.
-- Gateway and Report API projects, each exposing the template `WeatherForecast` controller but not yet connected to the AppHost.
+- Aspire AppHost that launches the backend applications and a Bun-powered Nuxt application.
+- Compose PostgreSQL with persistent storage and separate service databases.
+- Shared operational defaults applied to all backend applications.
+- Gateway and Report API projects, each exposing the template `WeatherForecast` controller.
 - Cross-cutting utility types for data access, API conventions, security/PASETO, Swagger, logging, and email.
 
 ## Not Yet Implemented
@@ -17,9 +31,9 @@
 - Identity, user, time-entry, approval, gateway, or reporting domain models and endpoints.
 - Database registration, entity mappings, migrations, or API-to-PostgreSQL resource wiring.
 - Frontend product screens, API client integration, and end-to-end flows.
-- AppHost orchestration for Gateway and Report, and frontend service references to them if they are intended to participate in the product flow.
-- Kafka, RabbitMQ, Redis, or Scalar resources in the AppHost despite package references.
-- Automated tests and substantive repository README documentation.
+- Gateway routing, frontend API integration, and product workflows.
+- Application clients for PostgreSQL, Redis, RabbitMQ, and RustFS.
+- Domain and end-to-end test suites for later phases.
 
 ## Agreed Direction
 

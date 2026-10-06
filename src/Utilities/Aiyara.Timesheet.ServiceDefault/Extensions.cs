@@ -130,6 +130,27 @@ public static class Extensions
         return builder;
     }
 
+    public static TBuilder AddTcpDependencyHealthCheck<TBuilder>(
+        this TBuilder builder, string dependency, int defaultPort) where TBuilder : IHostApplicationBuilder
+    {
+        var host = builder.Configuration[$"Dependencies:{dependency}:Host"];
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return builder;
+        }
+
+        var configuredPort = builder.Configuration[$"Dependencies:{dependency}:Port"];
+        var port = string.IsNullOrWhiteSpace(configuredPort) ? defaultPort : int.Parse(configuredPort);
+        builder.Services.AddHealthChecks().Add(new HealthCheckRegistration(
+            dependency.ToLowerInvariant(),
+            new TcpDependencyHealthCheck(host, port),
+            HealthStatus.Unhealthy,
+            ["ready"],
+            TimeSpan.FromSeconds(3)));
+
+        return builder;
+    }
+
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
         // Adding health checks endpoints to applications in non-development environments has security implications.

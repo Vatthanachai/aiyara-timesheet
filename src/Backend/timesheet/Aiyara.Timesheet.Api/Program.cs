@@ -1,6 +1,8 @@
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.AddTcpDependencyHealthCheck("Postgres", 5432);
+builder.AddTcpDependencyHealthCheck("Redis", 6379);
 
 // Add services to the container.
 

@@ -28,6 +28,8 @@ services:
         APP_DLL: Aiyara.Identities.Api.dll
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Dependencies__Postgres__Host: postgres
+      Dependencies__Redis__Host: redis
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,6 +53,8 @@ services:
         APP_DLL: Aiyara.Timesheet.Api.dll
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Dependencies__Postgres__Host: postgres
+      Dependencies__Redis__Host: redis
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,6 +78,7 @@ services:
         APP_DLL: Aiyara.Report.Api.dll
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Dependencies__Postgres__Host: postgres
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +100,7 @@ services:
         APP_DLL: Aiyara.Notifications.Api.dll
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Dependencies__RabbitMq__Host: rabbitmq
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -116,6 +122,8 @@ services:
         APP_DLL: Aiyara.Report.Worker.dll
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Dependencies__RabbitMq__Host: rabbitmq
+      Dependencies__RustFs__Host: rustfs
     depends_on:
       rabbitmq:
         condition: service_healthy

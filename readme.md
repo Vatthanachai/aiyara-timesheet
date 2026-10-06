@@ -16,6 +16,11 @@ hosts.
 2. Start the core stack with `docker compose up -d`.
 3. If a local MailDev is not already running, add the MailDev profile:
    `docker compose --profile maildev up -d`.
+4. Run `pwsh -File tests/platform/Smoke.ps1` to verify every core container,
+   each backend readiness endpoint, and each API's OpenAPI document. Add
+   `-Start` to build and start the stack before checking it.
+   Add `-CheckFailure` to verify that Identity remains alive but becomes
+   unready when Redis is stopped; the test restarts Redis afterward.
 The frontend and Gateway are reachable from the host through the ports set in `.env`.
 Containers use the service DNS names (`postgres`, `redis`, `rabbitmq`, and
 `rustfs`) on the `aiyara-timesheet` network. The current development MailDev
@@ -28,3 +33,14 @@ starting the platform with `curl http://localhost:8080`.
 `timesheet_db`, `reporting_db`, and `notification_db` on the first initialization
 of the PostgreSQL volume. Remove the local `postgres-data` volume only when a
 full local database reset is intentional.
+
+Backend `/alive` checks only the process. Backend `/health` also checks TCP
+reachability of the dependencies configured for that service in Compose. These
+baseline probes detect an unavailable dependency; protocol authentication and
+database-specific checks will be added when Phase 1 wires the clients.
+
+The Aspire AppHost starts application projects for debugging and displays the
+Compose infrastructure as external resources. Start Compose infrastructure
+first when using AppHost. If Compose host ports differ from their defaults,
+set `POSTGRES_PORT`, `REDIS_PORT`, `RABBITMQ_AMQP_PORT`, and `RUSTFS_API_PORT`
+in the AppHost process environment to match `.env`.
