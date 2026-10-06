@@ -26,7 +26,8 @@ internal sealed class IdentityValidationGrpcService(
         if (account is null || membership is null || tenant is null ||
             account.SessionVersion != claims.SessionVersion ||
             membership.Role.ToString() != claims.Role) return Invalid("session_revoked");
-        if (account.MustChangePassword || claims.MustChangePassword ||
+        if (account.MustChangePassword || membership.MustChangePassword ||
+            claims.MustChangePassword ||
             account.PasswordChangedAtUtc < tenant.PasswordPolicyUpdatedAtUtc ||
             account.PasswordChangedAtUtc < DateTime.UtcNow.AddDays(-tenant.PasswordExpiryDays))
             return Invalid("password_change_required");

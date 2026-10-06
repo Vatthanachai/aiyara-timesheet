@@ -202,7 +202,8 @@ auth.MapPut("/tenants/{tenantId:guid}/password-policy", async (Guid tenantId,
         var authorization = context.Request.Headers.Authorization.ToString();
         var claims = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
             ? tokens.ValidateToken(authorization[7..].Trim()) : null;
-        if (claims is null || claims.TenantId != tenantId || claims.Role != "TenantAdmin")
+        if (claims is null || claims.TenantId != tenantId || claims.Role != "TenantAdmin" ||
+            claims.MustChangePassword)
             return Results.Unauthorized();
         await service.UpdateTenantPolicyAsync(tenantId, claims.UserId,
             claims.SessionVersion, request, cancellationToken);

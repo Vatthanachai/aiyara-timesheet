@@ -99,6 +99,10 @@ public sealed class AuthenticationFlowTests
         await fixture.Auth.UpdateTenantPolicyAsync(tenant.TenantId, account.Id,
             account.SessionVersion, new TenantPasswordPolicyRequest(24, 180,
                 true, true, true, true), default);
+        await Assert.ThrowsAsync<OnboardingException>(() =>
+            fixture.Onboarding.IssueInvitationAuthorizedAsync(tenant.TenantId,
+                account.Id, account.SessionVersion,
+                new IssueInvitationRequest("new@gamma.test", "Employee"), default));
         var login = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
             account.Email, "Correct-Password-123!"), default);
         Assert.True(login.MustChangePassword);
@@ -163,6 +167,25 @@ public sealed class AuthenticationFlowTests
             x => x.TenantId == first.TenantId);
         Assert.Contains(fixture.Revocations.AccountEvents,
             x => x.TenantId == second.TenantId);
+    }
+
+    [Fact]
+    public async Task Relaxing_policy_does_not_force_password_change()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Delta", "delta", "admin@delta.test"), default);
+        await fixture.Auth.RequestActivationAsync(
+            new RequestCredentialEmail(tenant.TenantId, "admin@delta.test"), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Single().Code, "Correct-Password-123!"), default);
+        var account = await fixture.Db.Accounts.SingleAsync();
+        await fixture.Auth.UpdateTenantPolicyAsync(tenant.TenantId, account.Id,
+            account.SessionVersion, new TenantPasswordPolicyRequest(12, 365,
+                false, false, false, false), default);
+        var login = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
+            account.Email, "Correct-Password-123!"), default);
+        Assert.False(login.MustChangePassword);
     }
 
     private sealed class FakeNotifications : ICredentialNotificationSender

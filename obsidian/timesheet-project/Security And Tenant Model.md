@@ -24,6 +24,7 @@
 - Use Argon2id and store one PHC-format value in `password_hash`; the value contains algorithm, parameters, salt, and hash. Do not have a separate salt column and never log plaintext or temporary passwords.
 - Generate temporary passwords with `RandomNumberGenerator` and validate them with the same password-policy engine.
 - An Account has one credential across tenant memberships. Reset or activation increments the Account session version for every tenant; old refresh tokens in any tenant cannot rotate, and Identity publishes a revocation version for every membership's tenant.
+- Existing password compliance cannot be recovered from an Argon2id hash. A stricter tenant policy therefore conservatively forces existing members to reset; relaxing a policy does not. A forced-change token cannot authorize tenant administration or protected API calls.
 - Password policy is configured per tenant by Tenant Admin: minimum length and lower-case, upper-case, numeric, and symbol requirements. New passwords comply immediately; when a stricter policy makes an existing password noncompliant, mark the account `must_change_password` and require a change on the next login.
 - Rate-limit sign-in and secret-request endpoints by account and IP; store only hashed activation, invitation, refresh, and reset secrets.
 

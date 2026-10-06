@@ -192,6 +192,13 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
             membership is null)
             throw new OnboardingException(OnboardingFailure.Unauthorized,
                 "Active tenant administrator is required.");
+        var tenant = await db.Tenants.SingleAsync(cancellationToken);
+        if (account.MustChangePassword || membership.MustChangePassword ||
+            account.PasswordChangedAtUtc is null ||
+            account.PasswordChangedAtUtc < tenant.PasswordPolicyUpdatedAtUtc ||
+            account.PasswordChangedAtUtc < DateTime.UtcNow.AddDays(-tenant.PasswordExpiryDays))
+            throw new OnboardingException(OnboardingFailure.Unauthorized,
+                "Password change is required.");
         return await IssueInvitationAsync(tenantId, actorAccountId, request,
             cancellationToken);
     }
