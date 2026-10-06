@@ -43,10 +43,6 @@ $created = Send-Json '/api/v1/tenants' @{
 }
 Expect-Status $created 201 'tenant creation'
 $tenant = $created.Content | ConvertFrom-Json
-$requested = Send-Json '/api/v1/auth/activation/request' @{
-    tenantId = $tenant.tenantId; email = $adminEmail
-}
-Expect-Status $requested 202 'activation request'
 $code = Get-Code $adminEmail 'Activate your Aiyara Timesheet account'
 $activated = Send-Json '/api/v1/auth/activate' @{ code = $code; password = $oldPassword }
 Expect-Status $activated 204 'activation'
@@ -84,9 +80,6 @@ if ($inviteMailCode -ne $invitationData.code) {
 Expect-Status (Send-Json '/api/v1/invitations/accept' @{
     code = $inviteMailCode
 }) 200 'invitation acceptance'
-Expect-Status (Send-Json '/api/v1/auth/activation/request' @{
-    tenantId = $tenant.tenantId; email = $employeeEmail
-}) 202 'invited employee activation request'
 $employeeCode = Get-Code $employeeEmail 'Activate your Aiyara Timesheet account'
 Expect-Status (Send-Json '/api/v1/auth/activate' @{
     code = $employeeCode; password = $oldPassword
@@ -156,13 +149,12 @@ $forcedRoute = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
 if ($forcedRoute.StatusCode -ne 401) {
     throw 'Gateway accepted a token that requires a password change.'
 }
-Expect-Status (Send-Json '/api/v1/auth/password/forgot' @{
-    tenantId = $tenant.tenantId; email = $adminEmail
-}) 202 'forced policy reset request'
-$policyResetCode = Get-Code $adminEmail 'Reset your Aiyara Timesheet password'
-Expect-Status (Send-Json '/api/v1/auth/password/reset' @{
-    code = $policyResetCode; password = 'Very-Strong-New-Password-789!'
-}) 204 'forced policy reset'
+Expect-Status (Send-Json '/api/v1/auth/password/change' @{
+    currentPassword = $newPassword; newPassword = 'Very-Strong-New-Password-789!'
+} 'Post' @{ Authorization = "Bearer $forcedToken" }) 204 'forced policy password change'
+Expect-Status (Send-Json '/api/v1/auth/refresh' @{
+    refreshToken = ($forced.Content | ConvertFrom-Json).refreshToken
+}) 401 'forced policy old session revoked'
 $compliant = Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail
     password = 'Very-Strong-New-Password-789!'
@@ -172,4 +164,14 @@ if (($compliant.Content | ConvertFrom-Json).mustChangePassword) {
     throw 'Compliant password still requires a change.'
 }
 
-Write-Output 'Phase 2 Gateway, SMTP, activation, invitation, session and reset smoke test passed.'
+$unknownEmail = "phase2-unknown-$suffix@example.test"
+for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    Expect-Status (Send-Json '/api/v1/auth/login' @{
+        tenantId = $tenant.tenantId; email = $unknownEmail; password = 'Not-A-Password!'
+    }) 401 'unknown-account login'
+}
+Expect-Status (Send-Json '/api/v1/auth/login' @{
+    tenantId = $tenant.tenantId; email = $unknownEmail; password = 'Not-A-Password!'
+}) 429 'account login rate limit'
+
+Write-Output 'Phase 2 Gateway, SMTP, activation, invitation, session, policy and rate-limit smoke test passed.'

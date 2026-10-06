@@ -188,6 +188,41 @@ public sealed class AuthenticationFlowTests
         Assert.False(login.MustChangePassword);
     }
 
+    [Fact]
+    public async Task Forced_password_change_revokes_existing_sessions_and_clears_policy_flag()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Epsilon", "epsilon", "admin@epsilon.test"), default);
+        await fixture.Auth.RequestActivationAsync(
+            new RequestCredentialEmail(tenant.TenantId, "admin@epsilon.test"), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Single().Code, "Correct-Password-123!"), default);
+        var before = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
+            "admin@epsilon.test", "Correct-Password-123!"), default);
+        var account = await fixture.Db.Accounts.SingleAsync();
+        await fixture.Auth.UpdateTenantPolicyAsync(tenant.TenantId, account.Id,
+            account.SessionVersion, new TenantPasswordPolicyRequest(24, 180,
+                true, true, true, true), default);
+        var forced = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
+            account.Email, "Correct-Password-123!"), default);
+        Assert.True(forced.MustChangePassword);
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.ChangePasswordAsync(
+            tenant.TenantId, account.Id, account.SessionVersion,
+            new ChangePasswordRequest("wrong", "Very-Strong-New-Password-789!"), default));
+        await fixture.Auth.ChangePasswordAsync(tenant.TenantId, account.Id,
+            account.SessionVersion, new ChangePasswordRequest("Correct-Password-123!",
+                "Very-Strong-New-Password-789!"), default);
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.RefreshAsync(
+            new RefreshRequest(before.RefreshToken), default));
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.RefreshAsync(
+            new RefreshRequest(forced.RefreshToken), default));
+        var changed = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
+            account.Email, "Very-Strong-New-Password-789!"), default);
+        Assert.False(changed.MustChangePassword);
+        Assert.False((await fixture.Db.Memberships.SingleAsync()).MustChangePassword);
+    }
+
     private sealed class FakeNotifications : ICredentialNotificationSender
     {
         public List<(string Email, string Template, string Code)> Messages { get; } = [];
@@ -212,6 +247,12 @@ public sealed class AuthenticationFlowTests
             => Task.CompletedTask;
     }
 
+    private sealed class FakeAttemptLimiter : ICredentialAttemptLimiter
+    {
+        public Task CheckAsync(Guid tenantId, string normalizedEmail, string purpose,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly SqliteConnection connection;
@@ -234,7 +275,7 @@ public sealed class AuthenticationFlowTests
                 Key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             }));
             Auth = new AuthenticationService(db, scope, passwords, tokens, Notifications,
-                Revocations);
+                Revocations, new FakeAttemptLimiter());
         }
 
         public static async Task<Fixture> CreateAsync()

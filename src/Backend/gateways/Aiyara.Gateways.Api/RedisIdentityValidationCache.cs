@@ -25,7 +25,9 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
         {
             var redis = await connection.Value.WaitAsync(cancellationToken);
             var db = redis.GetDatabase();
-            var stored = await db.StringGetAsync(TokenKey(token));
+            var cacheKey = await db.StringGetAsync(TokenLookupKey(token));
+            if (cacheKey.IsNullOrEmpty) return null;
+            var stored = await db.StringGetAsync((RedisKey)(string)cacheKey!);
             if (stored.IsNullOrEmpty) return null;
             var entry = JsonSerializer.Deserialize<Entry>((string)stored!);
             if (entry is null) return null;
@@ -64,7 +66,9 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
             var ttl = response.ExpiresAtUtc.ToDateTimeOffset() - DateTimeOffset.UtcNow;
             if (ttl <= TimeSpan.Zero) return;
             if (ttl > TimeSpan.FromMinutes(1)) ttl = TimeSpan.FromMinutes(1);
-            await db.StringSetAsync(TokenKey(token), JsonSerializer.Serialize(entry), ttl);
+            var cacheKey = ValidationKey(response.TokenId, response.SessionVersion);
+            await db.StringSetAsync(cacheKey, JsonSerializer.Serialize(entry), ttl);
+            await db.StringSetAsync(TokenLookupKey(token), cacheKey, ttl);
         }
         catch (Exception exception) when (exception is RedisException or TimeoutException)
         {
@@ -72,9 +76,12 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
         }
     }
 
-    private static string TokenKey(string token)
-        => "identity:validation:" + Convert.ToHexString(
+    private static string TokenLookupKey(string token)
+        => "identity:validation:lookup:" + Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+    private static string ValidationKey(string tokenId, long sessionVersion)
+        => $"identity:validation:{tokenId}:{sessionVersion}";
 
     public async ValueTask DisposeAsync()
     {

@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 6 October 2026. Phase 0 is complete; Phase 1 adds tenancy and the edge contracts described in [[Development Roadmap]].
+> Updated 6 October 2026. Phase 0 and Phase 1 are complete; Phase 2 identity and notification flows have been validated on the feature branch described in [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
@@ -76,9 +76,23 @@
   DB role isolation, protected routes, and OpenAPI discovery. Identity's
   onboarding-capability migration reports no pending model changes.
 
+## Phase 2 — Identity And Notification
+
+- Identity provides email activation, Argon2id password storage, tenant password
+  policies, PASETO v4.public login, rotating refresh tokens, password reset and
+  authenticated password change. Tenant creation and invitation acceptance
+  automatically request activation email delivery.
+- Gateway validates protected tokens through Identity gRPC and caches positive
+  results in Redis by token ID and session version. Revocation and stricter
+  policy changes invalidate sessions; Redis limits credential attempts per
+  tenant/account alongside the edge IP limit.
+- Notification sends credential templates through local MailDev SMTP and stores
+  delivery outcomes without recording the secret. Phase 2 unit tests pass
+  11/11; Compose smoke covers registration, invitation, activation, login,
+  refresh replay, logout, reset, policy migration, and rate limiting.
+
 ## Not Yet Implemented
 
-- Login, activation, token issuance/validation, and email delivery (Phase 2).
 - Time-entry, approval, and reporting domain models and endpoints.
 - Frontend product screens, API client integration, and end-to-end flows.
 - Frontend API integration and product workflows.

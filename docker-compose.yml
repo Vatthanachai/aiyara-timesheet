@@ -378,7 +378,7 @@ services:
       - "${MAILDEV_SMTP_PORT:-1025}:1025"
       - "${MAILDEV_WEB_PORT:-8080}:1080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:1080/healthz || wget -q --spider http://localhost:1080"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:1080/healthz || wget -q --spider http://127.0.0.1:1080"]
       interval: 15s
       timeout: 5s
       retries: 10

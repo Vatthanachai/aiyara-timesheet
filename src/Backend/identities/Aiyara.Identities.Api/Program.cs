@@ -21,6 +21,7 @@ builder.Services.AddScoped<OnboardingService>();
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<PlatformAdminBootstrap>();
 builder.Services.AddSingleton<ISessionRevocationPublisher, RedisSessionRevocationPublisher>();
+builder.Services.AddSingleton<ICredentialAttemptLimiter, RedisCredentialAttemptLimiter>();
 builder.Services.Configure<PasswordGenerateSetting>(builder.Configuration.GetSection("PasswordGeneration"));
 builder.Services.Configure<PasetoSetting>(builder.Configuration.GetSection("Paseto"));
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
@@ -91,12 +92,14 @@ app.MapGrpcService<IdentityValidationGrpcService>();
 
 var onboarding = app.MapGroup("/api/v1").WithTags("Onboarding");
 onboarding.MapPost("/tenants", async (CreateTenantRequest request, HttpContext context,
-    OnboardingService service,
+    OnboardingService service, AuthenticationService authentication,
     CancellationToken cancellationToken) =>
 {
     try
     {
         var result = await service.CreateTenantAsync(request, cancellationToken);
+        await TrySendActivationAsync(authentication, result.TenantId, request.AdminEmail,
+            cancellationToken);
         context.Response.Headers.CacheControl = "no-store";
         return Results.Json(result, statusCode: StatusCodes.Status201Created);
     }
@@ -112,11 +115,16 @@ onboarding.MapPost("/tenants", async (CreateTenantRequest request, HttpContext c
 .ProducesProblem(StatusCodes.Status409Conflict);
 
 onboarding.MapPost("/invitations/accept", async (AcceptInvitationRequest request,
-    OnboardingService service, CancellationToken cancellationToken) =>
+    OnboardingService service, IdentityDbContext db, AuthenticationService authentication,
+    CancellationToken cancellationToken) =>
 {
     try
     {
         var result = await service.AcceptInvitationAsync(request, cancellationToken);
+        var email = await db.Accounts.Where(x => x.Id == result.AccountId)
+            .Select(x => x.Email).SingleAsync(cancellationToken);
+        await TrySendActivationAsync(authentication, result.TenantId, email,
+            cancellationToken);
         return Results.Ok(result);
     }
     catch (OnboardingException exception)
@@ -193,6 +201,19 @@ auth.MapPost("/password/reset", async (CompleteCredentialChallenge request,
     AuthenticationService service, CancellationToken cancellationToken) =>
     await RunAsync(async () => { await service.CompletePasswordResetAsync(request, cancellationToken);
         return Results.NoContent(); }));
+auth.MapPost("/password/change", async (ChangePasswordRequest request,
+    HttpContext context, AuthenticationService service, IPasetoTokenService tokens,
+    CancellationToken cancellationToken) =>
+    await RunAsync(async () =>
+    {
+        var authorization = context.Request.Headers.Authorization.ToString();
+        var claims = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? tokens.ValidateToken(authorization[7..].Trim()) : null;
+        if (claims is null) return Results.Unauthorized();
+        await service.ChangePasswordAsync(claims.TenantId, claims.UserId,
+            claims.SessionVersion, request, cancellationToken);
+        return Results.NoContent();
+    }));
 auth.MapPut("/tenants/{tenantId:guid}/password-policy", async (Guid tenantId,
     TenantPasswordPolicyRequest request, HttpContext context,
     AuthenticationService service, IPasetoTokenService tokens,
@@ -251,6 +272,7 @@ static async Task<IResult> RunAsync(Func<Task<IResult>> action)
         {
             AuthenticationFailure.InvalidCredentials => 401,
             AuthenticationFailure.Conflict => 409,
+            AuthenticationFailure.RateLimited => 429,
             AuthenticationFailure.Unavailable => 503,
             _ => 400
         };
@@ -266,5 +288,20 @@ static async Task TrySendInvitationAsync(ICredentialNotificationSender sender,
         (exception.Failure == AuthenticationFailure.Unavailable)
     {
         // The one-time code remains in the response for a local/manual handoff.
+    }
+}
+
+static async Task TrySendActivationAsync(AuthenticationService authentication,
+    Guid tenantId, string email, CancellationToken cancellationToken)
+{
+    try
+    {
+        await authentication.RequestActivationAsync(new RequestCredentialEmail(tenantId, email),
+            cancellationToken);
+    }
+    catch (AuthenticationException exception) when
+        (exception.Failure == AuthenticationFailure.Unavailable)
+    {
+        // The activation request endpoint remains available for retrying delivery.
     }
 }
