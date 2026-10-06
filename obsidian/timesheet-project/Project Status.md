@@ -55,6 +55,15 @@
 - `Aiyara.Phase1.Tests` covers tenant isolation, create/invite/accept rules,
   and gRPC/messaging contract shapes. A Compose-backed check created a tenant
   and accepted a seeded invitation through Gateway without crossing tenants.
+- Primary-agent validation on 6 October 2026: `dotnet build Aiyara.Timesheet.slnx`
+  passed with 76 pre-existing warnings and no errors; `dotnet test
+  Aiyara.Timesheet.slnx` passed 5/5; `docker compose --env-file .env.example
+  -p aiyara-phase1-test config --quiet` passed; the full Compose stack passed
+  `tests/platform/Smoke.ps1` (including the Redis failure/recovery check) and
+  `tests/phase1/Smoke.ps1`; `git diff --check develop...HEAD` passed. The
+  validation diff was reviewed for service ownership, tenant isolation,
+  secrets, and build artifacts. Phase 2 owns authenticated request-scope
+  resolution and the complete invitation/login flow.
 
 ## Not Yet Implemented
 
