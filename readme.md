@@ -126,8 +126,10 @@ stable across restarts to preserve sessions. Start the local SMTP inbox with
 `SMTP_PASSWORD`. Notification stores delivery outcome, recipient and template,
 but not message body or temporary password. Optional
 `BOOTSTRAP_PLATFORM_ADMIN_EMAIL` provisions a pending Platform Admin in tenant
-`00000000-0000-0000-0000-000000000001`; request activation for that tenant and
-email through the same endpoint. No default Platform Admin credential exists.
+`00000000-0000-0000-0000-000000000001`; its initial activation email is sent
+automatically once Notification is healthy. If delivery is unavailable, the
+same activation-request endpoint can retry. No default Platform Admin
+credential exists.
 
 Run `dotnet test tests/Aiyara.Phase2.Tests/Aiyara.Phase2.Tests.csproj` for
 password, token, activation, session, policy and cross-tenant revocation tests.
@@ -136,3 +138,5 @@ registration, invited-member activation, email delivery, login, refresh-token
 replay, logout, reset, and forced policy migration through Gateway. Its MailDev
 URL defaults to `http://127.0.0.1:1081` to avoid the common local 8080 conflict;
 pass `-MailDevUrl http://127.0.0.1:8080` for the default Compose profile.
+Pass `-BootstrapEmail address@example.test` to verify the optional Platform
+Admin bootstrap message without displaying its one-time password.

@@ -61,8 +61,12 @@ if (app.Configuration["Notification:InternalKey"] is not { Length: >= 32 })
 using (var scope = app.Services.CreateScope())
 {
     await scope.ServiceProvider.GetRequiredService<IdentityDbContext>().Database.MigrateAsync();
-    await scope.ServiceProvider.GetRequiredService<PlatformAdminBootstrap>()
+    var platformAdminEmail = await scope.ServiceProvider.GetRequiredService<PlatformAdminBootstrap>()
         .EnsureAsync(app.Configuration["Bootstrap:PlatformAdminEmail"],
+            CancellationToken.None);
+    if (platformAdminEmail is not null)
+        await TrySendActivationAsync(scope.ServiceProvider.GetRequiredService<AuthenticationService>(),
+            PlatformAdminBootstrap.PlatformTenantId, platformAdminEmail,
             CancellationToken.None);
 }
 

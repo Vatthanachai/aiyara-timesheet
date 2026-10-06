@@ -122,8 +122,9 @@ public sealed class AuthenticationFlowTests
     public async Task Platform_admin_bootstrap_requires_email_activation()
     {
         await using var fixture = await Fixture.CreateAsync();
-        await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+        var bootstrapEmail = await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
             .EnsureAsync("operator@platform.test", default);
+        Assert.Equal("operator@platform.test", bootstrapEmail);
         var bootstrap = await fixture.Db.Accounts.SingleAsync();
         Assert.True(bootstrap.IsPlatformAdmin);
         await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginAsync(
@@ -131,6 +132,8 @@ public sealed class AuthenticationFlowTests
                 bootstrap.Email, "Correct-Password-123!"), default));
         await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
             PlatformAdminBootstrap.PlatformTenantId, bootstrap.Email), default);
+        Assert.Null(await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+            .EnsureAsync("operator@platform.test", default));
         await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
             fixture.Notifications.Messages.Single().Code, "Correct-Password-123!"), default);
         var login = await fixture.Auth.LoginAsync(new LoginRequest(
@@ -204,6 +207,8 @@ public sealed class AuthenticationFlowTests
         await fixture.Auth.UpdateTenantPolicyAsync(tenant.TenantId, account.Id,
             account.SessionVersion, new TenantPasswordPolicyRequest(24, 180,
                 true, true, true, true), default);
+        Assert.All(await fixture.Db.RefreshSessions.AsNoTracking().ToListAsync(),
+            session => Assert.NotNull(session.RevokedAtUtc));
         var forced = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
             account.Email, "Correct-Password-123!"), default);
         Assert.True(forced.MustChangePassword);
@@ -244,6 +249,8 @@ public sealed class AuthenticationFlowTests
             return Task.CompletedTask;
         }
         public Task PublishTenantPolicyAsync(Guid tenantId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+        public Task CompleteTenantPolicyAsync(Guid tenantId, CancellationToken cancellationToken)
             => Task.CompletedTask;
     }
 

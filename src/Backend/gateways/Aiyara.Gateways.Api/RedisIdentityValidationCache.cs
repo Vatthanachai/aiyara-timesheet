@@ -39,6 +39,9 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
             var versions = await db.StringGetAsync([
                 IdentityCacheKeys.AccountVersion(tenantId, accountId),
                 IdentityCacheKeys.TenantPolicyEpoch(tenantId)]);
+            if (versions[1] == "blocked" ||
+                (long.TryParse(versions[0].ToString(), out var minimumVersion) &&
+                 response.SessionVersion < minimumVersion)) return null;
             return versions[0].ToString() == entry.AccountVersion &&
                 versions[1].ToString() == entry.TenantPolicyEpoch ? response : null;
         }
@@ -61,6 +64,9 @@ internal sealed class RedisIdentityValidationCache(IConfiguration configuration)
             var versions = await db.StringGetAsync([
                 IdentityCacheKeys.AccountVersion(tenantId, accountId),
                 IdentityCacheKeys.TenantPolicyEpoch(tenantId)]);
+            if (versions[1] == "blocked" ||
+                (long.TryParse(versions[0].ToString(), out var minimumVersion) &&
+                 response.SessionVersion < minimumVersion)) return;
             var entry = new Entry(Convert.ToBase64String(response.ToByteArray()),
                 versions[0].ToString(), versions[1].ToString());
             var ttl = response.ExpiresAtUtc.ToDateTimeOffset() - DateTimeOffset.UtcNow;

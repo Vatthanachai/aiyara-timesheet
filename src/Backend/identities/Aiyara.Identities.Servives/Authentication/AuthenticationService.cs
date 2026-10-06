@@ -301,11 +301,16 @@ public sealed class AuthenticationService(
             await db.Memberships.Where(x => x.Status == MembershipStatus.Active)
                 .ExecuteUpdateAsync(x => x.SetProperty(m => m.MustChangePassword, true),
                     cancellationToken);
+            await db.RefreshSessions.Where(x => x.RevokedAtUtc == null)
+                .ExecuteUpdateAsync(x => x.SetProperty(s => s.RevokedAtUtc,
+                    DateTime.UtcNow), cancellationToken);
         }
         await db.SaveChangesAsync(cancellationToken);
         if (stricter)
             await revocations.PublishTenantPolicyAsync(tenantId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        if (stricter)
+            await revocations.CompleteTenantPolicyAsync(tenantId, cancellationToken);
     }
 
     private async Task<AuthenticationResponse> CreateSessionAsync(Account account,

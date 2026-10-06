@@ -42,6 +42,26 @@ internal sealed class RedisSessionRevocationPublisher(IConfiguration configurati
         try
         {
             var redis = await connection.Value.WaitAsync(cancellationToken);
+            await redis.GetDatabase().StringSetAsync(
+                IdentityCacheKeys.TenantPolicyEpoch(tenantId), "blocked",
+                TimeSpan.FromHours(2));
+            await redis.GetSubscriber().PublishAsync(
+                RedisChannel.Literal(IdentityCacheKeys.RevocationsChannel),
+                $"tenant-policy:{tenantId:N}:blocked");
+        }
+        catch (RedisException)
+        {
+            throw new AuthenticationException(AuthenticationFailure.Unavailable,
+                "Session revocation is unavailable.");
+        }
+    }
+
+    public async Task CompleteTenantPolicyAsync(Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var redis = await connection.Value.WaitAsync(cancellationToken);
             var epoch = Guid.NewGuid().ToString("N");
             await redis.GetDatabase().StringSetAsync(
                 IdentityCacheKeys.TenantPolicyEpoch(tenantId), epoch,

@@ -81,7 +81,8 @@
 - Identity provides email activation, Argon2id password storage, tenant password
   policies, PASETO v4.public login, rotating refresh tokens, password reset and
   authenticated password change. Tenant creation and invitation acceptance
-  automatically request activation email delivery.
+  automatically request activation email delivery; a newly bootstrapped
+  Platform Admin does the same when Notification is ready.
 - Gateway validates protected tokens through Identity gRPC and caches positive
   results in Redis by token ID and session version. Revocation and stricter
   policy changes invalidate sessions; Redis limits credential attempts per

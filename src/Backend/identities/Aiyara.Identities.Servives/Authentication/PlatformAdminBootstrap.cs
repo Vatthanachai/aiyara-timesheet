@@ -10,9 +10,10 @@ public sealed class PlatformAdminBootstrap(IdentityDbContext db, TenantScope ten
     public static readonly Guid PlatformTenantId =
         Guid.Parse("00000000-0000-0000-0000-000000000001");
 
-    public async Task EnsureAsync(string? configuredEmail, CancellationToken cancellationToken)
+    public async Task<string?> EnsureAsync(string? configuredEmail,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(configuredEmail)) return;
+        if (string.IsNullOrWhiteSpace(configuredEmail)) return null;
         var email = configuredEmail.Trim().ToLowerInvariant();
         if (!MailAddress.TryCreate(email, out var parsed) || parsed.Address != email)
             throw new InvalidOperationException("Bootstrap Platform Admin email is invalid.");
@@ -43,16 +44,22 @@ public sealed class PlatformAdminBootstrap(IdentityDbContext db, TenantScope ten
             x.AccountId == account.Id, cancellationToken);
         if (membership is null)
         {
-            db.Memberships.Add(new Membership
+            membership = new Membership
             {
                 Id = Guid.NewGuid(), TenantId = PlatformTenantId, AccountId = account.Id,
                 Role = TenantRole.PlatformAdmin,
                 Status = MembershipStatus.PendingActivation,
                 CreatedAtUtc = DateTime.UtcNow
-            });
+            };
+            db.Memberships.Add(membership);
         }
         account.IsPlatformAdmin = true;
         await db.SaveChangesAsync(cancellationToken);
+        var shouldSendActivation = membership.Status == MembershipStatus.PendingActivation &&
+            !await db.CredentialChallenges.AnyAsync(x => x.AccountId == account.Id &&
+                x.Purpose == CredentialChallengePurpose.Activation && x.UsedAtUtc == null &&
+                x.ExpiresAtUtc > DateTime.UtcNow, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        return shouldSendActivation ? email : null;
     }
 }

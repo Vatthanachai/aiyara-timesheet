@@ -1,6 +1,7 @@
 param(
     [string]$GatewayUrl = 'http://127.0.0.1:8081',
-    [string]$MailDevUrl = 'http://127.0.0.1:1081'
+    [string]$MailDevUrl = 'http://127.0.0.1:1081',
+    [string]$BootstrapEmail = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +31,10 @@ function Get-Code([string]$email, [string]$subject) {
         Start-Sleep -Milliseconds 500
     }
     throw "Expected $subject email was not delivered."
+}
+
+if ($BootstrapEmail) {
+    Get-Code $BootstrapEmail 'Activate your Aiyara Timesheet account' | Out-Null
 }
 
 $suffix = [Guid]::NewGuid().ToString('N').Substring(0, 8)
@@ -132,10 +137,20 @@ $login = Send-Json '/api/v1/auth/login' @{
 Expect-Status $login 200 'login after reset'
 $session = $login.Content | ConvertFrom-Json
 $authorization = @{ Authorization = "Bearer $($session.accessToken)" }
+Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
+    -Headers $authorization -SkipHttpErrorCheck | Out-Null
 Expect-Status (Send-Json "/api/v1/auth/tenants/$($tenant.tenantId)/password-policy" @{
     minimumLength = 24; expiryDays = 180; requireUppercase = $true
     requireLowercase = $true; requireDigit = $true; requireSymbol = $true
 } 'Put' $authorization) 204 'password policy update'
+$oldAccess = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
+    -Headers $authorization -SkipHttpErrorCheck
+if ($oldAccess.StatusCode -ne 401) {
+    throw 'Policy migration did not invalidate a cached access token.'
+}
+Expect-Status (Send-Json '/api/v1/auth/refresh' @{
+    refreshToken = $session.refreshToken
+}) 401 'policy-revoked refresh session'
 $forced = Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail; password = $newPassword
 }
@@ -173,5 +188,9 @@ for ($attempt = 0; $attempt -lt 10; $attempt++) {
 Expect-Status (Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $unknownEmail; password = 'Not-A-Password!'
 }) 429 'account login rate limit'
+Expect-Status (Send-Json '/api/v1/auth/login' @{
+    tenantId = $tenant.tenantId; email = "other-$unknownEmail"
+    password = 'Not-A-Password!'
+}) 401 'independent account remains under rate limit'
 
 Write-Output 'Phase 2 Gateway, SMTP, activation, invitation, session, policy and rate-limit smoke test passed.'

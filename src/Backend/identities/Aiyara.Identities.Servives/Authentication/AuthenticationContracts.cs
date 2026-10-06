@@ -27,6 +27,7 @@ public interface ISessionRevocationPublisher
     Task PublishAccountAsync(Guid tenantId, Guid accountId, long sessionVersion,
         CancellationToken cancellationToken);
     Task PublishTenantPolicyAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task CompleteTenantPolicyAsync(Guid tenantId, CancellationToken cancellationToken);
 }
 
 public enum AuthenticationFailure { InvalidInput, InvalidCredentials, Conflict, RateLimited, Unavailable }
