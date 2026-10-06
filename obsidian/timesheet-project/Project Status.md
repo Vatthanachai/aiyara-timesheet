@@ -46,6 +46,8 @@
   to issue an invitation. Phase 1's seven-day onboarding key is returned once
   at tenant creation, stored only as a hash, and authorizes a tenant-bound
   invitation route until Phase 2 replaces it with login-based authorization.
+  It proves possession of the creation response, not ownership of the submitted
+  admin email; the membership remains pending until activation.
   New tenant IDs originate in Identity;
   invitation tenant IDs come from the stored invitation hash, not request
   headers. Tenant-owned queries return nothing without an established scope.

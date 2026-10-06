@@ -67,6 +67,9 @@ belongs to the creating Tenant Admin, and never trusts a caller-supplied tenant
 header. A missing, expired, or cross-tenant key receives 401. This bootstrap
 capability is for Phase 1 onboarding; Phase 2 replaces it with login-based
 Tenant Admin authorization, account activation, and email delivery.
+The key proves possession of the tenant-creation response, not ownership of
+`adminEmail`; a pending membership must not gain normal Tenant Admin access
+until Phase 2 verifies that email during activation.
 
 Gateway publishes the consolidated development Scalar portal at `/scalar`.
 Its `/api-docs/{identity|timesheet|reporting|notification}/openapi/v1.json`
