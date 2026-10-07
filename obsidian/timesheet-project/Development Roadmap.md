@@ -82,12 +82,12 @@ empty bucket-list response.
 ## Phase 5 — Quality, Operations, And Hardening
 
 Implementation status (2026-10-07): Phase 5 is in progress. The initial
-observability slice exports HTTP, .NET runtime, and readiness metrics from the
-APIs and Report Worker to Prometheus over OTLP, and provisions a Grafana
-platform overview dashboard. Phase 1–4 tests and Compose smoke tests provide
-partial coverage, including onboarding, identity, timesheet, reporting, signed uploads,
+observability slice exports HTTP, .NET runtime, readiness, and report-run
+metrics from the APIs and Report Worker to Prometheus over OTLP, and provisions
+a Grafana platform overview dashboard. Phase 1–4 tests and Compose smoke tests
+provide partial coverage, including onboarding, identity, timesheet, reporting, signed uploads,
 tenant isolation, session revocation, and retry behavior. Business metrics for
-authentication, RabbitMQ, Quartz, report runs, and RustFS still need to be
+authentication, RabbitMQ, Quartz, and RustFS still need to be
 added. A dedicated clean-volume Compose run verified metric ingestion from all
 six backend processes and Grafana dashboard provisioning; the platform smoke
 test and all 40 solution tests passed. Compose has no trace collector/backend.

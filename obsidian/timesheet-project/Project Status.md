@@ -148,16 +148,18 @@
   integration coverage for every service/database or complete gRPC and
   RabbitMQ contract execution; frontend browser E2E coverage is also absent.
 - Initial observability implementation: APIs and Report Worker export HTTP,
-  .NET runtime, and readiness metrics over OTLP to Prometheus. Grafana
+  .NET runtime, readiness, and aggregate report-run metrics over OTLP to Prometheus. Grafana
   provisions a Prometheus data source and a platform overview dashboard for
-  readiness, request rate, 5xx rate, p95 latency, and process memory.
-  Prometheus remains available only on
-  the host loopback port. Business metrics for authentication, RabbitMQ,
-  Quartz, report runs, and RustFS failures still need instrumentation and
-  dashboard coverage. Compose does not include a trace collector/backend.
+  readiness, request rate, 5xx rate, p95 latency, process memory, and report
+  runs grouped by status.
+  Prometheus remains available only on the host loopback port. Business metrics
+  for authentication, RabbitMQ, Quartz, and RustFS failures still need
+  instrumentation and dashboard coverage. Compose does not include a trace
+  collector/backend.
   Validation on 7 October 2026: all six backend processes appeared in
   Prometheus request, memory, and readiness metrics; Grafana loaded the
-  provisioned five-panel dashboard; an isolated clean-volume Compose stack passed
+  provisioned six-panel dashboard; an isolated clean-volume Compose stack
+  passed
   `tests/platform/Smoke.ps1` with all 17 core containers healthy; solution
   tests passed 40/40, and `tests/phase5/Smoke.ps1` passed. The default Compose
   project could not reuse its existing PostgreSQL volume because its stored

@@ -89,7 +89,8 @@ public static class Extensions
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddMeter("Aiyara.Timesheet.ServiceHealth");
+                    .AddMeter("Aiyara.Timesheet.ServiceHealth")
+                    .AddMeter("Aiyara.Report.Worker");
             });
 
         var metricsEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"];

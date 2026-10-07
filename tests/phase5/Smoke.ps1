@@ -76,6 +76,20 @@ if ($unhealthyServices.Count -gt 0) {
     throw "Services report unhealthy readiness: $($names -join ', ')."
 }
 
+$reportRunSeries = @()
+$expectedReportStatuses = @('queued', 'running', 'succeeded', 'failed')
+for ($attempt = 0; $attempt -lt 24; $attempt++) {
+    $reportRunSeries = @(Get-PrometheusQuery 'aiyara_report_runs')
+    $reportStatuses = @($reportRunSeries | ForEach-Object { $_.metric.status })
+    $missingStatuses = @($expectedReportStatuses | Where-Object { $_ -notin $reportStatuses })
+    if ($missingStatuses.Count -eq 0) { break }
+    Start-Sleep -Seconds 5
+}
+
+if ($missingStatuses.Count -gt 0) {
+    throw "Report run metrics missing status series: $($missingStatuses -join ', ')."
+}
+
 $username = $settings['GRAFANA_ADMIN_USER']
 $password = $settings['GRAFANA_ADMIN_PASSWORD']
 if ([string]::IsNullOrWhiteSpace($username) -or [string]::IsNullOrWhiteSpace($password)) {
@@ -92,6 +106,6 @@ $dashboard = Invoke-RestMethod -Uri "$grafanaUrl/api/dashboards/uid/aiyara-platf
 
 if ($datasource.name -ne 'Prometheus') { throw 'Grafana Prometheus data source is not provisioned.' }
 if ($dashboard.dashboard.title -ne 'Aiyara Platform Overview') { throw 'Grafana platform dashboard is not provisioned.' }
-if ($dashboard.dashboard.panels.Count -ne 5) { throw 'Grafana platform dashboard should contain five panels.' }
+if ($dashboard.dashboard.panels.Count -ne 6) { throw 'Grafana platform dashboard should contain six panels.' }
 
-Write-Output 'Phase 5 observability smoke test passed: six services export request, runtime, and readiness metrics; Grafana has its provisioned data source and dashboard.'
+Write-Output 'Phase 5 observability smoke test passed: six services export request, runtime, and readiness metrics; report run metrics expose all statuses; Grafana has its provisioned data source and dashboard.'

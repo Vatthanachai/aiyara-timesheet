@@ -28,6 +28,7 @@ builder.Services.AddHttpClient("notifications", client =>
     client.BaseAddress = new Uri(builder.Configuration["Notifications:BaseUrl"] ?? "http://localhost:8080"));
 builder.Services.AddHostedService<ReportGenerationConsumer>();
 builder.Services.AddHostedService<TimesheetMonthEventConsumer>();
+builder.Services.AddHostedService<ReportRunMetricsPublisher>();
 builder.Services.AddQuartz(options =>
 {
     var key = new JobKey("report-schedule-dispatch");

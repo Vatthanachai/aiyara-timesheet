@@ -50,11 +50,12 @@ available at `http://localhost:${PROMETHEUS_PORT:-9090}` and Grafana at
 `http://localhost:${GRAFANA_PORT:-3001}`; use `GRAFANA_ADMIN_USER` and
 `GRAFANA_ADMIN_PASSWORD` from `.env` to sign in. Grafana provisions the
 Prometheus data source and the **Aiyara Platform Overview** dashboard, which
-shows backend readiness, request rate, 5xx rate, p95 latency, and .NET process
-memory. The Prometheus host port binds to loopback. Business metrics for
-authentication, RabbitMQ, Quartz, report runs, and RustFS are still to be added. Run
+shows backend readiness, request rate, 5xx rate, p95 latency, .NET process
+memory, and report runs by status. The Prometheus host port binds to loopback.
+Business metrics for authentication, RabbitMQ, Quartz, and RustFS are still to
+be added. Run
 `pwsh -File tests/phase5/Smoke.ps1` to verify metrics from all six backend
-processes and Grafana's provisioned data source and dashboard.
+processes, report run status metrics, and Grafana's provisioned data source and dashboard.
 
 The Aspire AppHost starts application projects for debugging and displays the
 Compose infrastructure as external resources. Start Compose infrastructure
