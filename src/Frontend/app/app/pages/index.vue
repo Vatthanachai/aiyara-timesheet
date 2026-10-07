@@ -34,8 +34,8 @@ async function signIn() {
 
   <section v-if="token" aria-label="Available applications" class="remote-grid">
     <NuxtLink v-for="remote in navigation" :key="remote.id" class="remote-card" :to="remote.path">
-      <h2>{{ remote.label }}</h2>
-      <p>{{ remote.description }}</p>
+      <h2>{{ locale === 'th' ? remote.label : remote.labelEn }}</h2>
+      <p>{{ locale === 'th' ? remote.description : remote.descriptionEn }}</p>
     </NuxtLink>
   </section>
 </template>

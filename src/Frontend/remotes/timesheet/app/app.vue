@@ -3,6 +3,7 @@ type Entry = { id: string; date: string; startTime: string; endTime: string; dur
 type Task = { id: string; name: string; status: string; projectId: string | null; categoryId: string | null }
 type Leave = { id: string; date: string; kind: string; notes: string | null }
 type Catalog = { projects: { id: string; name: string }[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[] }
+type TrayItem = { name: string; projectId?: string | null; categoryId?: string | null; personalTaskId?: string | null }
 const token = ref('')
 const config = useRuntimeConfig()
 const gateway = ref('http://localhost:8081')
@@ -22,10 +23,12 @@ const leaveKind = ref('annual')
 const currentMonth = ref('')
 const locked = ref(false)
 const canEdit = computed(() => month.value === currentMonth.value && !locked.value)
+const days = computed(() => Array.from({ length: new Date(Number(month.value.slice(0, 4)), Number(month.value.slice(5)), 0).getDate() },
+  (_, index) => `${month.value}-${String(index + 1).padStart(2, '0')}`))
 const text = computed(() => locale.value === 'th' ? {
-  title: 'บันทึกเวลาทำงาน', month: 'เดือน', task: 'งาน', date: 'วันที่', start: 'เริ่ม', end: 'สิ้นสุด', duration: 'ชั่วโมง', detail: 'รายละเอียด', notes: 'หมายเหตุ', project: 'โครงการ', category: 'หมวดหมู่', save: 'บันทึก', cancel: 'ยกเลิก', edit: 'แก้ไข', remove: 'ลบ', add: 'เพิ่มรายการ', tasks: 'งานส่วนตัว', leaves: 'วันลา', kind: 'ประเภท', readOnly: 'เดือนที่ผ่านมาอ่านได้อย่างเดียว', noEntries: 'ยังไม่มีรายการ', status: 'สถานะ', drop: 'ลากงานมาที่แบบฟอร์มเพื่อเริ่มบันทึก'
+  title: 'บันทึกเวลาทำงาน', month: 'เดือน', task: 'งาน', date: 'วันที่', start: 'เริ่ม', end: 'สิ้นสุด', duration: 'ชั่วโมง', detail: 'รายละเอียด', notes: 'หมายเหตุ', project: 'โครงการ', category: 'หมวดหมู่', save: 'บันทึก', cancel: 'ยกเลิก', edit: 'แก้ไข', remove: 'ลบ', add: 'เพิ่มรายการ', tasks: 'งานส่วนตัว', leaves: 'วันลา', kind: 'ประเภท', readOnly: 'เดือนที่ผ่านมาอ่านได้อย่างเดียว', noEntries: 'ยังไม่มีรายการ', status: 'สถานะ', drop: 'ลากงานมาที่แบบฟอร์มเพื่อเริ่มบันทึก', chooseDay: 'เลือกวัน', use: 'ใช้', todo: 'ต้องทำ', doing: 'กำลังทำ', done: 'เสร็จ', annual: 'พักร้อน', sick: 'ลาป่วย', other: 'อื่น ๆ', holidays: 'วันหยุด', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell'
 } : {
-  title: 'Time entries', month: 'Month', task: 'Task', date: 'Date', start: 'Start', end: 'End', duration: 'Hours', detail: 'Detail', notes: 'Notes', project: 'Project', category: 'Category', save: 'Save', cancel: 'Cancel', edit: 'Edit', remove: 'Delete', add: 'Add entry', tasks: 'Personal tasks', leaves: 'Leave', kind: 'Kind', readOnly: 'Past months are read only', noEntries: 'No entries yet', status: 'Status', drop: 'Drag a task here to start an entry'
+  title: 'Time entries', month: 'Month', task: 'Task', date: 'Date', start: 'Start', end: 'End', duration: 'Hours', detail: 'Detail', notes: 'Notes', project: 'Project', category: 'Category', save: 'Save', cancel: 'Cancel', edit: 'Edit', remove: 'Delete', add: 'Add entry', tasks: 'Personal tasks', leaves: 'Leave', kind: 'Kind', readOnly: 'Past months are read only', noEntries: 'No entries yet', status: 'Status', drop: 'Drag a task here to start an entry', chooseDay: 'Choose a day', use: 'Use', todo: 'To do', doing: 'Doing', done: 'Done', annual: 'Annual', sick: 'Sick', other: 'Other', holidays: 'Holidays', signIn: 'Please sign in through Aiyara Shell'
 })
 onMounted(() => {
   window.addEventListener('message', (event: MessageEvent) => {
@@ -69,13 +72,17 @@ function edit(entry: Entry) {
     taskName: entry.taskName, detail: entry.detail || '', notes: entry.notes || '',
     projectId: entry.projectId || '', categoryId: entry.categoryId || '', personalTaskId: entry.personalTaskId || '' })
 }
-function dragTask(event: DragEvent, task: Task) { event.dataTransfer?.setData('application/x-aiyara-task', JSON.stringify(task)) }
-function dropTask(event: DragEvent) {
+function dragTask(event: DragEvent, task: TrayItem) { event.dataTransfer?.setData('application/x-aiyara-task', JSON.stringify(task)) }
+function prefill(task: TrayItem, date?: string) {
+  if (!canEdit.value) return
+  if (date) form.date = date
+  form.taskName = task.name; form.personalTaskId = task.personalTaskId || ''
+  form.projectId = task.projectId || ''; form.categoryId = task.categoryId || ''
+}
+function dropTask(event: DragEvent, date?: string) {
   const value = event.dataTransfer?.getData('application/x-aiyara-task')
   if (!value) return
-  const task = JSON.parse(value) as Task
-  form.taskName = task.name; form.personalTaskId = task.id
-  form.projectId = task.projectId || ''; form.categoryId = task.categoryId || ''
+  prefill(JSON.parse(value) as TrayItem, date)
 }
 async function saveEntry() {
   if (!canEdit.value) return
@@ -128,7 +135,7 @@ async function updateLeave(leave: Leave) {
 
 <template>
   <main class="workspace">
-    <p v-if="!token">{{ locale === 'th' ? 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell' : 'Please sign in through Aiyara Shell' }}</p>
+    <p v-if="!token">{{ text.signIn }}</p>
     <template v-else>
       <header><h2>{{ text.title }}</h2><label>{{ text.month }} <input v-model="month" type="month" /></label></header>
       <p v-if="!canEdit" class="notice">{{ text.readOnly }}</p>
@@ -137,10 +144,11 @@ async function updateLeave(leave: Leave) {
         <h3>{{ text.title }}</h3>
         <div class="table-wrap"><table><thead><tr><th>{{ text.date }}</th><th>{{ text.start }}</th><th>{{ text.end }}</th><th>{{ text.duration }}</th><th>{{ text.task }}</th><th>{{ text.project }}</th><th>{{ text.category }}</th><th></th></tr></thead>
           <tbody><template v-for="entry in entries" :key="entry.id"><tr><td>{{ entry.date }}</td><td>{{ entry.startTime }}</td><td>{{ entry.endTime }}</td><td>{{ (entry.durationMinutes / 60).toFixed(2) }}</td><td>{{ entry.taskName }}</td><td>{{ catalog.projects.find(x => x.id === entry.projectId)?.name }}</td><td>{{ catalog.categories.find(x => x.id === entry.categoryId)?.name }}</td><td><button v-if="canEdit" @click="edit(entry)">{{ text.edit }}</button> <button v-if="canEdit" @click="removeEntry(entry.id)">{{ text.remove }}</button></td></tr>
-          <tr v-if="editingId === entry.id"><td colspan="8"><form class="entry-grid" @submit.prevent="saveEntry"><label>{{ text.date }}<input v-model="form.date" type="date" required /></label><label>{{ text.start }}<input v-model="form.startTime" type="time" required /></label><label>{{ text.end }}<input v-model="form.endTime" type="time" required /></label><label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" /></label><label>{{ text.detail }}<input v-model="form.detail" maxlength="4000" /></label><label>{{ text.notes }}<input v-model="form.notes" maxlength="4000" /></label><div class="actions"><button type="submit">{{ text.save }}</button><button type="button" @click="resetForm">{{ text.cancel }}</button></div></form></td></tr></template>
+          <tr v-if="editingId === entry.id"><td colspan="8"><form class="entry-grid" @submit.prevent="saveEntry"><label>{{ text.date }}<input v-model="form.date" type="date" required /></label><label>{{ text.start }}<input v-model="form.startTime" type="time" required /></label><label>{{ text.end }}<input v-model="form.endTime" type="time" required /></label><label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" /></label><label>{{ text.project }}<select v-model="form.projectId"><option value="">—</option><option v-for="project in catalog.projects" :key="project.id" :value="project.id">{{ project.name }}</option></select></label><label>{{ text.category }}<select v-model="form.categoryId"><option value="">—</option><option v-for="category in catalog.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label><label>{{ text.detail }}<input v-model="form.detail" maxlength="4000" /></label><label>{{ text.notes }}<input v-model="form.notes" maxlength="4000" /></label><div class="actions"><button type="submit">{{ text.save }}</button><button type="button" @click="resetForm">{{ text.cancel }}</button></div></form></td></tr></template>
           <tr v-if="!entries.length"><td colspan="8">{{ text.noEntries }}</td></tr></tbody></table></div>
       </section>
-      <section v-if="canEdit && !editingId" class="panel" @dragover.prevent @drop.prevent="dropTask"><h3>{{ text.add }}</h3><p>{{ text.drop }}</p>
+      <section v-if="canEdit" class="panel"><h3>{{ text.chooseDay }}</h3><div class="days"><button v-for="day in days" :key="day" type="button" :class="{ selected: form.date === day }" @click="form.date = day" @dragover.prevent @drop.prevent="dropTask($event, day)">{{ day.slice(8) }}</button></div></section>
+      <section v-if="canEdit && !editingId" class="panel" @dragover.prevent @drop.prevent="dropTask($event)"><h3>{{ text.add }}</h3><p>{{ text.drop }}</p>
         <form class="entry-grid" @submit.prevent="saveEntry">
           <label>{{ text.date }}<input v-model="form.date" type="date" required :min="`${month}-01`" :max="`${month}-${new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()}`" /></label>
           <label>{{ text.start }}<input v-model="form.startTime" type="time" required /></label>
@@ -154,15 +162,17 @@ async function updateLeave(leave: Leave) {
         </form>
       </section>
       <div class="columns"><section class="panel"><h3>{{ text.tasks }}</h3><form @submit.prevent="addTask"><input v-model="taskName" :aria-label="text.task" maxlength="200" /><button type="submit">{{ text.add }}</button></form>
-          <ul><li v-for="task in tasks" :key="task.id" draggable="true" @dragstart="dragTask($event, task)"><input v-model="task.name" :aria-label="text.task" maxlength="200" /><button @click="renameTask(task)">{{ text.save }}</button><select :value="task.status" :aria-label="text.status" @change="setStatus(task, ($event.target as HTMLSelectElement).value)"><option value="todo">To do</option><option value="doing">Doing</option><option value="done">Done</option></select><button @click="removeTask(task.id)">{{ text.remove }}</button></li></ul>
-        </section><section class="panel"><h3>{{ text.leaves }}</h3><form v-if="canEdit" @submit.prevent="addLeave"><input v-model="leaveDate" type="date" :min="`${month}-01`" :max="`${month}-${new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()}`" /><select v-model="leaveKind" :aria-label="text.kind"><option value="annual">Annual</option><option value="sick">Sick</option><option value="other">Other</option></select><button type="submit">{{ text.add }}</button></form>
-          <ul><li v-for="leave in leaves" :key="leave.id"><template v-if="canEdit"><input v-model="leave.date" type="date" :aria-label="text.date" /><select v-model="leave.kind" :aria-label="text.kind"><option value="annual">Annual</option><option value="sick">Sick</option><option value="other">Other</option></select><button @click="updateLeave(leave)">{{ text.save }}</button><button @click="removeLeave(leave.id)">{{ text.remove }}</button></template><template v-else>{{ leave.date }} · {{ leave.kind }}</template></li></ul>
-          <h4>{{ locale === 'th' ? 'วันหยุด' : 'Holidays' }}</h4><ul><li v-for="holiday in catalog.holidays.filter(x => x.date.startsWith(month))" :key="holiday.id">{{ holiday.date }} · {{ holiday.name }}</li></ul>
+          <ul><li v-for="task in tasks" :key="task.id" draggable="true" @dragstart="dragTask($event, { name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })"><input v-model="task.name" :aria-label="text.task" maxlength="200" /><button @click="prefill({ name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })">{{ text.use }}</button><button @click="renameTask(task)">{{ text.save }}</button><select :value="task.status" :aria-label="text.status" @change="setStatus(task, ($event.target as HTMLSelectElement).value)"><option value="todo">{{ text.todo }}</option><option value="doing">{{ text.doing }}</option><option value="done">{{ text.done }}</option></select><button @click="removeTask(task.id)">{{ text.remove }}</button></li></ul>
+          <h4>{{ text.project }}</h4><div class="tray"><button v-for="project in catalog.projects" :key="project.id" draggable="true" @dragstart="dragTask($event, { name: project.name, projectId: project.id })" @click="prefill({ name: project.name, projectId: project.id })">{{ project.name }}</button></div>
+          <h4>{{ text.category }}</h4><div class="tray"><button v-for="category in catalog.categories" :key="category.id" draggable="true" @dragstart="dragTask($event, { name: category.name, categoryId: category.id })" @click="prefill({ name: category.name, categoryId: category.id })">{{ category.name }}</button></div>
+        </section><section class="panel"><h3>{{ text.leaves }}</h3><form v-if="canEdit" @submit.prevent="addLeave"><input v-model="leaveDate" type="date" :aria-label="text.date" :min="`${month}-01`" :max="`${month}-${new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()}`" /><select v-model="leaveKind" :aria-label="text.kind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select><button type="submit">{{ text.add }}</button></form>
+          <ul><li v-for="leave in leaves" :key="leave.id"><template v-if="canEdit"><input v-model="leave.date" type="date" :aria-label="text.date" /><select v-model="leave.kind" :aria-label="text.kind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select><button @click="updateLeave(leave)">{{ text.save }}</button><button @click="removeLeave(leave.id)">{{ text.remove }}</button></template><template v-else>{{ leave.date }} · {{ leave.kind }}</template></li></ul>
+          <h4>{{ text.holidays }}</h4><ul><li v-for="holiday in catalog.holidays.filter(x => x.date.startsWith(month))" :key="holiday.id">{{ holiday.date }} · {{ holiday.name }}</li></ul>
         </section></div>
     </template>
   </main>
 </template>
 
 <style>
-:root{font-family:system-ui,sans-serif;color:#172033;background:#f8fafc}*{box-sizing:border-box}body{margin:0}.workspace{max-width:80rem;margin:auto;padding:1rem}header,.columns{display:flex;gap:1rem;justify-content:space-between;flex-wrap:wrap}.panel{background:white;border:1px solid #d8dee9;border-radius:.75rem;padding:1rem;margin:1rem 0;flex:1;min-width:18rem}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:45rem}th,td{text-align:left;border-bottom:1px solid #e4e8ee;padding:.65rem}label{display:grid;gap:.25rem}input,select,button{font:inherit;padding:.55rem;border:1px solid #abb5c5;border-radius:.4rem}button{cursor:pointer;background:#eaf1ff;color:#1241a1}.entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.7rem}.actions{display:flex;align-items:end;gap:.5rem}.notice{background:#fff1cf;padding:.7rem}.error{color:#a20e26}ul{padding-left:1.3rem}li{margin:.5rem 0}li[draggable]{cursor:grab;display:flex;justify-content:space-between;gap:1rem}
+:root{font-family:system-ui,sans-serif;color:var(--color-ink);background:var(--color-canvas)}*{box-sizing:border-box}body{margin:0}.workspace{max-width:80rem;margin:auto;padding:1rem}header,.columns{display:flex;gap:1rem;justify-content:space-between;flex-wrap:wrap}.panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-card);padding:1rem;margin:1rem 0;flex:1;min-width:18rem}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:45rem}th,td{text-align:left;border-bottom:1px solid #e4e8ee;padding:.65rem}label{display:grid;gap:.25rem}input,select,button{font:inherit;padding:.55rem;border:1px solid #abb5c5;border-radius:.4rem}button{cursor:pointer;background:#eaf1ff;color:#1241a1}.entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.7rem}.actions{display:flex;align-items:end;gap:.5rem}.notice{background:#fff1cf;padding:.7rem}.error{color:#a20e26}ul{padding-left:1.3rem}li{margin:.5rem 0}li[draggable]{cursor:grab;display:flex;justify-content:space-between;gap:1rem}.days{display:grid;grid-template-columns:repeat(auto-fill,minmax(2.5rem,1fr));gap:.3rem}.days .selected{background:var(--color-brand);color:white}.tray{display:flex;flex-wrap:wrap;gap:.3rem}
 </style>

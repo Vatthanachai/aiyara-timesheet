@@ -45,7 +45,7 @@ public static class TimesheetEndpoints
         api.MapPost("/holidays", async (HttpContext ctx, TimesheetDbContext db, HolidayRequest body) =>
         {
             if (!Actor.TryRead(ctx, out var actor)) return Results.Unauthorized();
-            if (!actor.IsAdmin) return Results.Forbid();
+            if (!actor.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Length > 200)
                 return Results.BadRequest("Holiday name is required and must be at most 200 characters.");
             var holiday = new Holiday { TenantId = actor.TenantId, Date = body.Date, Name = body.Name.Trim() };
@@ -57,7 +57,7 @@ public static class TimesheetEndpoints
         api.MapDelete("/holidays/{id:guid}", async (HttpContext ctx, TimesheetDbContext db, Guid id) =>
         {
             if (!Actor.TryRead(ctx, out var actor)) return Results.Unauthorized();
-            if (!actor.IsAdmin) return Results.Forbid();
+            if (!actor.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
             var holiday = await db.Holidays.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
             if (holiday is null) return Results.NotFound();
             var before = JsonSerializer.Serialize(holiday);
@@ -70,7 +70,7 @@ public static class TimesheetEndpoints
             Guid id, HolidayRequest body) =>
         {
             if (!Actor.TryRead(ctx, out var actor)) return Results.Unauthorized();
-            if (!actor.IsAdmin) return Results.Forbid();
+            if (!actor.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Length > 200) return Results.BadRequest();
             var holiday = await db.Holidays.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
             if (holiday is null) return Results.NotFound();
@@ -183,7 +183,7 @@ public static class TimesheetEndpoints
         api.MapPost("/months/{year:int}/{month:int}/lock", async (HttpContext ctx, TimesheetDbContext db, int year, int month) =>
         {
             if (!Actor.TryRead(ctx, out var actor)) return Results.Unauthorized();
-            if (!actor.IsAdmin) return Results.Forbid();
+            if (!actor.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
             if (year is < 2000 or > 2100 || month is < 1 or > 12) return Results.BadRequest();
             if (await db.MonthLocks.AnyAsync(x => x.Year == year && x.Month == month)) return Results.Conflict();
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
@@ -226,7 +226,7 @@ public static class TimesheetEndpoints
     private static async Task<IResult> SaveCatalog(HttpContext ctx, TimesheetDbContext db, NameRequest body, string kind)
     {
         if (!Actor.TryRead(ctx, out var actor)) return Results.Unauthorized();
-        if (!actor.IsAdmin) return Results.Forbid();
+        if (!actor.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Length > 200) return Results.BadRequest();
         TenantRecord item = kind == "project" ? new Project { TenantId = actor.TenantId, Name = body.Name.Trim() }
             : new Category { TenantId = actor.TenantId, Name = body.Name.Trim() };
@@ -239,7 +239,7 @@ public static class TimesheetEndpoints
     private static async Task<IResult> DeleteCatalog(HttpContext ctx, TimesheetDbContext db, Guid id, string kind)
     {
         if (!Actor.TryRead(ctx, out var actor)) return Results.Unauthorized();
-        if (!actor.IsAdmin) return Results.Forbid();
+        if (!actor.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
         TenantRecord? item = kind == "project" ? await db.Projects.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted)
             : await db.Categories.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
         if (item is null) return Results.NotFound();
@@ -255,7 +255,7 @@ public static class TimesheetEndpoints
         Guid id, NameRequest body, string kind)
     {
         if (!Actor.TryRead(ctx, out var actor)) return Results.Unauthorized();
-        if (!actor.IsAdmin) return Results.Forbid();
+        if (!actor.IsAdmin) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Length > 200) return Results.BadRequest();
         TenantRecord? item = kind == "project" ? await db.Projects.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted)
             : await db.Categories.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
@@ -353,18 +353,12 @@ public sealed record LeaveRequest(DateOnly Date, string Kind, string? Notes);
 
 public sealed record Actor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {
+    public const string ContextKey = "TimesheetValidatedActor";
     public bool IsAdmin => Role is "TenantAdmin" or "PlatformAdmin";
 
     public static bool TryRead(HttpContext ctx, out Actor actor)
     {
-        actor = default!;
-        if (!Guid.TryParse(ctx.Request.Headers["X-Tenant-Id"], out var tenantId) ||
-            !Guid.TryParse(ctx.Request.Headers["X-User-Id"], out var userId)) return false;
-        var zone = ctx.Request.Headers["X-Time-Zone-Id"].ToString();
-        if (string.IsNullOrWhiteSpace(zone)) return false;
-        try { TimeZoneInfo.FindSystemTimeZoneById(zone); }
-        catch (TimeZoneNotFoundException) { return false; }
-        actor = new Actor(tenantId, userId, ctx.Request.Headers["X-Role"].ToString(), zone);
-        return true;
+        actor = ctx.Items[ContextKey] as Actor ?? default!;
+        return actor is not null;
     }
 }

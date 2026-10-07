@@ -36,8 +36,8 @@ if (!remote.value) {
 
 <template>
   <section v-if="remote && token" class="remote-workspace">
-    <h1>{{ remote.label }}</h1>
-    <iframe v-if="remoteUrl" ref="frame" :src="remoteUrl" :title="remote.label" @load="sendSession" />
+    <h1>{{ locale === 'th' ? remote.label : remote.labelEn }}</h1>
+    <iframe v-if="remoteUrl" ref="frame" :src="remoteUrl" :title="locale === 'th' ? remote.label : remote.labelEn" @load="sendSession" />
   </section>
   <section v-else class="remote-delegation"><h1>{{ locale === 'th' ? 'กรุณาเข้าสู่ระบบ' : 'Please sign in' }}</h1><NuxtLink to="/">{{ locale === 'th' ? 'กลับหน้าแรก' : 'Go home' }}</NuxtLink></section>
 </template>

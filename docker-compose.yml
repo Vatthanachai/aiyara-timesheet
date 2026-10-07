@@ -83,11 +83,20 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Dependencies__Postgres__Host: postgres
       Dependencies__Redis__Host: redis
+      Dependencies__RabbitMQ__Host: rabbitmq
       ConnectionStrings__TimesheetDb: Host=postgres;Database=timesheet_db;Username=timesheet_app;Password=${TIMESHEET_DB_PASSWORD:?Set TIMESHEET_DB_PASSWORD in .env}
+      IdentityGrpc__Url: http://identities-api:8082
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__User: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
     depends_on:
       db-provisioner:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      identities-api:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
@@ -181,8 +190,10 @@ services:
 
   timesheet-remote:
     build:
-      context: ./src/Frontend/remotes/timesheet
-      dockerfile: ../../app/Dockerfile
+      context: ./src/Frontend
+      dockerfile: app/Dockerfile
+      args:
+        PROJECT_DIR: remotes/timesheet
     environment:
       NITRO_PORT: 3002
       NUXT_PUBLIC_SHELL_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
@@ -199,8 +210,10 @@ services:
 
   reporting-remote:
     build:
-      context: ./src/Frontend/remotes/reporting
-      dockerfile: ../../app/Dockerfile
+      context: ./src/Frontend
+      dockerfile: app/Dockerfile
+      args:
+        PROJECT_DIR: remotes/reporting
     environment:
       NITRO_PORT: 3003
     ports:
@@ -216,8 +229,10 @@ services:
 
   administration-remote:
     build:
-      context: ./src/Frontend/remotes/administration
-      dockerfile: ../../app/Dockerfile
+      context: ./src/Frontend
+      dockerfile: app/Dockerfile
+      args:
+        PROJECT_DIR: remotes/administration
     environment:
       NITRO_PORT: 3004
       NUXT_PUBLIC_SHELL_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
@@ -234,8 +249,10 @@ services:
 
   identity-profile-remote:
     build:
-      context: ./src/Frontend/remotes/identity-profile
-      dockerfile: ../../app/Dockerfile
+      context: ./src/Frontend
+      dockerfile: app/Dockerfile
+      args:
+        PROJECT_DIR: remotes/identity-profile
     environment:
       NITRO_PORT: 3005
       NUXT_PUBLIC_SHELL_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
@@ -252,8 +269,10 @@ services:
 
   frontend:
     build:
-      context: ./src/Frontend/app
-      dockerfile: Dockerfile
+      context: ./src/Frontend
+      dockerfile: app/Dockerfile
+      args:
+        PROJECT_DIR: app
     environment:
       NUXT_PUBLIC_GATEWAY_URL: http://localhost:${GATEWAY_API_PORT:-8081}
       NUXT_PUBLIC_IDENTITY_REMOTE_URL: http://localhost:${IDENTITY_PROFILE_REMOTE_PORT:-3005}

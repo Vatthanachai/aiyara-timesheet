@@ -1,5 +1,8 @@
 using Aiyara.Timesheet.Databases;
 using Aiyara.Timesheet.Api;
+using Aiyara.Timesheet.Contracts.Identity.V1;
+using Grpc.Net.Client;
+using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,7 +10,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddTcpDependencyHealthCheck("Postgres", 5432);
 builder.AddTcpDependencyHealthCheck("Redis", 6379);
+builder.AddTcpDependencyHealthCheck("RabbitMQ", 5672);
 builder.Services.AddScoped<TimesheetTenantScope>();
+builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
+    builder.Configuration["IdentityGrpc:Url"] ?? "http://localhost:8082"));
+builder.Services.AddSingleton(provider => new IdentityValidationService.IdentityValidationServiceClient(
+    provider.GetRequiredService<GrpcChannel>()));
+builder.Services.AddHostedService<TimesheetOutboxPublisher>();
 builder.Services.AddDbContext<TimesheetDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("TimesheetDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TimesheetDb is required.")));
@@ -42,9 +51,52 @@ app.UseHttpsRedirection();
 
 app.Use(async (context, next) =>
 {
-    var scope = context.RequestServices.GetRequiredService<TimesheetTenantScope>();
-    if (Guid.TryParse(context.Request.Headers["X-Tenant-Id"], out var tenantId))
-        scope.TenantId = tenantId;
+    if (!context.Request.Path.StartsWithSegments("/api/v1"))
+    {
+        await next();
+        return;
+    }
+    var authorization = context.Request.Headers.Authorization.ToString();
+    if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+    ValidateAccessTokenResponse validation;
+    try
+    {
+        validation = await context.RequestServices
+            .GetRequiredService<IdentityValidationService.IdentityValidationServiceClient>()
+            .ValidateAccessTokenAsync(new ValidateAccessTokenRequest
+            {
+                AccessToken = authorization[7..].Trim(), CorrelationId = context.TraceIdentifier
+            }, cancellationToken: context.RequestAborted);
+    }
+    catch (RpcException)
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        return;
+    }
+    if (!validation.IsValid || !Guid.TryParse(validation.TenantId, out var tenantId) ||
+        !Guid.TryParse(validation.SubjectId, out var userId) ||
+        string.IsNullOrWhiteSpace(validation.TimeZoneId))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+    try
+    {
+        TimeZoneInfo.FindSystemTimeZoneById(validation.TimeZoneId);
+    }
+    catch (TimeZoneNotFoundException)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+    var actor = new Actor(tenantId, userId, validation.Roles.FirstOrDefault() ?? "",
+        validation.TimeZoneId);
+    context.Items[Actor.ContextKey] = actor;
+    context.RequestServices.GetRequiredService<TimesheetTenantScope>().TenantId = tenantId;
     await next();
 });
 app.UseAuthorization();

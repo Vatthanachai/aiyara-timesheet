@@ -155,21 +155,27 @@ origins. Access and refresh tokens are held in the Shell tab's session storage.
 The Timesheet API is reached through Gateway at `/api/v1/timesheets`. It exposes
 `/context`, `/catalog`, `/projects`, `/categories`, `/holidays`, `/tasks`,
 `/entries`, `/leave`, and `/months/{year}/{month}/lock` and `.../snapshot`.
-Gateway validates the Bearer token and forwards the validated tenant, account,
-role and timezone context. Project/category/holiday changes and month locking
+Gateway validates the Bearer token; Timesheet independently validates it with
+Identity gRPC before establishing the tenant, account, role and timezone scope.
+Project/category/holiday changes and month locking
 require Tenant Admin; employees can edit only their own entries and leave in
 the current tenant-local month. Past months and locked months are read only.
 An end time earlier than the start time records an overnight entry. Entries,
 leave, tasks and tenant catalog items are soft deleted. Audit records store the
 actor and before/after data. Month locks create immutable per-employee source
-snapshots and a durable Timesheet outbox event. Phase 4 will wire outbox
-delivery and consume those snapshots for generated reports.
+snapshots and a durable Timesheet outbox event. A background publisher sends
+confirmed, persistent events to the durable `reporting.timesheet-events.v1`
+RabbitMQ queue, retrying unsent rows. Consumers must use the event ID for
+idempotency. Phase 4 will consume those snapshots for generated reports.
 
 `GET/PUT /api/v1/identity/profile/me` manages first and last name, job title
 and an HTTPS photo URL. The admin remote also updates the existing tenant
 password policy endpoint. Run `dotnet test tests/Aiyara.Phase3.Tests/Aiyara.Phase3.Tests.csproj`
 for tenancy, duration, timezone and immutability checks. Production frontend
 builds use `bun run build` in the Shell and each changed remote.
+Run `pwsh -NoProfile -File tests/phase3/Smoke.ps1` against the Compose stack
+with MailDev enabled to exercise profile, tenant catalog, time entry, leave,
+access control, and month locking through Gateway.
 
 ## Phase 4 reporting foundation (in progress)
 

@@ -38,11 +38,11 @@ review passed before the `develop` merge; this is not a release.
 
 ## Phase 3 — Timesheet Core
 
-Implementation status (2026-10-07): a feature branch contains tenant-scoped
-timesheet models and APIs, account profiles, migrations, month snapshots,
-audits/outbox events, and the Shell plus three product remotes. Unit and build
-checks pass. Compose runtime validation is pending because the Docker daemon
-was unavailable; the `develop` validation gate remains open.
+Implementation status (2026-10-07): tenant-scoped timesheet models and APIs,
+account profiles, migrations, month snapshots, audit records, confirmed RabbitMQ
+outbox delivery, and the Shell plus three product remotes are implemented.
+Solution tests, frontend builds, Compose health, and Phase 2/3 Gateway smoke
+tests passed before the `develop` merge.
 
 1. Implement profile fields (first name, last name, photo, job title), tenant holidays, leave entries, shared projects/categories, personal tasks, and optional Kanban status.
 2. Implement responsive table-first time entry: inline row editing, historical browsing, drag-in task tray, overnight time calculation, validation, and current-month-only mutation rules.

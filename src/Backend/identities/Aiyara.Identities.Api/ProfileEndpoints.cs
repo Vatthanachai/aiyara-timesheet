@@ -16,7 +16,8 @@ public static class ProfileEndpoints
             var account = await AuthenticatedAccount(context, db, tokens, scope);
             if (account is null || scope.TenantId != tenantId) return Results.Unauthorized();
             var membership = await db.Memberships.SingleAsync(x => x.AccountId == account.Id);
-            if (membership.Role != TenantRole.TenantAdmin) return Results.Forbid();
+            if (membership.Role != TenantRole.TenantAdmin)
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             var tenant = await db.Tenants.SingleAsync();
             return Results.Ok(new { minimumLength = tenant.PasswordMinimumLength,
                 expiryDays = tenant.PasswordExpiryDays, requireUppercase = tenant.PasswordRequireUppercase,

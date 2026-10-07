@@ -11,7 +11,7 @@ onMounted(restore)
       <NuxtLink class="brand" to="/">Aiyara Timesheet</NuxtLink>
       <nav aria-label="Primary navigation" class="navigation">
         <NuxtLink v-for="item in navigation" :key="item.id" :to="item.path">
-          {{ item.label }}
+          {{ locale === 'th' ? item.label : item.labelEn }}
         </NuxtLink>
       </nav>
       <div class="header-actions">

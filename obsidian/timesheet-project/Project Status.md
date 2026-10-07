@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 7 October 2026. Phases 0–2 are complete. Phase 3 implementation is on `feature/phase-three-timesheet-core`; Phase 4 reporting remains in progress. See [[Development Roadmap]].
+> Updated 7 October 2026. Phases 0–3 are complete; Phase 4 reporting remains in progress. See [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
@@ -100,22 +100,24 @@
   and Obsidian links passed. The feature diff was reviewed against the roadmap
   and repository standards before merge into `develop`.
 
-## Phase 3 — Timesheet Core (feature branch)
+## Phase 3 — Timesheet Core (complete)
 
 - Identity stores editable first/last name, HTTPS photo URL, and job title;
   its profile API verifies tenant membership and current session version.
 - Timesheet owns tenant-filtered projects, categories, holidays, personal tasks,
   leave and time entries. Employees can edit only their own current-month data
-  using the tenant timezone validated by Identity. Soft deletion, audit data,
-  durable month-change events, month locking, and immutable per-person month
-  snapshots are implemented with migrations and Phase 3 unit tests.
+  using the tenant timezone validated by Identity in both Gateway and Timesheet.
+  Soft deletion, audit data, confirmed RabbitMQ month-change events, month
+  locking, and immutable per-person month snapshots are implemented with
+  migrations and Phase 3 unit tests.
 - The Shell embeds Identity/Profile, Timesheet and Administration remotes.
   Thai/English controls, responsive time table, inline editing, task drag-in,
   leave management and tenant catalog/policy screens are implemented.
-- Solution tests pass 33/33 and the changed frontend production builds pass.
-  Docker runtime smoke remains unverified because the local Docker daemon was
-  unavailable during this branch's validation. Report-event dispatch and
-  consumption belong to Phase 4.
+- Primary validation on 7 October 2026: solution tests 34/34, four changed
+  frontend production builds, Compose configuration and all 17 service health
+  checks, Phase 2 and Phase 3 Gateway smoke tests, direct Timesheet header
+  spoof rejection, RabbitMQ delivery and outbox publish state, and
+  `git diff --check` passed. Report-event consumption belongs to Phase 4.
 
 ## Not Yet Implemented
 
