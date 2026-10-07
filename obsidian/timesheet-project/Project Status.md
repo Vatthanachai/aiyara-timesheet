@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 7 October 2026. Phases 0–5 are implemented and validated on `feature/phase-five-observability`; Phase 5 is ready for primary-agent review and merge. See [[Development Roadmap]].
+> Updated 7 October 2026. Phases 0–5 are implemented and validated on `develop`. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
@@ -93,12 +93,22 @@
   delivery outcomes without recording the secret. Phase 2 unit tests pass
   11/11; Compose smoke covers registration, invitation, activation, login,
   refresh replay, logout, reset, policy migration, and rate limiting.
+- Login uses a unique seven-character organization code (four-character
+  organization prefix plus three digits) with email and password. `AIYA001` is
+  reserved for Platform Admin. Identity returns the internal tenant GUID after
+  login for session and service calls; new Identity entity GUIDs use the shared
+  UUIDv8 generator with random region/shard IDs from 1–9. Existing tenant codes
+  are backfilled by migration `AddTenantOrganizationCode`.
 - Primary-agent validation on 6 October 2026: solution build passed with no
   errors (74 existing utility warnings); Phase 1/2 tests passed 18/18;
   Identity migrations have no pending model changes; Compose configuration,
   Phase 1 and Phase 2 smoke tests, container health, diff whitespace checks,
   and Obsidian links passed. The feature diff was reviewed against the roadmap
   and repository standards before merge into `develop`.
+- Follow-up merged to `develop` as `3891440`: organization-code login, tenant
+  code migration and uniqueness constraint, UUIDv8 Identity IDs, login UI and
+  session updates. Phase 1/2 tests, Identity API build, frontend production
+  build, and Playwright E2E passed.
 
 ## Phase 3 — Timesheet Core (complete)
 

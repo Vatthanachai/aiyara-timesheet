@@ -100,10 +100,11 @@ requests also have per-tenant-account limits in Redis (without storing email
 addresses in limiter keys).
 For onboarding, Identity generates both an internal tenant ID and a seven-
 character organization code. The code uses a four-character organization name
-prefix followed by three digits; it is returned once in the tenant creation
-response and is used for login. The tenant ID remains internal to sessions and
-service calls. An invitation's tenant ID is resolved from the stored hash,
-never from a caller-supplied header.
+prefix followed by three digits; it is included in the tenant creation response
+and is used for login. The tenant ID remains internal to sessions and service
+calls. New Identity GUIDs use the Component Abstractions UUIDv8 generator with
+cryptographically random region and shard IDs from 1 through 9. An invitation's
+tenant ID is resolved from the stored hash, never from a caller-supplied header.
 Tenant-owned Identity queries fail closed without an explicitly established
 `TenantScope`. Authenticated request scopes resolve only from validated
 principal claims; the bootstrap invitation route establishes its scope from the
