@@ -11,6 +11,23 @@ const remoteUrl = computed(() => {
 
   return config.public.remotes[remote.value.id]
 })
+const { token, tenantId, renew, restore } = useSession()
+const { locale } = useLocale()
+const frame = ref<HTMLIFrameElement | null>(null)
+let refreshTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  restore()
+  refreshTimer = setInterval(sendSession, 60_000)
+})
+onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
+async function sendSession() {
+  if (!import.meta.client || !frame.value || !remoteUrl.value) return
+  if (token.value) await renew()
+  frame.value.contentWindow?.postMessage({ type: 'aiyara.session', token: token.value,
+    locale: locale.value, tenantId: tenantId.value,
+    gatewayUrl: config.public.gatewayUrl }, new URL(remoteUrl.value).origin)
+}
+watch([token, locale], () => sendSession())
 
 if (!remote.value) {
   throw createError({ statusCode: 404, statusMessage: 'Remote application not found' })
@@ -18,14 +35,9 @@ if (!remote.value) {
 </script>
 
 <template>
-  <section v-if="remote" class="remote-delegation">
-    <p class="eyebrow">Route delegation</p>
+  <section v-if="remote && token" class="remote-workspace">
     <h1>{{ remote.label }}</h1>
-    <p>{{ remote.description }}</p>
-    <p class="notice">
-      This route is reserved for the independently deployed {{ remote.label }} remote. Configure its URL
-      using the matching <code>NUXT_PUBLIC_*_REMOTE_URL</code> environment variable.
-    </p>
-    <a v-if="remoteUrl" class="button" :href="remoteUrl">Open {{ remote.label }} remote</a>
+    <iframe v-if="remoteUrl" ref="frame" :src="remoteUrl" :title="remote.label" @load="sendSession" />
   </section>
+  <section v-else class="remote-delegation"><h1>{{ locale === 'th' ? 'กรุณาเข้าสู่ระบบ' : 'Please sign in' }}</h1><NuxtLink to="/">{{ locale === 'th' ? 'กลับหน้าแรก' : 'Go home' }}</NuxtLink></section>
 </template>

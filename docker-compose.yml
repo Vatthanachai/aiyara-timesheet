@@ -8,7 +8,7 @@ services:
         APP_DLL: Aiyara.Gateways.Api.dll
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      Cors__FrontendOrigin: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      Cors__FrontendOrigins: ${FRONTEND_ORIGIN:-http://localhost:3000},http://localhost:${TIMESHEET_REMOTE_PORT:-3002},http://localhost:${REPORTING_REMOTE_PORT:-3003},http://localhost:${ADMINISTRATION_REMOTE_PORT:-3004},http://localhost:${IDENTITY_PROFILE_REMOTE_PORT:-3005}
       Services__Identity__BaseUrl: http://identities-api:8080
       IdentityGrpc__Url: http://identities-api:8082
       Redis__ConnectionString: redis:6379,password=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
@@ -185,6 +185,7 @@ services:
       dockerfile: ../../app/Dockerfile
     environment:
       NITRO_PORT: 3002
+      NUXT_PUBLIC_SHELL_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
     ports:
       - "${TIMESHEET_REMOTE_PORT:-3002}:3002"
     healthcheck:
@@ -219,6 +220,7 @@ services:
       dockerfile: ../../app/Dockerfile
     environment:
       NITRO_PORT: 3004
+      NUXT_PUBLIC_SHELL_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
     ports:
       - "${ADMINISTRATION_REMOTE_PORT:-3004}:3004"
     healthcheck:
@@ -236,6 +238,7 @@ services:
       dockerfile: ../../app/Dockerfile
     environment:
       NITRO_PORT: 3005
+      NUXT_PUBLIC_SHELL_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
     ports:
       - "${IDENTITY_PROFILE_REMOTE_PORT:-3005}:3005"
     healthcheck:
@@ -251,6 +254,12 @@ services:
     build:
       context: ./src/Frontend/app
       dockerfile: Dockerfile
+    environment:
+      NUXT_PUBLIC_GATEWAY_URL: http://localhost:${GATEWAY_API_PORT:-8081}
+      NUXT_PUBLIC_IDENTITY_REMOTE_URL: http://localhost:${IDENTITY_PROFILE_REMOTE_PORT:-3005}
+      NUXT_PUBLIC_TIMESHEET_REMOTE_URL: http://localhost:${TIMESHEET_REMOTE_PORT:-3002}
+      NUXT_PUBLIC_REPORTING_REMOTE_URL: http://localhost:${REPORTING_REMOTE_PORT:-3003}
+      NUXT_PUBLIC_ADMINISTRATION_REMOTE_URL: http://localhost:${ADMINISTRATION_REMOTE_PORT:-3004}
     depends_on:
       gateway-api:
         condition: service_healthy

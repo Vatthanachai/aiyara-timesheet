@@ -143,6 +143,34 @@ pass `-MailDevUrl http://127.0.0.1:8080` for the default Compose profile.
 Pass `-BootstrapEmail address@example.test` to verify the optional Platform
 Admin bootstrap message without displaying its one-time password.
 
+## Phase 3 timesheet core
+
+The Shell on `FRONTEND_PORT` provides Thai/English navigation and a session-based
+login. Identity/Profile, Timesheet, and Administration run as separate remotes;
+the Shell embeds them and sends the active access token using an exact-origin
+`postMessage`. Configure the public ports in `.env` and use the Shell rather than
+opening a remote directly. The Gateway accepts requests from these remote
+origins. Access and refresh tokens are held in the Shell tab's session storage.
+
+The Timesheet API is reached through Gateway at `/api/v1/timesheets`. It exposes
+`/context`, `/catalog`, `/projects`, `/categories`, `/holidays`, `/tasks`,
+`/entries`, `/leave`, and `/months/{year}/{month}/lock` and `.../snapshot`.
+Gateway validates the Bearer token and forwards the validated tenant, account,
+role and timezone context. Project/category/holiday changes and month locking
+require Tenant Admin; employees can edit only their own entries and leave in
+the current tenant-local month. Past months and locked months are read only.
+An end time earlier than the start time records an overnight entry. Entries,
+leave, tasks and tenant catalog items are soft deleted. Audit records store the
+actor and before/after data. Month locks create immutable per-employee source
+snapshots and a durable Timesheet outbox event. Phase 4 will wire outbox
+delivery and consume those snapshots for generated reports.
+
+`GET/PUT /api/v1/identity/profile/me` manages first and last name, job title
+and an HTTPS photo URL. The admin remote also updates the existing tenant
+password policy endpoint. Run `dotnet test tests/Aiyara.Phase3.Tests/Aiyara.Phase3.Tests.csproj`
+for tenancy, duration, timezone and immutability checks. Production frontend
+builds use `bun run build` in the Shell and each changed remote.
+
 ## Phase 4 reporting foundation (in progress)
 
 The Reporting database now has tenant-scoped definitions, schedules, runs,

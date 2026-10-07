@@ -39,6 +39,13 @@ p { color: var(--color-muted); line-height: 1.6; }
 .remote-card:hover { border-color: var(--color-brand); transform: translateY(-2px); }
 .notice { background: #eaf1ff; border-radius: var(--radius-card); margin: var(--space-6) 0; padding: var(--space-4); }
 .button { background: var(--color-brand); border-radius: 0.5rem; color: white; display: inline-block; font-weight: 600; padding: 0.75rem 1rem; text-decoration: none; }
+.header-actions { display: flex; gap: .5rem; }
+button { cursor: pointer; }
+.header-actions button { border: 1px solid var(--color-border); border-radius: .4rem; background: white; padding: .4rem .7rem; }
+.login-card { display: grid; gap: .8rem; max-width: 28rem; background: white; border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-6); }
+.login-card label { display: grid; gap: .25rem; }
+.login-card input { border: 1px solid var(--color-border); border-radius: .4rem; font: inherit; padding: .6rem; }
+.remote-workspace iframe { border: 0; width: 100%; min-height: 75vh; }
 
 @media (max-width: 40rem) {
   .shell-header { align-items: flex-start; flex-direction: column; }

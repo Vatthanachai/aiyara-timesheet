@@ -28,6 +28,7 @@ message ValidateAccessTokenResponse {
   int64 session_version = 8;
   bool must_change_password = 9;
   int64 policy_version = 10;
+  string time_zone_id = 11;
 }
 
 message LookupProfileRequest {

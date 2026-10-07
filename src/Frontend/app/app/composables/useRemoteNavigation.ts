@@ -9,20 +9,26 @@ export interface RemoteNavigationItem {
 
 const navigation: readonly RemoteNavigationItem[] = [
   {
+    id: 'identity',
+    label: 'โปรไฟล์',
+    path: '/remote/identity',
+    description: 'จัดการข้อมูลส่วนตัว'
+  },
+  {
     id: 'timesheet',
-    label: 'Timesheet',
+    label: 'บันทึกเวลา',
     path: '/remote/timesheet',
     description: 'Record working time and manage personal tasks.'
   },
   {
     id: 'reporting',
-    label: 'Reports',
+    label: 'รายงาน',
     path: '/remote/reporting',
     description: 'View generated reports and signed documents.'
   },
   {
     id: 'administration',
-    label: 'Administration',
+    label: 'ตั้งค่า',
     path: '/remote/administration',
     description: 'Manage tenant settings, people, and policies.'
   }

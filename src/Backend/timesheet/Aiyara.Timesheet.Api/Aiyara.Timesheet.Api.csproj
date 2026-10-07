@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
     <ProjectReference Include="..\Aiyara.Timesheet.Databases\Aiyara.Timesheet.Databases.csproj" />
+    <ProjectReference Include="..\..\contracts\Aiyara.Timesheet.Contracts\Aiyara.Timesheet.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

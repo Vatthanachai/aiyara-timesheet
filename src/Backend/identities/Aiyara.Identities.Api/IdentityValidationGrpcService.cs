@@ -38,15 +38,31 @@ internal sealed class IdentityValidationGrpcService(
             TenantId = membership.TenantId.ToString(), TokenId = claims.TokenId,
             SessionVersion = account.SessionVersion,
             PolicyVersion = tenant.PasswordPolicyUpdatedAtUtc.Ticks / 10,
+            TimeZoneId = tenant.TimeZoneId,
             ExpiresAtUtc = Timestamp.FromDateTimeOffset(claims.ExpiresAtUtc),
             MustChangePassword = false,
             Roles = { membership.Role.ToString() }
         };
     }
 
-    public override Task<LookupProfileResponse> LookupProfile(
+    public override async Task<LookupProfileResponse> LookupProfile(
         LookupProfileRequest request, ServerCallContext context)
-        => Task.FromResult(new LookupProfileResponse { Found = false });
+    {
+        if (!Guid.TryParse(request.TenantId, out var tenantId) ||
+            !Guid.TryParse(request.SubjectId, out var subjectId)) return new LookupProfileResponse();
+        tenantScope.TenantId = tenantId;
+        var membership = await db.Memberships.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.AccountId == subjectId && x.Status == MembershipStatus.Active,
+                context.CancellationToken);
+        if (membership is null) return new LookupProfileResponse();
+        var account = await db.Accounts.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == subjectId, context.CancellationToken);
+        if (account is null) return new LookupProfileResponse();
+        return new LookupProfileResponse { Found = true, TenantId = tenantId.ToString(),
+            SubjectId = subjectId.ToString(), Email = account.Email,
+            FirstName = account.FirstName, LastName = account.LastName,
+            IsActive = true, Roles = { membership.Role.ToString() } };
+    }
 
     private static ValidateAccessTokenResponse Invalid(string reason) => new()
     {

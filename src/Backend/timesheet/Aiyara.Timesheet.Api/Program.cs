@@ -1,4 +1,5 @@
 using Aiyara.Timesheet.Databases;
+using Aiyara.Timesheet.Api;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddTcpDependencyHealthCheck("Postgres", 5432);
 builder.AddTcpDependencyHealthCheck("Redis", 6379);
+builder.Services.AddScoped<TimesheetTenantScope>();
 builder.Services.AddDbContext<TimesheetDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("TimesheetDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TimesheetDb is required.")));
@@ -38,8 +40,16 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.Use(async (context, next) =>
+{
+    var scope = context.RequestServices.GetRequiredService<TimesheetTenantScope>();
+    if (Guid.TryParse(context.Request.Headers["X-Tenant-Id"], out var tenantId))
+        scope.TenantId = tenantId;
+    await next();
+});
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapTimesheetEndpoints();
 
 app.Run();

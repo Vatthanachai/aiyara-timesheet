@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 6 October 2026. Phases 0–2 are complete; Phase 4 reporting foundation is in progress while Phase 3 time-entry work remains pending. See [[Development Roadmap]].
+> Updated 7 October 2026. Phases 0–2 are complete. Phase 3 implementation is on `feature/phase-three-timesheet-core`; Phase 4 reporting remains in progress. See [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
@@ -100,15 +100,31 @@
   and Obsidian links passed. The feature diff was reviewed against the roadmap
   and repository standards before merge into `develop`.
 
+## Phase 3 — Timesheet Core (feature branch)
+
+- Identity stores editable first/last name, HTTPS photo URL, and job title;
+  its profile API verifies tenant membership and current session version.
+- Timesheet owns tenant-filtered projects, categories, holidays, personal tasks,
+  leave and time entries. Employees can edit only their own current-month data
+  using the tenant timezone validated by Identity. Soft deletion, audit data,
+  durable month-change events, month locking, and immutable per-person month
+  snapshots are implemented with migrations and Phase 3 unit tests.
+- The Shell embeds Identity/Profile, Timesheet and Administration remotes.
+  Thai/English controls, responsive time table, inline editing, task drag-in,
+  leave management and tenant catalog/policy screens are implemented.
+- Solution tests pass 33/33 and the changed frontend production builds pass.
+  Docker runtime smoke remains unverified because the local Docker daemon was
+  unavailable during this branch's validation. Report-event dispatch and
+  consumption belong to Phase 4.
+
 ## Not Yet Implemented
 
 - Phase 4 has started with reporting data models and calendar rules; Quartz,
   RabbitMQ dispatch, PDF/XLSX generation, RustFS storage, signed upload, and
   Reports UI remain pending. Phase 3 time-entry snapshots are a prerequisite
   for meaningful generated reports.
-- Time-entry and approval domain models/endpoints, and reporting generation endpoints.
-- Frontend product screens, API client integration, and end-to-end flows.
-- Frontend API integration and product workflows.
+- Approval workflows and reporting generation endpoints.
+- Automated frontend end-to-end flows.
 - Application clients for RabbitMQ and RustFS beyond dependency probes.
 - Domain and end-to-end test suites for later phases.
 

@@ -20,6 +20,24 @@ public sealed class ContractTests
         Assert.Equal(3, ValidateAccessTokenResponse.Descriptor.FindFieldByName("tenant_id").FieldNumber);
         Assert.Equal(9, ValidateAccessTokenResponse.Descriptor.FindFieldByName("must_change_password").FieldNumber);
         Assert.Equal(10, ValidateAccessTokenResponse.Descriptor.FindFieldByName("policy_version").FieldNumber);
+        Assert.Equal(11, ValidateAccessTokenResponse.Descriptor.FindFieldByName("time_zone_id").FieldNumber);
+    }
+
+    [Fact]
+    public void Timesheet_events_identify_the_tenant_subject_and_local_month()
+    {
+        var tenantId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        var changed = new TimesheetMonthChangedV1(tenantId, subjectId, 2026, 10);
+        var envelope = new MessageEnvelope<TimesheetMonthChangedV1>(Guid.NewGuid(), Guid.NewGuid(),
+            "month:2026-10", tenantId, DateTime.UtcNow, MessageTypes.TimesheetMonthChanged, changed);
+        var copy = JsonSerializer.Deserialize<MessageEnvelope<TimesheetMonthChangedV1>>(
+            JsonSerializer.Serialize(envelope));
+        Assert.NotNull(copy);
+        Assert.Equal(tenantId, copy.TenantId);
+        Assert.Equal(subjectId, copy.Payload.SubjectId);
+        Assert.Equal(2026, copy.Payload.Year);
+        Assert.Equal(10, copy.Payload.Month);
     }
 
     [Fact]

@@ -6,6 +6,8 @@ public static class MessageTypes
     public const string InvitationIssued = "identity.invitation-issued.v1";
     public const string TenantMemberJoined = "identity.tenant-member-joined.v1";
     public const string ReportGenerationRequested = "reporting.report-generation-requested.v1";
+    public const string TimesheetMonthChanged = "timesheet.month.changed.v1";
+    public const string TimesheetMonthLocked = "timesheet.month.locked.v1";
 }
 
 public sealed record MessageEnvelope<TPayload>(
@@ -24,3 +26,7 @@ public sealed record InvitationIssuedV1(Guid InvitationId, Guid TenantId, string
 public sealed record TenantMemberJoinedV1(Guid TenantId, Guid AccountId, string Role);
 
 public sealed record ReportGenerationRequestedV1(Guid TenantId, Guid ReportRunId, string ReportType);
+
+public sealed record TimesheetMonthChangedV1(Guid TenantId, Guid SubjectId, int Year, int Month);
+
+public sealed record TimesheetMonthLockedV1(Guid TenantId, int Year, int Month);

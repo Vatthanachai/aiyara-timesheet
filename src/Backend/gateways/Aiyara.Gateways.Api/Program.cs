@@ -20,6 +20,8 @@ builder.Services.AddReverseProxy()
     {
         transformBuilder.AddRequestHeaderRemove("X-Tenant-Id");
         transformBuilder.AddRequestHeaderRemove("X-User-Id");
+        transformBuilder.AddRequestHeaderRemove("X-Role");
+        transformBuilder.AddRequestHeaderRemove("X-Time-Zone-Id");
         transformBuilder.AddRequestHeaderRemove("X-Onboarding-Key");
         if (transformBuilder.Route.AuthorizationPolicy == "TenantMember")
         {
@@ -29,6 +31,12 @@ builder.Services.AddReverseProxy()
                 if (tenantId is not null)
                 {
                     context.ProxyRequest.Headers.TryAddWithoutValidation("X-Tenant-Id", tenantId);
+                    context.ProxyRequest.Headers.TryAddWithoutValidation("X-User-Id",
+                        context.HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
+                    context.ProxyRequest.Headers.TryAddWithoutValidation("X-Role",
+                        context.HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value);
+                    context.ProxyRequest.Headers.TryAddWithoutValidation("X-Time-Zone-Id",
+                        context.HttpContext.User.FindFirst("time_zone_id")?.Value);
                 }
                 return ValueTask.CompletedTask;
             });
@@ -48,7 +56,9 @@ builder.Services.AddSingleton(_ => new IdentityOnboardingClient(new HttpClient
         ?? throw new InvalidOperationException("Services:Identity:BaseUrl is required."))
 }));
 builder.Services.AddCors(options => options.AddPolicy("frontend", policy => policy
-    .WithOrigins(builder.Configuration["Cors:FrontendOrigin"] ?? "http://localhost:3000")
+    .WithOrigins((builder.Configuration["Cors:FrontendOrigins"] ??
+        "http://localhost:3000,http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:3005")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
     .AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddRateLimiter(options =>
 {

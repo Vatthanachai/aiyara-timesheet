@@ -10,6 +10,6 @@ public sealed class TimesheetDbContextFactory : IDesignTimeDbContextFactory<Time
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__TimesheetDb")
             ?? throw new InvalidOperationException("Set ConnectionStrings__TimesheetDb for design-time operations.");
         var options = new DbContextOptionsBuilder<TimesheetDbContext>().UseNpgsql(connectionString).Options;
-        return new TimesheetDbContext(options);
+        return new TimesheetDbContext(options, new TimesheetTenantScope());
     }
 }

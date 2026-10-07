@@ -1,6 +1,7 @@
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Services.Onboarding;
 using Aiyara.Identities.Services.Authentication;
+using Aiyara.Identities.Api;
 using Aiyara.Timesheet.Component.Abstractions.Securities;
 using Aiyara.Timesheet.Component.Abstractions.Securities.Options;
 using Aiyara.Timesheet.Contracts.Onboarding.V1;
@@ -92,6 +93,7 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
+app.MapProfileEndpoints();
 app.MapGrpcService<IdentityValidationGrpcService>();
 
 var onboarding = app.MapGroup("/api/v1").WithTags("Onboarding");

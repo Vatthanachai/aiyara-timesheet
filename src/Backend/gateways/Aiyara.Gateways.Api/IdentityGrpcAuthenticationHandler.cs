@@ -52,6 +52,7 @@ internal sealed class IdentityGrpcAuthenticationHandler(
         {
             new(ClaimTypes.NameIdentifier, validation.SubjectId),
             new("tenant_id", validation.TenantId),
+            new("time_zone_id", validation.TimeZoneId),
             new("token_id", validation.TokenId),
             new("session_version", validation.SessionVersion.ToString())
         };
