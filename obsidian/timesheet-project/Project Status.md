@@ -156,8 +156,8 @@
   Quartz, report runs, and RustFS failures still need instrumentation and
   dashboard coverage. Compose does not include a trace collector/backend.
   Validation on 7 October 2026: all six backend processes appeared in
-  Prometheus request and memory metrics; Grafana loaded the provisioned
-  four-panel dashboard; an isolated clean-volume Compose stack passed
+  Prometheus request, memory, and readiness metrics; Grafana loaded the
+  provisioned five-panel dashboard; an isolated clean-volume Compose stack passed
   `tests/platform/Smoke.ps1` with all 17 core containers healthy; solution
   tests passed 40/40, and `tests/phase5/Smoke.ps1` passed. The default Compose
   project could not reuse its existing PostgreSQL volume because its stored
