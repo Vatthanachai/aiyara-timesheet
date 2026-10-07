@@ -159,6 +159,8 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   const now = new Date()
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const entryDate = `${currentMonth}-03`
+  const firstWeekendDate = Array.from({ length: 31 }, (_, index) => `${currentMonth}-${String(index + 1).padStart(2, '0')}`)
+    .find(date => [0, 6].includes(new Date(`${date}T12:00:00`).getDay()))!
   const corsHeaders = {
     'access-control-allow-origin': 'http://127.0.0.1:3102',
     'access-control-allow-headers': 'authorization,content-type',
@@ -226,6 +228,9 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   await expect(timesheet.getByRole('heading', { name: 'บันทึกเวลาทำงาน' })).toBeVisible()
   await expect(timesheet.locator('.summary-hours strong')).toContainText('1.50')
   await expect(timesheet.getByText('วางแผนงานประจำสัปดาห์')).toBeVisible()
+  const weekendCell = timesheet.locator(`.day-button[aria-label="วันที่ ${firstWeekendDate}"]`)
+  await expect(weekendCell).toHaveClass(/weekend/)
+  await expect.poll(() => weekendCell.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(255, 221, 204)')
   await expect(timesheet.locator(`.day-button[aria-label="วันที่ ${currentMonth}-04"] .leave-marker`)).toHaveCount(1)
   await expect(timesheet.locator(`.day-button[aria-label="วันที่ ${currentMonth}-05"] .holiday-marker`)).toHaveCount(1)
   await timesheet.getByRole('button', { name: `วันที่ ${entryDate}` }).click()

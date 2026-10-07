@@ -28,6 +28,10 @@ const locked = ref(false)
 const canEdit = computed(() => month.value === currentMonth.value && !locked.value)
 const days = computed(() => Array.from({ length: new Date(Number(month.value.slice(0, 4)), Number(month.value.slice(5)), 0).getDate() },
   (_, index) => `${month.value}-${String(index + 1).padStart(2, '0')}`))
+const weekendDays = computed(() => new Set(days.value.filter(day => {
+  const weekday = new Date(`${day}T12:00:00`).getDay()
+  return weekday === 0 || weekday === 6
+})))
 const calendarCells = computed(() => [
   ...Array.from({ length: new Date(Number(month.value.slice(0, 4)), Number(month.value.slice(5)) - 1, 1).getDay() }, () => null),
   ...days.value
@@ -221,7 +225,7 @@ async function updateLeave(leave: Leave) {
             <div class="calendar-grid" :aria-label="text.chooseDay">
               <span v-for="(weekday, index) in weekdayLabels" :key="index" class="weekday">{{ weekday }}</span>
               <span v-for="(day, index) in calendarCells" :key="day || `blank-${index}`" class="calendar-cell">
-                <button v-if="day" type="button" class="day-button" :class="{ selected: form.date === day, 'has-entry': daysWithEntries.has(day), 'has-leave': daysWithLeave.has(day), holiday: daysWithHoliday.has(day) }" :aria-pressed="form.date === day" :aria-label="`${text.date} ${day}`" @click="form.date = day" @dragover.prevent @drop.prevent="dropTask($event, day)"><span>{{ Number(day.slice(-2)) }}</span><i v-if="daysWithEntries.has(day) || daysWithLeave.has(day) || daysWithHoliday.has(day)" class="day-markers" aria-hidden="true"><b v-if="daysWithEntries.has(day)" class="entry-marker"></b><b v-if="daysWithLeave.has(day)" class="leave-marker"></b><b v-if="daysWithHoliday.has(day)" class="holiday-marker"></b></i></button>
+                <button v-if="day" type="button" class="day-button" :class="{ selected: form.date === day, weekend: weekendDays.has(day), 'has-entry': daysWithEntries.has(day), 'has-leave': daysWithLeave.has(day), holiday: daysWithHoliday.has(day) }" :aria-pressed="form.date === day" :aria-label="`${text.date} ${day}`" @click="form.date = day" @dragover.prevent @drop.prevent="dropTask($event, day)"><span>{{ Number(day.slice(-2)) }}</span><i v-if="daysWithEntries.has(day) || daysWithLeave.has(day) || daysWithHoliday.has(day)" class="day-markers" aria-hidden="true"><b v-if="daysWithEntries.has(day)" class="entry-marker"></b><b v-if="daysWithLeave.has(day)" class="leave-marker"></b><b v-if="daysWithHoliday.has(day)" class="holiday-marker"></b></i></button>
               </span>
             </div>
           </section>
@@ -484,6 +488,9 @@ body {
 .day-button.holiday:not(.selected) {
   border-color: #f0d7ad;
   background: #fffaf1;
+}
+.day-button.weekend:not(.selected) {
+  background: #ffddcc;
 }
 .day-markers {
   display: flex;
