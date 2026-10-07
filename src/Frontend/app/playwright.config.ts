@@ -15,7 +15,8 @@ export default defineConfig({
       url: 'http://127.0.0.1:3100',
       env: {
         NUXT_PUBLIC_GATEWAY_URL: 'http://127.0.0.1:3100',
-        NUXT_PUBLIC_IDENTITY_REMOTE_URL: 'http://127.0.0.1:3105'
+        NUXT_PUBLIC_IDENTITY_REMOTE_URL: 'http://127.0.0.1:3105',
+        NUXT_PUBLIC_TIMESHEET_REMOTE_URL: 'http://127.0.0.1:3102'
       },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000
@@ -23,6 +24,13 @@ export default defineConfig({
     {
       command: 'bun run --cwd ../remotes/identity-profile nuxt dev --host 127.0.0.1 --port 3105',
       url: 'http://127.0.0.1:3105',
+      env: { NUXT_PUBLIC_SHELL_ORIGIN: 'http://127.0.0.1:3100' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000
+    },
+    {
+      command: 'bun run --cwd ../remotes/timesheet nuxt dev --host 127.0.0.1 --port 3102',
+      url: 'http://127.0.0.1:3102',
       env: { NUXT_PUBLIC_SHELL_ORIGIN: 'http://127.0.0.1:3100' },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000

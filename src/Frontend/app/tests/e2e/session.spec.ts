@@ -155,6 +155,90 @@ test('profile settings previews and uploads an image then refreshes the shell av
   await expect(page.locator('.profile-trigger .profile-avatar')).toHaveAttribute('src', /^blob:/)
 })
 
+test('timesheet gives a clear month summary, quick date selection, and a responsive time form', async ({ page }) => {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const entryDate = `${currentMonth}-03`
+  const corsHeaders = {
+    'access-control-allow-origin': 'http://127.0.0.1:3102',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  let savedEntry: Record<string, unknown> | null = null
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: corsHeaders })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/auth/login')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({
+        accessToken: 'timesheet-token', refreshToken: 'timesheet-refresh',
+        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+        refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+        mustChangePassword: false, tenantId, role: 'TenantAdmin'
+      }) })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/entries')) {
+      if (request.method() === 'POST') {
+        savedEntry = request.postDataJSON()
+        await route.fulfill({ status: 201, headers: corsHeaders })
+      } else {
+        const sample = { id: 'entry-1', date: entryDate, startTime: '09:00:00', endTime: '10:30:00', durationMinutes: 90, taskName: 'วางแผนงานประจำสัปดาห์', detail: null, notes: null, projectId: null, categoryId: null, personalTaskId: null }
+        await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(savedEntry ? [sample, { ...sample, id: 'entry-2', ...savedEntry, durationMinutes: 60 }] : [sample]) })
+      }
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/tasks')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: '[]' })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/leave')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: '[]' })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({ projects: [], categories: [], holidays: [] }) })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/context')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({ currentMonth, locked: false }) })
+      return
+    }
+    await route.fulfill({ status: 404, headers: corsHeaders })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('รหัสองค์กร').fill(organizationCode)
+  await page.getByLabel('อีเมล').fill('admin@example.test')
+  await page.getByLabel('รหัสผ่าน').fill('test-password')
+  await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()
+  await page.getByRole('link', { name: /บันทึกเวลา.*บันทึกเวลาทำงาน/ }).click()
+
+  const timesheet = page.frameLocator('iframe')
+  await expect(timesheet.getByRole('heading', { name: 'บันทึกเวลาทำงาน' })).toBeVisible()
+  await expect(timesheet.locator('.summary-hours strong')).toContainText('1.50')
+  await expect(timesheet.getByText('วางแผนงานประจำสัปดาห์')).toBeVisible()
+  await timesheet.getByRole('button', { name: `วันที่ ${entryDate}` }).click()
+  await expect(timesheet.locator('.day-button[aria-pressed="true"]')).toHaveAttribute('aria-label', `วันที่ ${entryDate}`)
+  await timesheet.getByLabel('งาน', { exact: true }).first().fill('ตรวจสอบ UX ของระบบ')
+  await timesheet.getByLabel('เริ่ม', { exact: true }).fill('13:00')
+  await timesheet.getByLabel('สิ้นสุด', { exact: true }).fill('14:00')
+  await expect(timesheet.locator('.duration-pill')).toContainText('1.00')
+
+  for (const width of [768, 375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await expect(timesheet.locator('.entry-panel .primary-button')).toBeVisible()
+  }
+  await timesheet.locator('.entry-panel .primary-button').click()
+  await expect.poll(() => savedEntry).toMatchObject({ date: entryDate, startTime: '13:00:00', endTime: '14:00:00', taskName: 'ตรวจสอบ UX ของระบบ' })
+  await expect(timesheet.locator('tbody')).toContainText('ตรวจสอบ UX ของระบบ')
+})
+
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {
   await page.route('**/api/v1/auth/login', route => route.fulfill({
     status: 401,
