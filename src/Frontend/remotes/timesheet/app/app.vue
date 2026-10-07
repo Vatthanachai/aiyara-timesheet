@@ -38,9 +38,11 @@ const weekdayLabels = computed(() => locale.value === 'th'
 const monthLabel = computed(() => new Intl.DateTimeFormat(locale.value === 'th' ? 'th-TH' : 'en', {
   month: 'long', year: 'numeric'
 }).format(new Date(`${month.value}-01T12:00:00`)))
+const monthStart = computed(() => `${month.value}-01`)
+const monthEnd = computed(() => `${month.value}-${new Date(Number(month.value.slice(0, 4)), Number(month.value.slice(5)), 0).getDate()}`)
 const totalHours = computed(() => entries.value.reduce((total, entry) => total + entry.durationMinutes, 0) / 60)
-const activeDays = computed(() => new Set(entries.value.map(entry => entry.date)).size)
 const daysWithEntries = computed(() => new Set(entries.value.map(entry => entry.date)))
+const activeDays = computed(() => daysWithEntries.value.size)
 const daysWithLeave = computed(() => new Set(leaves.value.map(leave => leave.date)))
 const daysWithHoliday = computed(() => new Set(catalog.value.holidays.filter(holiday => holiday.date.startsWith(month.value)).map(holiday => holiday.date)))
 const durationPreview = computed(() => {
@@ -54,7 +56,7 @@ const text = computed(() => locale.value === 'th' ? {
 } : {
   title: 'Time entries', month: 'Month', task: 'Task', date: 'Date', start: 'Start', end: 'End', duration: 'Hours', detail: 'Detail', notes: 'Notes', project: 'Project', category: 'Category', save: 'Save', cancel: 'Cancel', edit: 'Edit', remove: 'Delete', add: 'Add entry', tasks: 'Personal tasks', leaves: 'Leave', kind: 'Kind', readOnly: 'Past months are read only', noEntries: 'No entries yet', status: 'Status', drop: 'Drag a task here to start an entry', chooseDay: 'Choose a day', use: 'Use', todo: 'To do', doing: 'Doing', done: 'Done', annual: 'Annual', sick: 'Sick', other: 'Other', holidays: 'Holidays', signIn: 'Please sign in through Aiyara Shell'
 })
-const ux = computed(() => locale.value === 'th' ? {
+const labels = computed(() => locale.value === 'th' ? {
   hoursLogged: 'ชั่วโมงที่บันทึก', daysTracked: 'วันที่มีรายการ', leaveDays: 'วันลา',
   previousMonth: 'เดือนก่อนหน้า', nextMonth: 'เดือนถัดไป', selectedDate: 'วันที่เลือก',
   estimate: 'รวมเวลารายการนี้', entryList: 'รายการเวลาทำงาน', allMonth: 'สรุปของเดือน',
@@ -195,9 +197,9 @@ async function updateLeave(leave: Leave) {
       <header class="page-heading">
         <div><span class="eyebrow">AIYARA · WORKSPACE</span><h1>{{ text.title }}</h1><p>{{ locale === 'th' ? 'บันทึกและติดตามเวลาทำงานของคุณในที่เดียว' : 'Log and review your work time in one place.' }}</p></div>
         <div class="month-control" :aria-label="text.month">
-          <button class="icon-button" type="button" :aria-label="ux.previousMonth" @click="moveMonth(-1)">‹</button>
+          <button class="icon-button" type="button" :aria-label="labels.previousMonth" @click="moveMonth(-1)">‹</button>
           <label class="month-picker"><span>{{ text.month }}</span><input v-model="month" type="month" /></label>
-          <button class="icon-button" type="button" :aria-label="ux.nextMonth" @click="moveMonth(1)">›</button>
+          <button class="icon-button" type="button" :aria-label="labels.nextMonth" @click="moveMonth(1)">›</button>
         </div>
       </header>
 
@@ -205,44 +207,44 @@ async function updateLeave(leave: Leave) {
       <p v-if="error" role="alert" class="feedback error">{{ error }}</p>
       <p v-if="notice" role="status" class="feedback success">{{ notice }}</p>
 
-      <section class="summary-grid" :aria-label="ux.allMonth">
-        <article class="summary-card summary-hours"><span class="summary-icon" aria-hidden="true">◷</span><div><p>{{ ux.hoursLogged }}</p><strong>{{ totalHours.toFixed(2) }} <small>{{ text.duration }}</small></strong></div></article>
-        <article class="summary-card"><span class="summary-icon" aria-hidden="true">▤</span><div><p>{{ text.entryList }}</p><strong>{{ entries.length }}</strong></div></article>
-        <article class="summary-card"><span class="summary-icon" aria-hidden="true">▦</span><div><p>{{ ux.daysTracked }}</p><strong>{{ activeDays }}</strong></div></article>
-        <article class="summary-card"><span class="summary-icon" aria-hidden="true">☼</span><div><p>{{ ux.leaveDays }}</p><strong>{{ leaves.length }}</strong></div></article>
+      <section class="summary-grid" :aria-label="labels.allMonth">
+        <article class="summary-card summary-hours"><span class="summary-icon" aria-hidden="true">◷</span><div><p>{{ labels.hoursLogged }}</p><strong>{{ totalHours.toFixed(2) }} <small>{{ text.duration }}</small></strong></div></article>
+        <article class="summary-card"><span class="summary-icon" aria-hidden="true">▤</span><div><p>{{ labels.entryList }}</p><strong>{{ entries.length }}</strong></div></article>
+        <article class="summary-card"><span class="summary-icon" aria-hidden="true">▦</span><div><p>{{ labels.daysTracked }}</p><strong>{{ activeDays }}</strong></div></article>
+        <article class="summary-card"><span class="summary-icon" aria-hidden="true">☼</span><div><p>{{ labels.leaveDays }}</p><strong>{{ leaves.length }}</strong></div></article>
       </section>
 
       <div class="work-layout">
         <div class="main-column">
           <section v-if="canEdit" class="panel calendar-panel">
-            <div class="panel-heading"><div><span class="eyebrow">{{ ux.selectedDate }}</span><h2>{{ monthLabel }}</h2></div><div class="calendar-legend"><span><i class="legend-work"></i>{{ text.entryList }}</span><span><i class="legend-leave"></i>{{ text.leaves }}</span></div></div>
+            <div class="panel-heading"><div><span class="eyebrow">{{ labels.selectedDate }}</span><h2>{{ monthLabel }}</h2></div><div class="calendar-legend"><span><i class="legend-work"></i>{{ labels.entryList }}</span><span><i class="legend-leave"></i>{{ text.leaves }}</span></div></div>
             <div class="calendar-grid" :aria-label="text.chooseDay">
               <span v-for="(weekday, index) in weekdayLabels" :key="index" class="weekday">{{ weekday }}</span>
               <span v-for="(day, index) in calendarCells" :key="day || `blank-${index}`" class="calendar-cell">
-                <button v-if="day" type="button" class="day-button" :class="{ selected: form.date === day, 'has-entry': daysWithEntries.has(day), 'has-leave': daysWithLeave.has(day), holiday: daysWithHoliday.has(day) }" :aria-pressed="form.date === day" :aria-label="`${text.date} ${day}`" @click="form.date = day" @dragover.prevent @drop.prevent="dropTask($event, day)"><span>{{ Number(day.slice(-2)) }}</span><i v-if="daysWithEntries.has(day) || daysWithLeave.has(day) || daysWithHoliday.has(day)" class="day-markers" aria-hidden="true"><b v-if="daysWithEntries.has(day)"></b><b v-if="daysWithLeave.has(day)"></b><b v-if="daysWithHoliday.has(day)"></b></i></button>
+                <button v-if="day" type="button" class="day-button" :class="{ selected: form.date === day, 'has-entry': daysWithEntries.has(day), 'has-leave': daysWithLeave.has(day), holiday: daysWithHoliday.has(day) }" :aria-pressed="form.date === day" :aria-label="`${text.date} ${day}`" @click="form.date = day" @dragover.prevent @drop.prevent="dropTask($event, day)"><span>{{ Number(day.slice(-2)) }}</span><i v-if="daysWithEntries.has(day) || daysWithLeave.has(day) || daysWithHoliday.has(day)" class="day-markers" aria-hidden="true"><b v-if="daysWithEntries.has(day)" class="entry-marker"></b><b v-if="daysWithLeave.has(day)" class="leave-marker"></b><b v-if="daysWithHoliday.has(day)" class="holiday-marker"></b></i></button>
               </span>
             </div>
           </section>
 
           <section v-if="canEdit && !editingId" class="panel entry-panel" @dragover.prevent @drop.prevent="dropTask($event)">
-            <div class="panel-heading"><div><span class="eyebrow">{{ text.add }}</span><h2>{{ ux.selectedDate }} · {{ form.date }}</h2></div><span v-if="durationPreview" class="duration-pill">{{ ux.estimate }} <strong>{{ durationPreview }}</strong></span></div>
+            <div class="panel-heading"><div><span class="eyebrow">{{ text.add }}</span><h2>{{ labels.selectedDate }} · {{ form.date }}</h2></div><span v-if="durationPreview" class="duration-pill">{{ labels.estimate }} <strong>{{ durationPreview }}</strong></span></div>
             <p class="subtle-hint">{{ text.drop }}</p>
             <form class="entry-grid" @submit.prevent="saveEntry">
-              <label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" :placeholder="ux.taskPlaceholder" /></label>
+              <label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" :placeholder="labels.taskPlaceholder" /></label>
               <div class="time-fields"><label>{{ text.start }}<input v-model="form.startTime" type="time" required /></label><span aria-hidden="true">→</span><label>{{ text.end }}<input v-model="form.endTime" type="time" required /></label></div>
-              <label>{{ text.date }}<input v-model="form.date" type="date" required :min="`${month}-01`" :max="`${month}-${new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()}`" /></label>
+              <label>{{ text.date }}<input v-model="form.date" type="date" required :min="monthStart" :max="monthEnd" /></label>
               <label>{{ text.project }}<select v-model="form.projectId"><option value="">—</option><option v-for="project in catalog.projects" :key="project.id" :value="project.id">{{ project.name }}</option></select></label>
               <label>{{ text.category }}<select v-model="form.categoryId"><option value="">—</option><option v-for="category in catalog.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>
-              <label>{{ text.detail }}<input v-model="form.detail" maxlength="4000" :placeholder="ux.detailPlaceholder" /></label>
-              <label class="field-wide">{{ text.notes }}<input v-model="form.notes" maxlength="4000" :placeholder="ux.notesPlaceholder" /></label>
-              <div class="form-actions"><button class="primary-button" type="submit"><span aria-hidden="true">＋</span>{{ text.save }}</button><button class="quiet-button" type="button" @click="resetForm">{{ text.cancel }}</button></div>
+              <label>{{ text.detail }}<input v-model="form.detail" maxlength="4000" :placeholder="labels.detailPlaceholder" /></label>
+              <label class="field-wide">{{ text.notes }}<input v-model="form.notes" maxlength="4000" :placeholder="labels.notesPlaceholder" /></label>
+              <div class="form-actions"><button class="primary-button" type="submit"><span aria-hidden="true">＋</span>{{ text.save }}</button><button class="quiet-button" type="button" @click="resetForm()">{{ text.cancel }}</button></div>
             </form>
           </section>
         </div>
 
         <aside class="panel task-panel">
           <div class="panel-heading"><div><span class="eyebrow">{{ text.tasks }}</span><h2>{{ locale === 'th' ? 'เริ่มจากงานที่บันทึกไว้' : 'Start from a saved task' }}</h2></div><span class="count-badge">{{ tasks.length }}</span></div>
-          <form class="add-task-form" @submit.prevent="addTask"><input v-model="taskName" :aria-label="text.task" maxlength="200" :placeholder="ux.taskPlaceholder" /><button class="icon-button add-task-button" type="submit" :aria-label="text.add">＋</button></form>
+          <form class="add-task-form" @submit.prevent="addTask"><input v-model="taskName" :aria-label="text.task" maxlength="200" :placeholder="labels.taskPlaceholder" /><button class="icon-button add-task-button" type="submit" :aria-label="text.add">＋</button></form>
           <ul class="task-list"><li v-for="task in tasks" :key="task.id" draggable="true" @dragstart="dragTask($event, { name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })"><span class="task-grip" aria-hidden="true">⠿</span><input v-model="task.name" :aria-label="text.task" maxlength="200" /><button class="use-task-button" type="button" @click="prefill({ name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })">{{ text.use }}</button><details class="task-more"><summary :aria-label="text.status">···</summary><div class="task-menu"><label>{{ text.status }}<select :value="task.status" @change="setStatus(task, ($event.target as HTMLSelectElement).value)"><option value="todo">{{ text.todo }}</option><option value="doing">{{ text.doing }}</option><option value="done">{{ text.done }}</option></select></label><button type="button" @click="renameTask(task)">{{ text.save }}</button><button type="button" @click="removeTask(task.id)">{{ text.remove }}</button></div></details></li><li v-if="!tasks.length" class="empty-state">{{ locale === 'th' ? 'เพิ่มงานที่ทำบ่อยไว้ใช้ซ้ำได้' : 'Save tasks here to reuse them.' }}</li></ul>
           <div v-if="catalog.projects.length" class="quick-picks"><h3>{{ text.project }}</h3><button v-for="project in catalog.projects" :key="project.id" type="button" draggable="true" @dragstart="dragTask($event, { name: project.name, projectId: project.id })" @click="prefill({ name: project.name, projectId: project.id })">{{ project.name }}</button></div>
           <div v-if="catalog.categories.length" class="quick-picks"><h3>{{ text.category }}</h3><button v-for="category in catalog.categories" :key="category.id" type="button" draggable="true" @dragstart="dragTask($event, { name: category.name, categoryId: category.id })" @click="prefill({ name: category.name, categoryId: category.id })">{{ category.name }}</button></div>
@@ -250,17 +252,17 @@ async function updateLeave(leave: Leave) {
       </div>
 
       <section class="panel entries-panel">
-        <div class="panel-heading"><div><span class="eyebrow">{{ monthLabel }}</span><h2>{{ ux.entryList }}</h2></div><span class="count-badge">{{ entries.length }}</span></div>
-        <div v-if="!entries.length" class="empty-panel"><span aria-hidden="true">◷</span><h3>{{ ux.emptyTitle }}</h3><p>{{ ux.emptyHint }}</p></div>
+        <div class="panel-heading"><div><span class="eyebrow">{{ monthLabel }}</span><h2>{{ labels.entryList }}</h2></div><span class="count-badge">{{ entries.length }}</span></div>
+        <div v-if="!entries.length" class="empty-panel"><span aria-hidden="true">◷</span><h3>{{ labels.emptyTitle }}</h3><p>{{ canEdit ? labels.emptyHint : text.readOnly }}</p></div>
         <div v-else class="table-wrap"><table><thead><tr><th>{{ text.date }}</th><th>{{ text.start }}–{{ text.end }}</th><th>{{ text.duration }}</th><th>{{ text.task }}</th><th class="optional-column">{{ text.project }}</th><th class="optional-column">{{ text.category }}</th><th><span class="visually-hidden">{{ text.edit }}</span></th></tr></thead>
           <tbody><template v-for="entry in entries" :key="entry.id"><tr><td><time :datetime="entry.date">{{ entry.date }}</time></td><td>{{ entry.startTime.slice(0, 5) }}–{{ entry.endTime.slice(0, 5) }}</td><td><strong>{{ (entry.durationMinutes / 60).toFixed(2) }}</strong></td><td class="task-name-cell">{{ entry.taskName }}</td><td class="optional-column">{{ catalog.projects.find(x => x.id === entry.projectId)?.name || '—' }}</td><td class="optional-column">{{ catalog.categories.find(x => x.id === entry.categoryId)?.name || '—' }}</td><td class="row-actions"><button v-if="canEdit" class="quiet-button" type="button" @click="edit(entry)">{{ text.edit }}</button><button v-if="canEdit" class="danger-button" type="button" @click="removeEntry(entry.id)">{{ text.remove }}</button></td></tr>
-          <tr v-if="editingId === entry.id"><td colspan="7"><form class="entry-grid edit-grid" @submit.prevent="saveEntry"><label>{{ text.date }}<input v-model="form.date" type="date" required /></label><label>{{ text.start }}<input v-model="form.startTime" type="time" required /></label><label>{{ text.end }}<input v-model="form.endTime" type="time" required /></label><label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" /></label><label>{{ text.project }}<select v-model="form.projectId"><option value="">—</option><option v-for="project in catalog.projects" :key="project.id" :value="project.id">{{ project.name }}</option></select></label><label>{{ text.category }}<select v-model="form.categoryId"><option value="">—</option><option v-for="category in catalog.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label><label>{{ text.detail }}<input v-model="form.detail" maxlength="4000" /></label><label>{{ text.notes }}<input v-model="form.notes" maxlength="4000" /></label><div class="form-actions"><button class="primary-button" type="submit">{{ text.save }}</button><button class="quiet-button" type="button" @click="resetForm">{{ text.cancel }}</button></div></form></td></tr></template></tbody></table></div>
+          <tr v-if="editingId === entry.id"><td colspan="7"><form class="entry-grid edit-grid" @submit.prevent="saveEntry"><label>{{ text.date }}<input v-model="form.date" type="date" required :min="monthStart" :max="monthEnd" /></label><label>{{ text.start }}<input v-model="form.startTime" type="time" required /></label><label>{{ text.end }}<input v-model="form.endTime" type="time" required /></label><label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" /></label><label>{{ text.project }}<select v-model="form.projectId"><option value="">—</option><option v-for="project in catalog.projects" :key="project.id" :value="project.id">{{ project.name }}</option></select></label><label>{{ text.category }}<select v-model="form.categoryId"><option value="">—</option><option v-for="category in catalog.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label><label>{{ text.detail }}<input v-model="form.detail" maxlength="4000" /></label><label>{{ text.notes }}<input v-model="form.notes" maxlength="4000" /></label><div class="form-actions"><button class="primary-button" type="submit">{{ text.save }}</button><button class="quiet-button" type="button" @click="resetForm()">{{ text.cancel }}</button></div></form></td></tr></template></tbody></table></div>
       </section>
 
       <div class="support-grid">
         <section class="panel support-panel"><div class="panel-heading"><div><span class="eyebrow">{{ text.leaves }}</span><h2>{{ locale === 'th' ? 'วางแผนวันหยุด' : 'Plan time off' }}</h2></div></div>
-          <form v-if="canEdit" class="inline-form" @submit.prevent="addLeave"><label>{{ text.date }}<input v-model="leaveDate" type="date" :aria-label="text.date" :min="`${month}-01`" :max="`${month}-${new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate()}`" /></label><label>{{ text.kind }}<select v-model="leaveKind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select></label><button class="primary-button" type="submit">{{ text.add }}</button></form>
-          <ul class="simple-list"><li v-for="leave in leaves" :key="leave.id"><template v-if="canEdit"><input v-model="leave.date" type="date" :aria-label="text.date" /><select v-model="leave.kind" :aria-label="text.kind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select><button class="quiet-button" type="button" @click="updateLeave(leave)">{{ text.save }}</button><button class="danger-button" type="button" @click="removeLeave(leave.id)">{{ text.remove }}</button></template><template v-else><time :datetime="leave.date">{{ leave.date }}</time><span>{{ leave.kind }}</span></template></li><li v-if="!leaves.length" class="empty-state">{{ locale === 'th' ? 'ยังไม่มีวันลาในเดือนนี้' : 'No leave planned this month.' }}</li></ul>
+          <form v-if="canEdit" class="inline-form" @submit.prevent="addLeave"><label>{{ text.date }}<input v-model="leaveDate" type="date" :aria-label="text.date" :min="monthStart" :max="monthEnd" /></label><label>{{ text.kind }}<select v-model="leaveKind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select></label><button class="primary-button" type="submit">{{ text.add }}</button></form>
+          <ul class="simple-list"><li v-for="leave in leaves" :key="leave.id"><template v-if="canEdit"><input v-model="leave.date" type="date" :aria-label="text.date" :min="monthStart" :max="monthEnd" /><select v-model="leave.kind" :aria-label="text.kind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select><button class="quiet-button" type="button" @click="updateLeave(leave)">{{ text.save }}</button><button class="danger-button" type="button" @click="removeLeave(leave.id)">{{ text.remove }}</button></template><template v-else><time :datetime="leave.date">{{ leave.date }}</time><span>{{ leave.kind }}</span></template></li><li v-if="!leaves.length" class="empty-state">{{ locale === 'th' ? 'ยังไม่มีวันลาในเดือนนี้' : 'No leave planned this month.' }}</li></ul>
           <div v-if="catalog.holidays.some(x => x.date.startsWith(month))" class="holiday-list"><h3>{{ text.holidays }}</h3><p v-for="holiday in catalog.holidays.filter(x => x.date.startsWith(month))" :key="holiday.id"><time :datetime="holiday.date">{{ holiday.date }}</time><span>{{ holiday.name }}</span></p></div>
         </section>
       </div>
@@ -492,13 +494,18 @@ body {
   width: .25rem;
   height: .25rem;
   border-radius: 50%;
+}
+.entry-marker {
   background: #5c78d8;
+}
+.leave-marker {
+  background: #e69a50;
+}
+.holiday-marker {
+  background: #58a58b;
 }
 .day-button.selected .day-markers b {
   background: white;
-}
-.day-markers b:nth-child(2) {
-  background: #e69a50;
 }
 .duration-pill,.count-badge {
   display: inline-flex;

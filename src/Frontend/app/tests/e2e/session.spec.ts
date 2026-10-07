@@ -196,11 +196,15 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
       return
     }
     if (url.pathname.endsWith('/api/v1/timesheets/leave')) {
-      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: '[]' })
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify([
+        { id: 'leave-1', date: `${currentMonth}-04`, kind: 'annual', notes: null }
+      ]) })
       return
     }
     if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
-      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({ projects: [], categories: [], holidays: [] }) })
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({
+        projects: [], categories: [], holidays: [{ id: 'holiday-1', date: `${currentMonth}-05`, name: 'วันหยุดทดสอบ' }]
+      }) })
       return
     }
     if (url.pathname.endsWith('/api/v1/timesheets/context')) {
@@ -222,6 +226,8 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   await expect(timesheet.getByRole('heading', { name: 'บันทึกเวลาทำงาน' })).toBeVisible()
   await expect(timesheet.locator('.summary-hours strong')).toContainText('1.50')
   await expect(timesheet.getByText('วางแผนงานประจำสัปดาห์')).toBeVisible()
+  await expect(timesheet.locator(`.day-button[aria-label="วันที่ ${currentMonth}-04"] .leave-marker`)).toHaveCount(1)
+  await expect(timesheet.locator(`.day-button[aria-label="วันที่ ${currentMonth}-05"] .holiday-marker`)).toHaveCount(1)
   await timesheet.getByRole('button', { name: `วันที่ ${entryDate}` }).click()
   await expect(timesheet.locator('.day-button[aria-pressed="true"]')).toHaveAttribute('aria-label', `วันที่ ${entryDate}`)
   await timesheet.getByLabel('งาน', { exact: true }).first().fill('ตรวจสอบ UX ของระบบ')
@@ -237,6 +243,15 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   await timesheet.locator('.entry-panel .primary-button').click()
   await expect.poll(() => savedEntry).toMatchObject({ date: entryDate, startTime: '13:00:00', endTime: '14:00:00', taskName: 'ตรวจสอบ UX ของระบบ' })
   await expect(timesheet.locator('tbody')).toContainText('ตรวจสอบ UX ของระบบ')
+  const savedRow = timesheet.locator('tbody tr').filter({ hasText: 'ตรวจสอบ UX ของระบบ' }).first()
+  await savedRow.getByRole('button', { name: 'แก้ไข' }).click()
+  const editForm = timesheet.locator('.edit-grid')
+  await expect(editForm).toBeVisible()
+  await editForm.getByLabel('งาน').fill('ข้อความที่ยกเลิก')
+  await editForm.getByRole('button', { name: 'ยกเลิก' }).click()
+  await expect(editForm).toHaveCount(0)
+  await expect(timesheet.locator('tbody')).toContainText('ตรวจสอบ UX ของระบบ')
+  await expect(timesheet.locator('tbody')).not.toContainText('ข้อความที่ยกเลิก')
 })
 
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {
