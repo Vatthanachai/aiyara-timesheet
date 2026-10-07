@@ -19,6 +19,7 @@ builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(
     ?? throw new InvalidOperationException("ConnectionStrings:IdentityDb is required.")));
 builder.AddDatabaseHealthCheck<WebApplicationBuilder, IdentityDbContext>("identity-db");
 builder.Services.AddScoped<OnboardingService>();
+builder.Services.AddScoped<PlatformOrganizationService>();
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<PlatformAdminBootstrap>();
 builder.Services.AddSingleton<ISessionRevocationPublisher, RedisSessionRevocationPublisher>();
@@ -126,6 +127,7 @@ app.Use(async (context, next) =>
 
 app.MapControllers();
 app.MapProfileEndpoints();
+app.MapPlatformOrganizationEndpoints();
 app.MapGrpcService<IdentityValidationGrpcService>();
 
 var onboarding = app.MapGroup("/api/v1").WithTags("Onboarding");

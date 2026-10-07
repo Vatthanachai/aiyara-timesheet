@@ -1,4 +1,5 @@
 using Aiyara.Identities.Databases;
+using Aiyara.Identities.Models.Tenancy;
 using System.Security.Claims;
 using Aiyara.Identities.Services.Onboarding;
 using Aiyara.Timesheet.Contracts.Onboarding.V1;
@@ -146,6 +147,40 @@ public sealed class OnboardingTests
             fixture.Service.IssueInvitationWithKeyAsync(first.TenantId,
                 first.OnboardingKey, request, default));
         Assert.Equal(OnboardingFailure.Unauthorized, expired.Failure);
+    }
+
+    [Fact]
+    public async Task Platform_organization_list_searches_admins_and_excludes_platform_tenant()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var first = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("First Studio", "first-studio", "admin@first.test"), default);
+        var second = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Second Studio", "second-studio", "admin@second.test"), default);
+        fixture.Db.Tenants.Add(new Tenant
+        {
+            Id = Guid.NewGuid(), Slug = "platform-system", Name = "Platform System",
+            OrganizationCode = "SYS0001", CreatedAtUtc = DateTime.UtcNow
+        });
+        fixture.Scope.TenantId = first.TenantId;
+        var firstAdmin = await fixture.Db.Memberships.SingleAsync();
+        firstAdmin.Status = MembershipStatus.Active;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Scope.TenantId = null;
+
+        var service = new PlatformOrganizationService(fixture.Db);
+        var filtered = await service.ListAsync("ADMIN@SECOND.TEST", 1, 25, default);
+        var item = Assert.Single(filtered.Items);
+        Assert.Equal(second.TenantId, item.TenantId);
+        Assert.Equal("PendingActivation", Assert.Single(item.Admins).Status);
+        Assert.DoesNotContain(filtered.Items, tenant => tenant.Slug == "platform-system");
+
+        var paged = await service.ListAsync(null, 999, 1, default);
+        Assert.Equal(2, paged.Page);
+        Assert.Equal(2, paged.TotalCount);
+        Assert.Single(paged.Items);
+        Assert.Contains(paged.Items, tenant => tenant.TenantId == first.TenantId);
+        Assert.DoesNotContain(paged.Items, tenant => tenant.TenantId == second.TenantId);
     }
 
     [Fact]

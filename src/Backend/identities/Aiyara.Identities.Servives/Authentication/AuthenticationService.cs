@@ -342,7 +342,7 @@ public sealed class AuthenticationService(
         });
         return new AuthenticationResponse(access.Value, access.ExpiresAt, refresh,
             new DateTimeOffset(now.Add(RefreshLifetime), TimeSpan.Zero), mustChange,
-            membership.TenantId);
+            membership.TenantId, membership.Role.ToString());
     }
 
     private async Task PublishAccountAcrossTenantsAsync(Guid accountId, long sessionVersion,

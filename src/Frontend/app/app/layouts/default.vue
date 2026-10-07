@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const { navigation } = useRemoteNavigation()
 const { locale, setLocale } = useLocale()
-const { token, logout, restore } = useSession()
+const { token, role, logout, restore } = useSession()
 onMounted(restore)
 </script>
 
@@ -12,6 +12,9 @@ onMounted(restore)
       <nav aria-label="Primary navigation" class="navigation">
         <NuxtLink v-for="item in navigation" :key="item.id" :to="item.path">
           {{ locale === 'th' ? item.label : item.labelEn }}
+        </NuxtLink>
+        <NuxtLink v-if="token && role === 'PlatformAdmin'" to="/sys-admin/organizations">
+          {{ locale === 'th' ? 'จัดการองค์กร' : 'Organizations' }}
         </NuxtLink>
       </nav>
       <div class="header-actions">

@@ -4,6 +4,7 @@ type AuthResponse = {
   refreshToken: string
   mustChangePassword: boolean
   tenantId: string
+  role?: string
 }
 
 export function useSession() {
@@ -11,6 +12,7 @@ export function useSession() {
   const refreshToken = useState<string>('refresh-token', () => '')
   const expiresAt = useState<string>('expires-at', () => '')
   const tenantId = useState<string>('tenant-id', () => '')
+  const role = useState<string>('account-role', () => '')
   const config = useRuntimeConfig()
 
   function restore() {
@@ -19,6 +21,7 @@ export function useSession() {
     refreshToken.value = sessionStorage.getItem('aiyara.refresh') || ''
     expiresAt.value = sessionStorage.getItem('aiyara.expires') || ''
     tenantId.value = sessionStorage.getItem('aiyara.tenant') || ''
+    role.value = sessionStorage.getItem('aiyara.role') || ''
   }
 
   function save(value: AuthResponse) {
@@ -26,11 +29,13 @@ export function useSession() {
     refreshToken.value = value.refreshToken
     expiresAt.value = value.accessExpiresAtUtc
     tenantId.value = value.tenantId
+    role.value = value.role || ''
     if (import.meta.client) {
       sessionStorage.setItem('aiyara.access', token.value)
       sessionStorage.setItem('aiyara.refresh', refreshToken.value)
       sessionStorage.setItem('aiyara.expires', expiresAt.value)
       sessionStorage.setItem('aiyara.tenant', tenantId.value)
+      sessionStorage.setItem('aiyara.role', role.value)
     }
   }
 
@@ -43,7 +48,7 @@ export function useSession() {
   }
 
   async function renew() {
-    if (token.value && Date.parse(expiresAt.value) > Date.now() + 60_000) return true
+    if (token.value && role.value && Date.parse(expiresAt.value) > Date.now() + 60_000) return true
     if (!refreshToken.value) return false
     try {
       const response = await $fetch<AuthResponse>(`${config.public.gatewayUrl}/api/v1/auth/refresh`, {
@@ -62,11 +67,13 @@ export function useSession() {
     refreshToken.value = ''
     expiresAt.value = ''
     tenantId.value = ''
+    role.value = ''
     if (import.meta.client) {
       sessionStorage.removeItem('aiyara.access')
       sessionStorage.removeItem('aiyara.refresh')
       sessionStorage.removeItem('aiyara.expires')
       sessionStorage.removeItem('aiyara.tenant')
+      sessionStorage.removeItem('aiyara.role')
     }
   }
 
@@ -81,5 +88,5 @@ export function useSession() {
     clear()
   }
 
-  return { token: readonly(token), tenantId: readonly(tenantId), login, logout, renew, restore }
+  return { token: readonly(token), tenantId: readonly(tenantId), role: readonly(role), login, logout, renew, restore }
 }

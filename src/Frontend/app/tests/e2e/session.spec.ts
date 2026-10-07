@@ -138,6 +138,97 @@ test('organization admin can sign up and sees the organization code without disp
   await expect(confirmation).toContainText('ระบบจะส่งรหัสใหม่')
 })
 
+test('platform admin can review organizations and resend a pending activation code', async ({ page }) => {
+  const platformTenantId = '507b1b8b-b07f-48d5-9aa1-ecfb6a5c8af0'
+  const organizationTenantId = 'c99358d1-e01f-4dfd-9693-38da8883562d'
+  let listAuthorization = ''
+  let resendRequest: unknown
+
+  await page.route('**/api/v1/auth/login', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        accessToken: 'platform-admin-token',
+        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+        refreshToken: 'platform-admin-refresh',
+        refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+        mustChangePassword: false,
+        tenantId: platformTenantId,
+        role: 'PlatformAdmin'
+      })
+    })
+  })
+  await page.route('**/api/v1/platform/organizations**', async route => {
+    listAuthorization = route.request().headers().authorization || ''
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        totalCount: 1,
+        page: 1,
+        pageSize: 25,
+        items: [{
+          tenantId: organizationTenantId,
+          organizationCode: 'ACME123',
+          name: 'Acme Studio',
+          slug: 'acme-studio',
+          createdAtUtc: '2026-10-01T00:00:00Z',
+          admins: [{ email: 'admin@acme.test', status: 'PendingActivation' }]
+        }]
+      })
+    })
+  })
+  await page.route('**/api/v1/auth/activation/request', async route => {
+    resendRequest = route.request().postDataJSON()
+    await route.fulfill({ status: 202 })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('รหัสองค์กร').fill('SYS0001')
+  await page.getByLabel('อีเมล').fill('sysadmin@example.test')
+  await page.getByLabel('รหัสผ่าน').fill('test-password')
+  await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()
+  await page.getByRole('link', { name: 'จัดการองค์กร' }).click()
+
+  await expect(page.getByRole('heading', { name: 'จัดการองค์กร' })).toBeVisible()
+  await expect(page.getByText('Acme Studio')).toBeVisible()
+  await expect(page.getByText('ACME123')).toBeVisible()
+  await expect(page.getByText('รอเปิดใช้งาน')).toBeVisible()
+  expect(listAuthorization).toBe('Bearer platform-admin-token')
+  await page.getByRole('button', { name: 'ส่งรหัสใหม่' }).click()
+  expect(resendRequest).toEqual({ tenantId: organizationTenantId, email: 'admin@acme.test' })
+  await expect(page.locator('.admin-row')).toContainText('ระบบรับคำขอแล้ว')
+})
+
+test('tenant administrator cannot see the platform organization management page', async ({ page }) => {
+  await page.route('**/api/v1/auth/login', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      accessToken: 'tenant-admin-token',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshToken: 'tenant-admin-refresh',
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+      mustChangePassword: false,
+      tenantId,
+      role: 'TenantAdmin'
+    })
+  }))
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('รหัสองค์กร').fill(organizationCode)
+  await page.getByLabel('อีเมล').fill('admin@example.test')
+  await page.getByLabel('รหัสผ่าน').fill('test-password')
+  await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()
+
+  await expect(page.getByRole('link', { name: 'จัดการองค์กร' })).toHaveCount(0)
+  await page.goto('/sys-admin/organizations')
+  await expect(page.getByRole('heading', { name: 'ไม่มีสิทธิ์เข้าถึง' })).toBeVisible()
+})
+
 test('activation failure shows a safe message and does not expose the API error', async ({ page }) => {
   await page.route('**/api/v1/auth/activate', route => route.fulfill({
     status: 400,

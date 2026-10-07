@@ -25,7 +25,7 @@ public sealed record TenantPasswordPolicyRequest(int MinimumLength, int ExpiryDa
     bool RequireUppercase, bool RequireLowercase, bool RequireDigit, bool RequireSymbol);
 public sealed record AuthenticationResponse(string AccessToken, DateTimeOffset AccessExpiresAtUtc,
     string RefreshToken, DateTimeOffset RefreshExpiresAtUtc, bool MustChangePassword,
-    Guid TenantId);
+    Guid TenantId, string Role);
 
 public interface ICredentialNotificationSender
 {
