@@ -26,6 +26,17 @@ test('sign in persists the session, restores it after reload, and signs out', as
       })
     })
   })
+  await page.route('**/api/v1/identity/profile/me', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      email: 'admin@example.test',
+      firstName: 'อรทัย',
+      lastName: 'ใจดี',
+      photoUrl: 'https://example.test/avatar.png',
+      jobTitle: 'Administrator'
+    })
+  }))
   await page.route('**/api/v1/auth/logout', route => route.fulfill({ status: 204 }))
 
   await page.goto('/')
@@ -44,6 +55,10 @@ test('sign in persists the session, restores it after reload, and signs out', as
     .toBe(tenantId)
 
   await page.reload()
+  await expect(page.locator('.profile-trigger')).toContainText('อรทัย ใจดี')
+  await expect(page.locator('.profile-avatar')).toHaveAttribute('src', 'https://example.test/avatar.png')
+  await page.locator('.profile-trigger').click()
+  await expect(page.getByRole('link', { name: 'ตั้งค่าโปรไฟล์' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'ออกจากระบบ' })).toBeVisible()
   await page.getByRole('button', { name: 'ออกจากระบบ' }).click()
   await expect(page.getByRole('button', { name: 'เข้าสู่ระบบ' })).toBeVisible()
