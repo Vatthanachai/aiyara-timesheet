@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Compliance.Classification;
@@ -36,6 +37,8 @@ public static class Extensions
         builder.ConfigureOpenTelemetry();
 
         builder.AddDefaultHealthChecks();
+        builder.Services.AddSingleton<ServiceHealthMetrics>();
+        builder.Services.AddHostedService<ServiceHealthMetricsPublisher>();
 
         builder.Services.AddServiceDiscovery();
 
@@ -85,7 +88,8 @@ public static class Extensions
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                    .AddRuntimeInstrumentation()
+                    .AddMeter("Aiyara.Timesheet.ServiceHealth");
             });
 
         var metricsEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"];
@@ -203,4 +207,39 @@ public static class Extensions
 public static class TimesheetDataClassification
 {
     public static DataClassification Sensitive { get; } = new("Aiyara.Timesheet", "Sensitive");
+}
+
+internal sealed class ServiceHealthMetrics : IDisposable
+{
+    private readonly Meter _meter = new("Aiyara.Timesheet.ServiceHealth");
+    private long _healthy;
+
+    public ServiceHealthMetrics()
+    {
+        _meter.CreateObservableGauge(
+            "aiyara.service.health",
+            () => Interlocked.Read(ref _healthy),
+            unit: "1",
+            description: "One when all service readiness checks pass, otherwise zero.");
+    }
+
+    public void SetHealthy(bool healthy) => Interlocked.Exchange(ref _healthy, healthy ? 1 : 0);
+
+    public void Dispose() => _meter.Dispose();
+}
+
+internal sealed class ServiceHealthMetricsPublisher(
+    HealthCheckService healthChecks,
+    ServiceHealthMetrics metrics) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        do
+        {
+            var report = await healthChecks.CheckHealthAsync(stoppingToken);
+            metrics.SetHealthy(report.Status == HealthStatus.Healthy);
+        }
+        while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
 }

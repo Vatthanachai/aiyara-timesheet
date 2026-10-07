@@ -147,10 +147,11 @@
   isolation, session revocation, and retry behavior. They do not yet provide
   integration coverage for every service/database or complete gRPC and
   RabbitMQ contract execution; frontend browser E2E coverage is also absent.
-- Initial observability implementation: APIs and Report Worker export HTTP and
-  .NET runtime metrics over OTLP to Prometheus. Grafana provisions a Prometheus
-  data source and a platform overview dashboard for request rate, 5xx rate,
-  p95 latency, and .NET process memory. Prometheus remains available only on
+- Initial observability implementation: APIs and Report Worker export HTTP,
+  .NET runtime, and readiness metrics over OTLP to Prometheus. Grafana
+  provisions a Prometheus data source and a platform overview dashboard for
+  readiness, request rate, 5xx rate, p95 latency, and process memory.
+  Prometheus remains available only on
   the host loopback port. Business metrics for authentication, RabbitMQ,
   Quartz, report runs, and RustFS failures still need instrumentation and
   dashboard coverage. Compose does not include a trace collector/backend.
