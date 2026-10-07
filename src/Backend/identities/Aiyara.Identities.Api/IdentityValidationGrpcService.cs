@@ -24,6 +24,7 @@ internal sealed class IdentityValidationGrpcService(
         var tenant = await db.Tenants.AsNoTracking()
             .SingleOrDefaultAsync(context.CancellationToken);
         if (account is null || membership is null || tenant is null ||
+            tenant.Status != TenantStatus.Active ||
             account.SessionVersion != claims.SessionVersion ||
             membership.Role.ToString() != claims.Role) return Invalid("session_revoked");
         if (account.MustChangePassword || membership.MustChangePassword ||
@@ -37,7 +38,8 @@ internal sealed class IdentityValidationGrpcService(
             IsValid = true, SubjectId = account.Id.ToString(),
             TenantId = membership.TenantId.ToString(), TokenId = claims.TokenId,
             SessionVersion = account.SessionVersion,
-            PolicyVersion = tenant.PasswordPolicyUpdatedAtUtc.Ticks / 10,
+            PolicyVersion = Math.Max(tenant.PasswordPolicyUpdatedAtUtc.Ticks / 10,
+                tenant.AccessRevocationVersion),
             TimeZoneId = tenant.TimeZoneId,
             ExpiresAtUtc = Timestamp.FromDateTimeOffset(claims.ExpiresAtUtc),
             MustChangePassword = false,

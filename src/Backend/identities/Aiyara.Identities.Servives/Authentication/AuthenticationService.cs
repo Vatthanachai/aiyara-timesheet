@@ -25,6 +25,8 @@ public sealed class AuthenticationService(
     {
         if (request.TenantId == Guid.Empty || !ValidEmail(request.Email)) return;
         tenantScope.TenantId = request.TenantId;
+        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.Active) return;
         var email = request.Email.Trim().ToLowerInvariant();
         await attempts.CheckAsync(request.TenantId, email, purpose.ToString(),
             cancellationToken);
@@ -38,7 +40,6 @@ public sealed class AuthenticationService(
             (purpose == CredentialChallengePurpose.PasswordReset &&
             membership.Status != MembershipStatus.Active)) return;
 
-        var tenant = await db.Tenants.SingleAsync(cancellationToken);
         PasswordPolicy.ValidateSettings(tenant);
         var now = DateTime.UtcNow;
         var old = await db.CredentialChallenges.Where(x => x.AccountId == account.Id &&
@@ -84,7 +85,8 @@ public sealed class AuthenticationService(
         if (challenge is null || challenge.UsedAtUtc is not null ||
             challenge.ExpiresAtUtc <= DateTime.UtcNow) throw InvalidChallenge();
         tenantScope.TenantId = challenge.TenantId;
-        var tenant = await db.Tenants.SingleAsync(cancellationToken);
+        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidChallenge();
         PasswordPolicy.ValidateSettings(tenant);
         if (!PasswordPolicy.IsSatisfied(tenant, request.Password))
             throw new AuthenticationException(AuthenticationFailure.InvalidInput,
@@ -132,6 +134,8 @@ public sealed class AuthenticationService(
         tenantScope.TenantId = tenantId;
         var email = request.Email.Trim().ToLowerInvariant();
         await attempts.CheckAsync(tenantId, email, "Login", cancellationToken);
+        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidCredentials();
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
         if (account is null || account.PasswordHash is null ||
@@ -153,7 +157,6 @@ public sealed class AuthenticationService(
         account.FailedLoginCount = 0;
         account.LockedUntilUtc = null;
         await db.SaveChangesAsync(cancellationToken);
-        var tenant = await db.Tenants.SingleAsync(cancellationToken);
         var mustChange = RequiresPasswordChange(account, membership, tenant);
         return await CreateSessionAsync(account, membership, mustChange, cancellationToken);
     }
@@ -170,6 +173,8 @@ public sealed class AuthenticationService(
             .SingleOrDefaultAsync(x => x.TokenHash == hash, cancellationToken);
         if (session is null || session.ExpiresAtUtc <= DateTime.UtcNow) throw InvalidCredentials();
         tenantScope.TenantId = session.TenantId;
+        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidCredentials();
         var account = await db.Accounts.SingleAsync(x => x.Id == session.AccountId,
             cancellationToken);
         if (session.SessionVersion != account.SessionVersion)
@@ -193,7 +198,6 @@ public sealed class AuthenticationService(
             x.RevokedAtUtc == null).ExecuteUpdateAsync(x => x.SetProperty(
                 s => s.RevokedAtUtc, DateTime.UtcNow), cancellationToken);
         if (rotated != 1) throw InvalidCredentials();
-        var tenant = await db.Tenants.SingleAsync(cancellationToken);
         var mustChange = RequiresPasswordChange(account, membership, tenant);
         var response = await CreateSessionAsync(account, membership, mustChange, cancellationToken);
         var replacementId = await db.RefreshSessions.Where(x => x.TokenHash ==
@@ -236,6 +240,8 @@ public sealed class AuthenticationService(
             string.IsNullOrEmpty(request.NewPassword)) throw InvalidCredentials();
         tenantScope.TenantId = tenantId;
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidCredentials();
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Id == accountId,
             cancellationToken);
         var membership = await db.Memberships.SingleOrDefaultAsync(x =>
@@ -245,7 +251,6 @@ public sealed class AuthenticationService(
             account.SessionVersion != sessionVersion ||
             !passwords.VerifyPassword(request.CurrentPassword, account.PasswordHash))
             throw InvalidCredentials();
-        var tenant = await db.Tenants.SingleAsync(cancellationToken);
         PasswordPolicy.ValidateSettings(tenant);
         if (!PasswordPolicy.IsSatisfied(tenant, request.NewPassword) ||
             passwords.VerifyPassword(request.NewPassword, account.PasswordHash))
@@ -282,7 +287,8 @@ public sealed class AuthenticationService(
             x.Status == MembershipStatus.Active, cancellationToken);
         if (actor is null || actor.SessionVersion != actorSessionVersion || membership is null)
             throw InvalidCredentials();
-        var tenant = await db.Tenants.SingleAsync(cancellationToken);
+        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidCredentials();
         if (RequiresPasswordChange(actor, membership, tenant))
             throw InvalidCredentials();
         var stricter = request.MinimumLength > tenant.PasswordMinimumLength ||

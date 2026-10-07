@@ -13,6 +13,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<OnboardingCapability> OnboardingCapabilities => Set<OnboardingCapability>();
     public DbSet<CredentialChallenge> CredentialChallenges => Set<CredentialChallenge>();
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
+    public DbSet<PlatformOrganizationAudit> PlatformOrganizationAudits => Set<PlatformOrganizationAudit>();
     public Guid? CurrentTenantId => tenantScope.TenantId;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -26,8 +27,19 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.OrganizationCode).HasMaxLength(7).IsRequired();
             entity.HasIndex(x => x.OrganizationCode).IsUnique();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired();
             entity.HasQueryFilter(x => CurrentTenantId != null && x.Id == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<PlatformOrganizationAudit>(entity =>
+        {
+            entity.ToTable("platform_organization_audit");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Action).HasMaxLength(60).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(500);
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
+            entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Account>(entity =>

@@ -6,6 +6,7 @@ type Organization = {
   organizationCode: string
   name: string
   slug: string
+  status: 'Active' | 'Suspended'
   createdAtUtc: string
   admins: OrganizationAdmin[]
 }
@@ -36,6 +37,13 @@ const resendMessages = ref<Record<string, string>>({})
 const organizationName = ref('')
 const organizationSlug = ref('')
 const adminEmail = ref('')
+const editingId = ref('')
+const editName = ref('')
+const editSlug = ref('')
+const organizationReasons = reactive<Record<string, string>>({})
+const inviteEmails = reactive<Record<string, string>>({})
+const managementMessages = reactive<Record<string, string>>({})
+const managementPending = ref('')
 
 const isPlatformAdmin = computed(() => Boolean(token.value) && role.value === 'PlatformAdmin')
 const pageCount = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize)))
@@ -45,11 +53,10 @@ async function loadOrganizations() {
   loading.value = true
   loadError.value = ''
   try {
-    const response = await $fetch<OrganizationResponse>(
+    const response = unwrapResponse(await authorizedFetch<ApiEnvelope<OrganizationResponse>>(
       `${config.public.gatewayUrl}/api/v1/platform/organizations`, {
-        headers: { Authorization: `Bearer ${token.value}` },
         query: { search: search.value || undefined, page: page.value, pageSize }
-      })
+      }))
     organizations.value = response.items
     totalCount.value = response.totalCount
   } catch {
@@ -59,6 +66,79 @@ async function loadOrganizations() {
   } finally {
     loading.value = false
   }
+}
+
+async function authorizedFetch<T>(url: string, options: Record<string, unknown> = {}): Promise<T> {
+  const send = () => $fetch<T>(url, {
+    ...options,
+    headers: { ...(options.headers as Record<string, string> | undefined), Authorization: `Bearer ${token.value}` }
+  })
+  try { return await send() }
+  catch (cause) {
+    const status = (cause as { status?: number })?.status
+    if (status !== 401 || !(await renew(true))) throw cause
+    return await send()
+  }
+}
+
+function beginEdit(organization: Organization) {
+  editingId.value = organization.tenantId
+  editName.value = organization.name
+  editSlug.value = organization.slug
+}
+
+async function updateOrganization(organization: Organization) {
+  const key = organization.tenantId
+  managementPending.value = key
+  managementMessages[key] = ''
+  try {
+    unwrapResponse(await authorizedFetch<ApiEnvelope<unknown>>(
+      `${config.public.gatewayUrl}/api/v1/platform/organizations/${key}`, {
+        method: 'PUT', body: { name: editName.value.trim(), slug: editSlug.value.trim().toLowerCase(), reason: organizationReasons[key] || null }
+      }))
+    editingId.value = ''
+    managementMessages[key] = locale.value === 'th' ? 'บันทึกข้อมูลองค์กรแล้ว' : 'Organization details saved.'
+    await loadOrganizations()
+  } catch {
+    managementMessages[key] = locale.value === 'th' ? 'บันทึกไม่สำเร็จ กรุณาตรวจสอบชื่อ URL และลองอีกครั้ง' : 'Could not save. Check the organization URL and try again.'
+  } finally { managementPending.value = '' }
+}
+
+async function setOrganizationStatus(organization: Organization) {
+  const key = organization.tenantId
+  const action = organization.status === 'Active'
+    ? (locale.value === 'th' ? 'ระงับองค์กรนี้หรือไม่? ผู้ใช้ในองค์กรจะเข้าใช้งานไม่ได้' : 'Suspend this organization? Its users will lose access.')
+    : (locale.value === 'th' ? 'เปิดใช้งานองค์กรนี้อีกครั้งหรือไม่?' : 'Reactivate this organization?')
+  if (!window.confirm(action)) return
+  managementPending.value = key
+  managementMessages[key] = ''
+  try {
+    unwrapResponse(await authorizedFetch<ApiEnvelope<unknown>>(
+      `${config.public.gatewayUrl}/api/v1/platform/organizations/${key}/status`, {
+        method: 'PUT', body: { suspended: organization.status === 'Active', reason: organizationReasons[key] || null }
+      }))
+    managementMessages[key] = locale.value === 'th' ? 'เปลี่ยนสถานะองค์กรแล้ว' : 'Organization status updated.'
+    await loadOrganizations()
+  } catch {
+    managementMessages[key] = locale.value === 'th' ? 'เปลี่ยนสถานะไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not update status. Please try again.'
+  } finally { managementPending.value = '' }
+}
+
+async function inviteAdministrator(organization: Organization) {
+  const key = organization.tenantId
+  managementPending.value = key
+  managementMessages[key] = ''
+  try {
+    unwrapResponse(await authorizedFetch<ApiEnvelope<unknown>>(
+      `${config.public.gatewayUrl}/api/v1/platform/organizations/${key}/administrators`, {
+        method: 'POST', body: { email: inviteEmails[key]?.trim() }
+      }))
+    inviteEmails[key] = ''
+    managementMessages[key] = locale.value === 'th' ? 'ส่งคำเชิญผู้ดูแลองค์กรแล้ว' : 'Administrator invitation sent.'
+    await loadOrganizations()
+  } catch {
+    managementMessages[key] = locale.value === 'th' ? 'ส่งคำเชิญไม่สำเร็จ กรุณาตรวจสอบอีเมลและสถานะองค์กร' : 'Could not send invitation. Check the email and organization status.'
+  } finally { managementPending.value = '' }
 }
 
 function applySearch() {
@@ -107,10 +187,11 @@ async function resendActivation(organization: Organization, admin: OrganizationA
   resending.value = key
   resendMessages.value = { ...resendMessages.value, [key]: '' }
   try {
-    await $fetch(`${config.public.gatewayUrl}/api/v1/auth/activation/request`, {
+    unwrapResponse(await authorizedFetch<ApiEnvelope<unknown>>(
+      `${config.public.gatewayUrl}/api/v1/platform/organizations/${organization.tenantId}/administrators/activation`, {
       method: 'POST',
-      body: { tenantId: organization.tenantId, email: admin.email }
-    })
+      body: { email: admin.email }
+    }))
     resendMessages.value = {
       ...resendMessages.value,
       [key]: locale.value === 'th'
@@ -213,8 +294,26 @@ onMounted(async () => {
             <h2>{{ organization.name }}</h2>
             <p>{{ organization.slug }}</p>
           </div>
-          <span class="organization-code">{{ organization.organizationCode }}</span>
+          <div class="organization-badges">
+            <span class="status-pill" :class="organization.status === 'Active' ? 'status-active' : 'status-pending'">
+              {{ organization.status === 'Active' ? (locale === 'th' ? 'ใช้งาน' : 'Active') : (locale === 'th' ? 'ระงับ' : 'Suspended') }}
+            </span>
+            <span class="organization-code">{{ organization.organizationCode }}</span>
+          </div>
         </header>
+        <form v-if="editingId === organization.tenantId" class="organization-edit" @submit.prevent="updateOrganization(organization)">
+          <label>{{ locale === 'th' ? 'ชื่อองค์กร' : 'Organization name' }}<input v-model="editName" required maxlength="200" /></label>
+          <label>{{ locale === 'th' ? 'ชื่อ URL องค์กร' : 'Organization URL name' }}<input v-model="editSlug" required minlength="3" maxlength="80" pattern="[a-z0-9][a-z0-9-]{2,79}" /></label>
+          <button class="button" type="submit" :disabled="managementPending === organization.tenantId">{{ locale === 'th' ? 'บันทึก' : 'Save' }}</button>
+          <button class="button button-secondary" type="button" @click="editingId = ''">{{ locale === 'th' ? 'ยกเลิก' : 'Cancel' }}</button>
+        </form>
+        <div class="organization-actions">
+          <button v-if="editingId !== organization.tenantId" class="text-button" type="button" @click="beginEdit(organization)">{{ locale === 'th' ? 'แก้ไของค์กร' : 'Edit organization' }}</button>
+          <label class="reason-field">{{ locale === 'th' ? 'เหตุผลการเปลี่ยนแปลง' : 'Reason for change' }}<input v-model="organizationReasons[organization.tenantId]" maxlength="500" /></label>
+          <button class="button button-secondary" type="button" :disabled="managementPending === organization.tenantId" @click="setOrganizationStatus(organization)">
+            {{ organization.status === 'Active' ? (locale === 'th' ? 'ระงับองค์กร' : 'Suspend organization') : (locale === 'th' ? 'เปิดใช้งานองค์กร' : 'Reactivate organization') }}
+          </button>
+        </div>
         <p class="created-date">
           {{ locale === 'th' ? 'สร้างเมื่อ' : 'Created' }}
           {{ new Intl.DateTimeFormat(locale === 'th' ? 'th-TH' : 'en', { dateStyle: 'medium' }).format(new Date(organization.createdAtUtc)) }}
@@ -240,6 +339,11 @@ onMounted(async () => {
           </div>
         </div>
         <p v-else class="empty-admin">{{ locale === 'th' ? 'ไม่พบผู้ดูแลองค์กร' : 'No organization administrator found' }}</p>
+        <form class="invite-form" @submit.prevent="inviteAdministrator(organization)">
+          <label>{{ locale === 'th' ? 'เชิญผู้ดูแลเพิ่มเติม' : 'Invite another administrator' }}<input v-model="inviteEmails[organization.tenantId]" type="email" required autocomplete="email" /></label>
+          <button class="button button-secondary" type="submit" :disabled="managementPending === organization.tenantId">{{ locale === 'th' ? 'ส่งคำเชิญ' : 'Send invitation' }}</button>
+        </form>
+        <p v-if="managementMessages[organization.tenantId]" class="notice" role="status">{{ managementMessages[organization.tenantId] }}</p>
       </article>
     </section>
 
@@ -263,8 +367,13 @@ onMounted(async () => {
 .button-secondary { background: #edf2f8; border: 1px solid var(--color-border); color: var(--color-ink); cursor: pointer; font: inherit; }
 .result-count { font-size: .9rem; margin: .75rem 0; }
 .management-card, .organization-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-6); }
-.create-form { display: grid; gap: .85rem; margin: 1rem 0 2rem; max-width: 42rem; }
-.create-form label { display: grid; gap: .35rem; }
+.create-form, .organization-edit { display: grid; gap: .85rem; margin: 1rem 0; }
+.create-form { max-width: 42rem; }
+.create-form label, .organization-edit label, .reason-field, .invite-form label { display: grid; gap: .35rem; }
+.organization-edit input, .reason-field input, .invite-form input { border: 1px solid var(--color-border); border-radius: .45rem; font: inherit; min-width: 0; padding: .6rem .7rem; }
+.organization-badges, .organization-actions, .invite-form { align-items: center; display: flex; flex-wrap: wrap; gap: .65rem; }
+.organization-actions, .invite-form { border-top: 1px solid var(--color-border); padding-top: .75rem; }
+.reason-field { flex: 1 1 15rem; }
 .organization-list { display: grid; gap: 1rem; }
 .organization-card { display: grid; gap: .65rem; }
 .organization-heading { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; }

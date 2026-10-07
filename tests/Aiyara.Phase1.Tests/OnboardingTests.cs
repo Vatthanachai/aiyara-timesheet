@@ -168,7 +168,8 @@ public sealed class OnboardingTests
         await fixture.Db.SaveChangesAsync();
         fixture.Scope.TenantId = null;
 
-        var service = new PlatformOrganizationService(fixture.Db);
+        var service = new PlatformOrganizationService(fixture.Db, fixture.Scope,
+            new PlatformOrganizationManagementTests.FakeRevocations());
         var filtered = await service.ListAsync("ADMIN@SECOND.TEST", 1, 25, default);
         var item = Assert.Single(filtered.Items);
         Assert.Equal(second.TenantId, item.TenantId);

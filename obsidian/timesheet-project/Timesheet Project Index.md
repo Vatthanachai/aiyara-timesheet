@@ -16,6 +16,7 @@
 - [[Organization Codes And Identity IDs]] — tenant login code format and Identity UUIDv8 allocation.
 - [[Development Roadmap]] — dependency-ordered delivery plan and acceptance outcomes.
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
+- [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
 
 ## Repository Facts
 

@@ -82,6 +82,32 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task Suspended_organization_rejects_new_login_and_refresh_without_deleting_sessions()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Acme", "acme", "admin@acme.test"), default);
+        await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
+            tenant.TenantId, "admin@acme.test"), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Single().Code, "Correct-Password-123!"), default);
+        var login = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
+            "admin@acme.test", "Correct-Password-123!"), default);
+
+        fixture.Scope.TenantId = tenant.TenantId;
+        var organization = await fixture.Db.Tenants.SingleAsync();
+        organization.Status = Aiyara.Identities.Models.Tenancy.TenantStatus.Suspended;
+        await fixture.Db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginAsync(
+            new LoginRequest(tenant.TenantId, "admin@acme.test", "Correct-Password-123!"), default));
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.RefreshAsync(
+            new RefreshRequest(login.RefreshToken), default));
+        Assert.Equal(1, await fixture.Db.RefreshSessions.IgnoreQueryFilters()
+            .CountAsync(session => session.TenantId == tenant.TenantId && session.RevokedAtUtc == null));
+    }
+
+    [Fact]
     public async Task Password_reset_revokes_prior_sessions_and_rejects_weak_password()
     {
         await using var fixture = await Fixture.CreateAsync();

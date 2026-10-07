@@ -2,6 +2,12 @@
 
 > Updated 7 October 2026. Phases 0–5 are implemented and validated on `develop`. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
 
+## Current Feature Branch
+
+- `feature/sysadmin-organization-lifecycle` implements the approved Platform Admin organization lifecycle plan: editable organization name/slug, administrator invitations and activation resend, suspend/reactivate, lifecycle enforcement, and audit records. See [[Platform Organization Management Plan]].
+- The organization code remains immutable. Suspension retains tenant records and blocks login, refresh, and Gateway access validation.
+- Validation on this branch: full solution build succeeded with zero warnings/errors; Phase 1–4 tests passed 51/51; focused SysAdmin Playwright E2E, Nuxt production build, Compose config, and EF model/migration consistency checks passed.
+
 ## Phase 0 Platform Baseline
 
 - The Compose topology includes backend APIs, Report Worker, frontend Shell and

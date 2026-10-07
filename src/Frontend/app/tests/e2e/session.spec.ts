@@ -347,11 +347,13 @@ test('organization admin can sign up and sees the organization code without disp
   await expect(confirmation).toContainText('ระบบจะส่งรหัสใหม่')
 })
 
-test('platform admin can review organizations and resend a pending activation code', async ({ page }) => {
+test('platform admin can manage organization details, administrators, and lifecycle', async ({ page }) => {
   const platformTenantId = '507b1b8b-b07f-48d5-9aa1-ecfb6a5c8af0'
   const organizationTenantId = 'c99358d1-e01f-4dfd-9693-38da8883562d'
   let listAuthorization = ''
   let resendRequest: unknown
+  const managementRequests: Array<{ method: string; url: string; body: unknown }> = []
+  page.on('dialog', dialog => dialog.accept())
 
   await page.route('**/api/v1/auth/login', async route => {
     await route.fulfill({
@@ -369,11 +371,22 @@ test('platform admin can review organizations and resend a pending activation co
     })
   })
   await page.route('**/api/v1/platform/organizations**', async route => {
+    if (route.request().method() !== 'GET') {
+      if (route.request().url().endsWith('/administrators/activation')) {
+        resendRequest = route.request().postDataJSON()
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({ deliveryStatus: 'accepted' })) })
+        return
+      }
+      managementRequests.push({ method: route.request().method(), url: route.request().url(), body: route.request().postDataJSON() })
+      await route.fulfill({ status: route.request().method() === 'POST' ? 202 : 200,
+        contentType: 'application/json', body: JSON.stringify(apiOk({ deliveryStatus: 'accepted' })) })
+      return
+    }
     listAuthorization = route.request().headers().authorization || ''
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
+      body: JSON.stringify(apiOk({
         totalCount: 1,
         page: 1,
         pageSize: 25,
@@ -382,15 +395,12 @@ test('platform admin can review organizations and resend a pending activation co
           organizationCode: 'ACME123',
           name: 'Acme Studio',
           slug: 'acme-studio',
+          status: 'Active',
           createdAtUtc: '2026-10-01T00:00:00Z',
           admins: [{ email: 'admin@acme.test', status: 'PendingActivation' }]
         }]
-      })
+      }))
     })
-  })
-  await page.route('**/api/v1/auth/activation/request', async route => {
-    resendRequest = route.request().postDataJSON()
-    await route.fulfill({ status: 202 })
   })
 
   await page.goto('/')
@@ -407,8 +417,22 @@ test('platform admin can review organizations and resend a pending activation co
   await expect(page.getByText('รอเปิดใช้งาน')).toBeVisible()
   expect(listAuthorization).toBe('Bearer platform-admin-token')
   await page.getByRole('button', { name: 'ส่งรหัสใหม่' }).click()
-  expect(resendRequest).toEqual({ tenantId: organizationTenantId, email: 'admin@acme.test' })
+  expect(resendRequest).toEqual({ email: 'admin@acme.test' })
   await expect(page.locator('.admin-row')).toContainText('ระบบรับคำขอแล้ว')
+  await page.getByRole('button', { name: 'แก้ไของค์กร' }).click()
+  await page.getByLabel('ชื่อองค์กร').last().fill('Acme Renamed')
+  await page.getByLabel('ชื่อ URL องค์กร').last().fill('acme-renamed')
+  await page.getByRole('button', { name: 'บันทึก' }).click()
+  await expect(page.getByText('บันทึกข้อมูลองค์กรแล้ว')).toBeVisible()
+  await page.getByRole('button', { name: 'ระงับองค์กร' }).click()
+  await expect(page.getByText('เปลี่ยนสถานะองค์กรแล้ว')).toBeVisible()
+  await page.getByLabel('เชิญผู้ดูแลเพิ่มเติม').fill('second@acme.test')
+  await page.getByRole('button', { name: 'ส่งคำเชิญ' }).click()
+  await expect(page.getByText('ส่งคำเชิญผู้ดูแลองค์กรแล้ว')).toBeVisible()
+  expect(managementRequests.map(request => request.method)).toEqual(['PUT', 'PUT', 'POST'])
+  expect(managementRequests[0].body).toEqual({ name: 'Acme Renamed', slug: 'acme-renamed', reason: null })
+  expect(managementRequests[1].body).toEqual({ suspended: true, reason: null })
+  expect(managementRequests[2].body).toEqual({ email: 'second@acme.test' })
 })
 
 test('tenant administrator cannot see the platform organization management page', async ({ page }) => {

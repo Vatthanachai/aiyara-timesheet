@@ -134,7 +134,6 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
-app.MapPlatformOrganizationEndpoints();
 app.MapGrpcService<IdentityValidationGrpcService>();
 
 app.Run();
