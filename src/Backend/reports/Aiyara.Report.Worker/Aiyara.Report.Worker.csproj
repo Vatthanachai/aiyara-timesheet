@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="AWSSDK.S3" />
     <PackageReference Include="RabbitMQ.Client" />
     <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Quartz" />

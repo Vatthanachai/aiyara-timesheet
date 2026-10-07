@@ -1,6 +1,7 @@
 using Aiyara.Report.Databases;
 using Aiyara.Report.Models;
 using Aiyara.Report.Services;
+using Aiyara.Report.Worker;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -9,6 +10,66 @@ namespace Aiyara.Phase4.Tests;
 
 public sealed class ReportFoundationTests
 {
+    [Fact]
+    public async Task Report_ready_notification_retries_transient_failure_and_sends_internal_key()
+    {
+        var attempts = 0;
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            attempts++;
+            Assert.Equal("test-internal-key", request.Headers.GetValues("X-Internal-Key").Single());
+            return Task.FromResult(new HttpResponseMessage(attempts == 1
+                ? System.Net.HttpStatusCode.ServiceUnavailable
+                : System.Net.HttpStatusCode.Accepted));
+        });
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://notifications") };
+        var sender = new ReportReadyNotificationSender(client, "test-internal-key", TimeSpan.Zero);
+
+        var sent = await sender.SendAsync(new ReportReadyNotification("employee@example.test",
+            "Test Employee", "2026-10", "https://reports.example.test", Guid.NewGuid()));
+
+        Assert.True(sent);
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task Report_ready_notification_does_not_retry_permanent_failure()
+    {
+        var attempts = 0;
+        var handler = new StubHttpMessageHandler((_, _) =>
+        {
+            attempts++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.BadRequest));
+        });
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://notifications") };
+        var sender = new ReportReadyNotificationSender(client, "test-internal-key", TimeSpan.Zero);
+
+        var sent = await sender.SendAsync(new ReportReadyNotification("employee@example.test",
+            "Test Employee", "2026-10", "https://reports.example.test", Guid.NewGuid()));
+
+        Assert.False(sent);
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
+    public async Task Report_ready_notification_stops_after_three_transient_failures()
+    {
+        var attempts = 0;
+        var handler = new StubHttpMessageHandler((_, _) =>
+        {
+            attempts++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+        });
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://notifications") };
+        var sender = new ReportReadyNotificationSender(client, "test-internal-key", TimeSpan.Zero);
+
+        var sent = await sender.SendAsync(new ReportReadyNotification("employee@example.test",
+            "Test Employee", "2026-10", "https://reports.example.test", Guid.NewGuid()));
+
+        Assert.False(sent);
+        Assert.Equal(3, attempts);
+    }
+
     [Fact]
     public void Monthly_schedule_uses_tenant_timezone_and_closes_previous_month()
     {
@@ -200,6 +261,13 @@ public sealed class ReportFoundationTests
         Kind = ReportKind.Monthly, Format = ReportFormat.Pdf,
         Name = "Monthly timesheet", CreatedAtUtc = DateTime.UtcNow
     };
+
+    private sealed class StubHttpMessageHandler(
+        Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken) => send(request, cancellationToken);
+    }
 
     private static ReportRun NewRun(Guid tenantId, Guid definitionId, string key) => new()
     {

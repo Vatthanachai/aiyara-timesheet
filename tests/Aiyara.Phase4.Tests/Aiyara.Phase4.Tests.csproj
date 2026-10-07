@@ -4,11 +4,14 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Backend\reports\Aiyara.Report.Databases\Aiyara.Report.Databases.csproj" />
+    <ProjectReference Include="..\..\src\Backend\reports\Aiyara.Report.Api\Aiyara.Report.Api.csproj" />
     <ProjectReference Include="..\..\src\Backend\reports\Aiyara.Report.Services\Aiyara.Report.Services.csproj" />
+    <ProjectReference Include="..\..\src\Backend\reports\Aiyara.Report.Worker\Aiyara.Report.Worker.csproj" />
   </ItemGroup>
 </Project>

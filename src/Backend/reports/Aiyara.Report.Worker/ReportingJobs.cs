@@ -158,7 +158,7 @@ internal sealed class ScheduleDispatchJob(IServiceScopeFactory scopes,
 }
 
 internal sealed class RetentionPurgeJob(IServiceScopeFactory scopes,
-    ReportObjectStorage storage) : IJob
+    IReportObjectStorage storage) : IJob
 {
     public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken = default)
     {

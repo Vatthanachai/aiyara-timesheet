@@ -58,13 +58,16 @@ schedule dispatch, durable RabbitMQ command/event consumers, PDF/XLSX rendering,
 RustFS object versioning, signed monthly PDF uploads, retention/audit purging,
 report-ready email delivery through Notifications, and the Thai/English Reports
 remote are implemented on
-`feature/phase-four-reporting-completion`. Reports read immutable locked-month
+`develop`; sign-off test coverage is on
+`feature/phase-four-signoff-validation`. Reports read immutable locked-month
 snapshots owned by Timesheet; employee names come from Identity gRPC. Calendar,
 tenant isolation, snapshot parsing, and renderer tests pass, as do reporting
 service builds, the frontend production build, Compose health, and an
-unauthenticated Gateway boundary smoke. Authenticated generation/upload E2E
-authenticated generation/upload E2E tests and notification retry coverage are
-still required for Phase 4 sign-off.
+unauthenticated Gateway boundary smoke. The Phase 4 suite now exercises the
+production reporting auth middleware over HTTP with a test Identity validator,
+report request creation, PDF rendering, signed upload, latest-version download,
+audit recording, and transient notification retries. The live Identity gRPC
+token exchange remains outside this isolated integration test.
 
 1. Model report definitions, schedule configuration, Quartz persistence, run state, report snapshots, RustFS object metadata, and retention configuration.
 2. Configure tenant-timezone schedules: Monday weekly reports, closed-month reports at 00:15 on the following month's first day, and annual reports on 1 January.

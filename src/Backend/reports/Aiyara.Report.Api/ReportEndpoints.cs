@@ -93,7 +93,7 @@ public static class ReportEndpoints
             return Results.Ok(runs);
         });
         api.MapPost("/runs", async (HttpContext ctx, ReportingDbContext db,
-            IConfiguration configuration, ReportObjectStorage storage, RunRequest body,
+            IConfiguration configuration, IReportObjectStorage storage, RunRequest body,
             CancellationToken cancellationToken) =>
         {
             if (!ReportActor.TryRead(ctx, out var actor)) return Results.Unauthorized();
@@ -125,7 +125,7 @@ public static class ReportEndpoints
             return Results.Accepted($"/api/v1/runs/{run.Id}", run);
         });
         api.MapGet("/runs/{id:guid}/download", async (HttpContext ctx, ReportingDbContext db,
-            ReportObjectStorage storage, Guid id, CancellationToken cancellationToken) =>
+            IReportObjectStorage storage, Guid id, CancellationToken cancellationToken) =>
         {
             if (!ReportActor.TryRead(ctx, out var actor)) return Results.Unauthorized();
             var run = await db.ReportRuns.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -134,14 +134,14 @@ public static class ReportEndpoints
                 .OrderByDescending(x => x.IsExternallySigned).ThenByDescending(x => x.Version)
                 .FirstOrDefaultAsync(cancellationToken);
             if (file is null) return Results.NotFound();
-            using var response = await storage.GetAsync(file.ObjectKey, cancellationToken);
+            await using var response = await storage.GetAsync(file.ObjectKey, cancellationToken);
             await using var content = new MemoryStream();
-            await response.ResponseStream.CopyToAsync(content, cancellationToken);
+            await response.Content.CopyToAsync(content, cancellationToken);
             return Results.File(content.ToArray(), file.ContentType,
                 $"report-{run.PeriodStartUtc:yyyy-MM-dd}.{(file.ContentType == "application/pdf" ? "pdf" : "xlsx")}");
         });
         api.MapPost("/runs/{id:guid}/signed-document", async (HttpContext ctx,
-            ReportingDbContext db, ReportObjectStorage storage, Guid id, IFormFile file,
+            ReportingDbContext db, IReportObjectStorage storage, Guid id, IFormFile file,
             CancellationToken cancellationToken) =>
         {
             if (!ReportActor.TryRead(ctx, out var actor)) return Results.Unauthorized();

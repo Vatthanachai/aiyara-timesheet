@@ -21,6 +21,7 @@ builder.Services.AddSingleton(provider => new IdentityValidationService.Identity
     provider.GetRequiredService<GrpcChannel>()));
 builder.Services.AddSingleton(ReportObjectStorage.CreateClient(builder.Configuration));
 builder.Services.AddSingleton<ReportObjectStorage>();
+builder.Services.AddSingleton<IReportObjectStorage>(provider => provider.GetRequiredService<ReportObjectStorage>());
 builder.Services.AddHttpClient("timesheet", client =>
     client.BaseAddress = new Uri(builder.Configuration["Timesheet:BaseUrl"] ?? "http://localhost:5198"));
 builder.Services.AddHttpClient("notifications", client =>

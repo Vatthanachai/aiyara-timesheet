@@ -194,7 +194,8 @@ employee history/download and admin definitions, schedules, retention, and
 signed uploads.
 
 Run `dotnet test tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj` for
-calendar, tenant-isolation, snapshot, and document-renderer checks. Compose
-health and unauthenticated Gateway/API boundary checks are also exercised.
-Full authenticated report-generation and signed-upload E2E coverage and
-notification retry coverage remain in Phase 4 follow-up.
+calendar, tenant-isolation, snapshot, document-renderer, authenticated HTTP
+report-request/signed-upload/download, audit, and notification retry checks.
+The HTTP integration test uses the production reporting authentication
+middleware with a test Identity validator; the live Identity gRPC token exchange
+is not covered by this isolated test.

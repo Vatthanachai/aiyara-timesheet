@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Aiyara.Report.Services;
 
-public sealed class ReportObjectStorage(IAmazonS3 client, IConfiguration configuration)
+public sealed class ReportObjectStorage(IAmazonS3 client, IConfiguration configuration) : IReportObjectStorage
 {
     private string Bucket => configuration["ObjectStorage:Bucket"] ?? "aiyara-reports";
 
@@ -25,9 +25,13 @@ public sealed class ReportObjectStorage(IAmazonS3 client, IConfiguration configu
         }, cancellationToken);
     }
 
-    public async Task<GetObjectResponse> GetAsync(string key,
-        CancellationToken cancellationToken = default) =>
-        await client.GetObjectAsync(Bucket, key, cancellationToken);
+    public async Task<ReportObjectDownload> GetAsync(string key,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await client.GetObjectAsync(Bucket, key, cancellationToken);
+        return new ReportObjectDownload(response.ResponseStream,
+            response.Headers.ContentType ?? "application/octet-stream", response);
+    }
 
     public async Task DeleteAsync(string key, CancellationToken cancellationToken = default) =>
         await client.DeleteObjectAsync(Bucket, key, cancellationToken);

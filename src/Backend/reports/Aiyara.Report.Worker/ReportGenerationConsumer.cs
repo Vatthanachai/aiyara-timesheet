@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Net.Http.Json;
 using Aiyara.Report.Databases;
 using Aiyara.Report.Models;
 using Aiyara.Report.Services;
@@ -29,7 +28,7 @@ internal static class ReportRabbit
 }
 
 internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
-    IConfiguration configuration, ReportObjectStorage storage, IHttpClientFactory clients,
+    IConfiguration configuration, IReportObjectStorage storage, IHttpClientFactory clients,
     IdentityValidationService.IdentityValidationServiceClient identity,
     ILogger<ReportGenerationConsumer> logger) : BackgroundService
 {
@@ -167,21 +166,16 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
         {
             try
             {
-                using var notification = new HttpRequestMessage(HttpMethod.Post, "/internal/v1/report-ready")
-                {
-                    Content = JsonContent.Create(new
-                    {
-                        Email = employeeEmail, EmployeeName = employeeName,
-                        Period = data.Period,
-                        ReportUrl = configuration["Notifications:ReportUrl"] ?? "http://localhost:3000",
-                        ReportRunId = run.Id
-                    })
-                };
-                notification.Headers.Add("X-Internal-Key", configuration["Notifications:InternalKey"]);
-                using var response = await clients.CreateClient("notifications")
-                    .SendAsync(notification, cancellationToken);
-                if (!response.IsSuccessStatusCode)
-                    logger.LogWarning("Report-ready notification was not accepted for run {ReportRunId}.", run.Id);
+                var sender = new ReportReadyNotificationSender(
+                    clients.CreateClient("notifications"),
+                    configuration["Notifications:InternalKey"] ?? "",
+                    TimeSpan.FromSeconds(1));
+                var sent = await sender.SendAsync(new ReportReadyNotification(employeeEmail,
+                    employeeName, data.Period,
+                    configuration["Notifications:ReportUrl"] ?? "http://localhost:3000", run.Id),
+                    cancellationToken);
+                if (!sent)
+                    logger.LogWarning("Report-ready notification was not accepted for run {ReportRunId} after retries.", run.Id);
             }
             catch (Exception error)
             {

@@ -17,7 +17,7 @@
 
 The `identities`, `timesheet`, and `reports` areas each have projects for `Api`, `Databases`, `Handlers`, `Models`, `Services`/`Servives`, and `Utilities`.
 
-Reporting stores schedules in the tenant-scoped Reporting database and Quartz dispatches due work. Generated documents use locked Timesheet snapshots, Identity profile lookup, and RustFS. Authenticated end-to-end generation/upload tests and notification retry coverage remain pending. Other placeholder modules still await their domain behavior. The spelling `Servives` is present only in the identities directory; its assembly/project file remains `Aiyara.Identities.Services`.
+Reporting stores schedules in the tenant-scoped Reporting database and Quartz dispatches due work. Generated documents use locked Timesheet snapshots, Identity profile lookup, and RustFS. Phase 4 HTTP integration tests cover the production auth middleware with a test Identity validator, report request creation, PDF rendering, signed upload/download, audit recording, and transient notification retries. The live Identity gRPC token exchange remains outside the isolated integration test. Other placeholder modules still await their domain behavior. The spelling `Servives` is present only in the identities directory; its assembly/project file remains `Aiyara.Identities.Services`.
 
 ## Shared Utilities
 

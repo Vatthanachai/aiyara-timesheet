@@ -124,15 +124,18 @@
 - Phase 4 reporting APIs, tenant-local schedule dispatch, durable RabbitMQ
   consumers, PDF/XLSX generation from immutable locked-month snapshots, RustFS
   storage, signed monthly PDF versioning, retention/audit handling, and the
-  Thai/English Reports remote are implemented on the current feature branch.
+  Thai/English Reports remote are implemented on `develop`; Phase 4 sign-off
+  tests are on `feature/phase-four-signoff-validation`.
   Calendar, tenant-isolation, snapshot parsing, and PDF/XLSX renderer tests
   pass; Compose services and Gateway's unauthenticated reporting boundary are
   healthy. Report-ready email delivery is integrated through Notifications and
-  delivery outcomes are recorded. Authenticated generation/upload E2E tests and
-  notification retry coverage remain pending before Phase 4 can be marked complete.
-- Approval workflows and reporting generation endpoints.
+  delivery outcomes are recorded. Phase 4 HTTP integration tests cover the
+  production reporting-auth middleware using a test Identity validator, report
+  request creation, PDF rendering, signed upload/download, and audit recording.
+  Notification retries for transient failures and stop-on-permanent-failure are
+  covered. Live Identity gRPC token exchange is not part of the isolated test.
 - Automated frontend end-to-end flows.
-- Application clients for RabbitMQ and RustFS beyond dependency probes.
+- Live Identity gRPC token-exchange integration test for reporting.
 - Domain and end-to-end test suites for later phases.
 
 ## Agreed Direction
