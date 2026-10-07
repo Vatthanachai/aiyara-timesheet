@@ -44,6 +44,18 @@ When launching a backend directly, dependency hosts default to `localhost` and
 their standard ports. Override `Dependencies__<Name>__Host` and
 `Dependencies__<Name>__Port` if the dependencies use different endpoints.
 
+The APIs and Report Worker export OpenTelemetry HTTP and .NET runtime metrics
+to the Prometheus OTLP receiver on the private Compose network. Prometheus is
+available at `http://localhost:${PROMETHEUS_PORT:-9090}` and Grafana at
+`http://localhost:${GRAFANA_PORT:-3001}`; use `GRAFANA_ADMIN_USER` and
+`GRAFANA_ADMIN_PASSWORD` from `.env` to sign in. Grafana provisions the
+Prometheus data source and the **Aiyara Platform Overview** dashboard, which
+shows request rate, 5xx rate, p95 latency, and .NET process memory. The
+Prometheus host port binds to loopback. Business metrics for authentication,
+RabbitMQ, Quartz, report runs, and RustFS are still to be added. Run
+`pwsh -File tests/phase5/Smoke.ps1` to verify metrics from all six backend
+processes and Grafana's provisioned data source and dashboard.
+
 The Aspire AppHost starts application projects for debugging and displays the
 Compose infrastructure as external resources. Start Compose infrastructure
 first when using AppHost. If Compose host ports differ from their defaults,

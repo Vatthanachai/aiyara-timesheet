@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 7 October 2026. Phases 0–4 are complete; Phase 5 quality and operations is next. See [[Development Roadmap]].
+> Updated 7 October 2026. Phases 0–4 are complete. Phase 5 is partially covered and remains outstanding. See [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
@@ -139,6 +139,34 @@
   repeatable smoke test. Phase 4 is complete.
 - Automated frontend end-to-end flows.
 - Domain and end-to-end test suites for later phases.
+
+## Phase 5 — Quality, Operations, And Hardening (incomplete)
+
+- Existing Phase 1–4 unit tests and Compose smoke tests cover onboarding,
+  identity, timesheet, and reporting flows. They also exercise selected tenant
+  isolation, session revocation, and retry behavior. They do not yet provide
+  integration coverage for every service/database or complete gRPC and
+  RabbitMQ contract execution; frontend browser E2E coverage is also absent.
+- Initial observability implementation: APIs and Report Worker export HTTP and
+  .NET runtime metrics over OTLP to Prometheus. Grafana provisions a Prometheus
+  data source and a platform overview dashboard for request rate, 5xx rate,
+  p95 latency, and .NET process memory. Prometheus remains available only on
+  the host loopback port. Business metrics for authentication, RabbitMQ,
+  Quartz, report runs, and RustFS failures still need instrumentation and
+  dashboard coverage. Compose does not include a trace collector/backend.
+  Validation on 7 October 2026: all six backend processes appeared in
+  Prometheus request and memory metrics; Grafana loaded the provisioned
+  four-panel dashboard; an isolated clean-volume Compose stack passed
+  `tests/platform/Smoke.ps1` with all 17 core containers healthy; solution
+  tests passed 40/40, and `tests/phase5/Smoke.ps1` passed. The default Compose
+  project could not reuse its existing PostgreSQL volume because its stored
+  password did not match the current `.env`; that volume was left intact.
+- Retention/purge and secret-redaction implementations exist in parts of the
+  system, but systematic automated tests for purge outcomes and secret absence
+  from logs/traces/snapshots are still needed.
+- The root README documents Compose startup, MailDev, API references, test
+  commands, and the initial metrics/dashboard setup. A complete developer
+  runbook still needs migration procedures and troubleshooting guidance.
 
 ## Agreed Direction
 

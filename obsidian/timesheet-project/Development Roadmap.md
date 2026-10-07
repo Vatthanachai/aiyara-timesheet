@@ -81,6 +81,20 @@ empty bucket-list response.
 
 ## Phase 5 — Quality, Operations, And Hardening
 
+Implementation status (2026-10-07): Phase 5 is in progress. The initial
+observability slice exports HTTP and .NET runtime metrics from the APIs and
+Report Worker to Prometheus over OTLP, and provisions a Grafana platform
+overview dashboard. Phase 1–4 tests and Compose smoke tests provide partial
+coverage, including onboarding, identity, timesheet, reporting, signed uploads,
+tenant isolation, session revocation, and retry behavior. Business metrics for
+authentication, RabbitMQ, Quartz, report runs, and RustFS still need to be
+added. A dedicated clean-volume Compose run verified metric ingestion from all
+six backend processes and Grafana dashboard provisioning; the platform smoke
+test and all 40 solution tests passed. Compose has no trace collector/backend.
+Retention/purge and secret-redaction behavior lack systematic automated
+scenario coverage, and the developer runbook still needs migration and
+troubleshooting procedures.
+
 1. Add unit tests for domain logic and password/token components; integration tests for every service/database; contract tests for gRPC and RabbitMQ; and E2E tests for registration, activation, login/reset, time entry, report generation, and signed upload.
 2. Add Prometheus metrics and Grafana dashboards for service health, requests, authentication, RabbitMQ, Quartz, report runs, and RustFS failures. Add trace collection when the chosen backend is enabled.
 3. Exercise retention/purge, session revocation, tenant-isolation, recovery/retry, and secret-redaction scenarios.

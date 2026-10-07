@@ -8,7 +8,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.ServiceDiscovery;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 namespace Microsoft.Extensions.Hosting;
@@ -77,14 +79,30 @@ public static class Extensions
             logging.IncludeScopes = true;
         });
 
-        builder.Services.AddOpenTelemetry()
+        var openTelemetry = builder.Services.AddOpenTelemetry()
+            .ConfigureResource(resource => resource.AddService(builder.Environment.ApplicationName))
             .WithMetrics(metrics =>
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation();
-            })
-            .WithTracing(tracing =>
+            });
+
+        var metricsEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"];
+        if (!string.IsNullOrWhiteSpace(metricsEndpoint))
+        {
+            if (!Uri.TryCreate(metricsEndpoint, UriKind.Absolute, out var endpoint))
+                throw new InvalidOperationException(
+                    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT must be an absolute URI.");
+
+            openTelemetry.WithMetrics(metrics => metrics.AddOtlpExporter(options =>
+            {
+                options.Endpoint = endpoint;
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
+            }));
+        }
+
+        openTelemetry.WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
                     .AddAspNetCoreInstrumentation(tracing =>
