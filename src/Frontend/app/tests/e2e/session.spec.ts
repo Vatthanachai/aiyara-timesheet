@@ -93,7 +93,7 @@ test('activation submits the email code and new password then links to sign in',
   await expect(page.getByRole('link', { name: 'ไปหน้าเข้าสู่ระบบ' })).toHaveAttribute('href', '/')
 })
 
-test('organization admin can sign up and receives the organization code without exposing onboarding key', async ({ page }) => {
+test('organization admin can sign up and sees the organization code without displaying onboarding key', async ({ page }) => {
   let signupRequest: unknown
   let activationRequest: unknown
   await page.route('**/api/v1/tenants', async route => {

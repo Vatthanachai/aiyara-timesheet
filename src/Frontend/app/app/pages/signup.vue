@@ -32,7 +32,7 @@ async function signUp() {
       }
     })
 
-    // The API also returns a one-time onboarding key. Keep it out of browser state.
+    // Do not persist or render the one-time onboarding capability in the UI.
     result.value = {
       tenantId: created.tenantId,
       organizationCode: created.organizationCode,
