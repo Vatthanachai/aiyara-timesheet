@@ -11,26 +11,14 @@
             "id": "617f213337660ed8",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "Timesheet Project Index.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "New tab"
-            }
-          }
-        ]
-      },
-      {
-        "id": "253add2e7a77dfa2",
-        "type": "tabs",
-        "children": [
-          {
-            "id": "abf8253c895c6720",
-            "type": "leaf",
-            "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "title": "Timesheet Project Index"
             }
           }
         ]
@@ -198,8 +186,15 @@
       "bases:Create new base": false
     }
   },
-  "active": "c233abf769dd98c0",
+  "active": "617f213337660ed8",
   "lastOpenFiles": [
+    "Target Architecture.md",
+    "Services And Projects.md",
+    "Security And Tenant Model.md",
+    "Project Status.md",
+    "Development Roadmap.md",
+    "Architecture.md",
+    "Timesheet Project Index.md",
     "Welcome.md"
   ]
 }
