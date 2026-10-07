@@ -9,11 +9,23 @@ export default defineConfig({
     trace: 'retain-on-failure',
     ...devices['Desktop Chrome']
   },
-  webServer: {
-    command: 'bun run dev --host 127.0.0.1 --port 3100',
-    url: 'http://127.0.0.1:3100',
-    env: { NUXT_PUBLIC_GATEWAY_URL: 'http://127.0.0.1:3100' },
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000
-  }
+  webServer: [
+    {
+      command: 'bun run dev --host 127.0.0.1 --port 3100',
+      url: 'http://127.0.0.1:3100',
+      env: {
+        NUXT_PUBLIC_GATEWAY_URL: 'http://127.0.0.1:3100',
+        NUXT_PUBLIC_IDENTITY_REMOTE_URL: 'http://127.0.0.1:3105'
+      },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000
+    },
+    {
+      command: 'bun run --cwd ../remotes/identity-profile nuxt dev --host 127.0.0.1 --port 3105',
+      url: 'http://127.0.0.1:3105',
+      env: { NUXT_PUBLIC_SHELL_ORIGIN: 'http://127.0.0.1:3100' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000
+    }
+  ]
 })

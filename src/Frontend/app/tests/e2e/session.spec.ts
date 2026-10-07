@@ -33,9 +33,14 @@ test('sign in persists the session, restores it after reload, and signs out', as
       email: 'admin@example.test',
       firstName: 'อรทัย',
       lastName: 'ใจดี',
-      photoUrl: 'https://example.test/avatar.png',
+      photoUrl: '/api/v1/identity/profile/me/photo',
       jobTitle: 'Administrator'
     })
+  }))
+  await page.route('**/api/v1/identity/profile/me/photo', route => route.fulfill({
+    status: 200,
+    contentType: 'image/png',
+    body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=', 'base64')
   }))
   await page.route('**/api/v1/auth/logout', route => route.fulfill({ status: 204 }))
 
@@ -56,7 +61,7 @@ test('sign in persists the session, restores it after reload, and signs out', as
 
   await page.reload()
   await expect(page.locator('.profile-trigger')).toContainText('อรทัย ใจดี')
-  await expect(page.locator('.profile-avatar')).toHaveAttribute('src', 'https://example.test/avatar.png')
+  await expect(page.locator('.profile-avatar')).toHaveAttribute('src', /^blob:/)
   await page.locator('.profile-trigger').click()
   await expect(page.getByRole('link', { name: 'ตั้งค่าโปรไฟล์' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'ออกจากระบบ' })).toBeVisible()
@@ -64,6 +69,78 @@ test('sign in persists the session, restores it after reload, and signs out', as
   await expect(page.getByRole('button', { name: 'เข้าสู่ระบบ' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
     .toBeNull()
+})
+
+test('profile settings previews and uploads an image then refreshes the shell avatar', async ({ page }) => {
+  let uploadedFile = ''
+  let photoUploaded = false
+  const corsHeaders = {
+    'access-control-allow-origin': 'http://127.0.0.1:3105',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: corsHeaders })
+      return
+    }
+
+    if (request.url().endsWith('/api/v1/auth/login')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({
+        accessToken: 'profile-token',
+        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+        refreshToken: 'profile-refresh',
+        mustChangePassword: false,
+        tenantId,
+        role: 'TenantAdmin'
+      }) })
+      return
+    }
+
+    if (request.url().endsWith('/api/v1/identity/profile/me/photo')) {
+      if (request.method() === 'POST') {
+        uploadedFile = request.postData() || ''
+        photoUploaded = true
+        await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json',
+          body: JSON.stringify({ photoUrl: '/api/v1/identity/profile/me/photo' }) })
+      } else {
+        await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'image/png',
+          body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=', 'base64') })
+      }
+      return
+    }
+
+    if (request.url().endsWith('/api/v1/identity/profile/me')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({
+        email: 'admin@example.test', firstName: 'อรทัย', lastName: 'ใจดี',
+        photoUrl: photoUploaded ? '/api/v1/identity/profile/me/photo' : null, jobTitle: null
+      }) })
+      return
+    }
+    await route.fulfill({ status: 404, headers: corsHeaders })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('รหัสองค์กร').fill(organizationCode)
+  await page.getByLabel('อีเมล').fill('admin@example.test')
+  await page.getByLabel('รหัสผ่าน').fill('test-password')
+  await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()
+  await page.getByRole('link', { name: /โปรไฟล์.*จัดการข้อมูลส่วนตัว/ }).click()
+
+  const profileFrame = page.frameLocator('iframe')
+  await expect(profileFrame.getByRole('heading', { name: 'ตั้งค่าโปรไฟล์' })).toBeVisible()
+  await profileFrame.locator('#profile-photo-input').setInputFiles({
+    name: 'headshot.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=', 'base64')
+  })
+  await expect(profileFrame.locator('.photo-preview img')).toHaveAttribute('src', /^blob:/)
+  await profileFrame.getByRole('button', { name: 'บันทึกรูปภาพ' }).click()
+  await expect(profileFrame.getByRole('status')).toHaveText('อัปเดตรูปโปรไฟล์แล้ว')
+  expect(uploadedFile).toContain('headshot.png')
+  await expect(page.locator('.profile-trigger .profile-avatar')).toHaveAttribute('src', /^blob:/)
 })
 
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {

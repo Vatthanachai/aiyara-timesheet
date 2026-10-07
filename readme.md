@@ -32,6 +32,11 @@ instance may remain external at `localhost:1025` (SMTP) and
 ports. This is the agreed local exception to Compose ownership; verify it before
 starting the platform with `curl http://localhost:8080`.
 
+Identity stores uploaded profile photos in the private RustFS bucket
+`aiyara-profile-photos`. The authenticated Identity API serves each account's
+own photo; uploads accept JPEG, PNG, or WebP files up to 5 MB. RustFS access
+keys are shared with the report services through the ignored `.env` file.
+
 `infrastructure/postgres/init-databases.sh` creates `identity_db`,
 `timesheet_db`, `reporting_db`, and `notification_db` on the first initialization
 of the PostgreSQL volume. The one-shot `db-provisioner` creates a separate
@@ -67,7 +72,8 @@ first when using AppHost. If Compose host ports differ from their defaults,
 set `POSTGRES_PORT`, `REDIS_PORT`, `RABBITMQ_AMQP_PORT`, and `RUSTFS_API_PORT`
 in the AppHost process environment to match `.env`.
 Set `IDENTITY_DB_PASSWORD`, `TIMESHEET_DB_PASSWORD`, `REPORTING_DB_PASSWORD`,
-and `NOTIFICATION_DB_PASSWORD` in that environment too.
+`NOTIFICATION_DB_PASSWORD`, `RUSTFS_ACCESS_KEY`, and `RUSTFS_SECRET_KEY` in that
+environment too.
 
 ## Phase 1 API and tenancy
 

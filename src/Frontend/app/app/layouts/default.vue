@@ -12,6 +12,7 @@ const { token, role, logout, restore } = useSession()
 const config = useRuntimeConfig()
 const profile = ref<ProfileSummary | null>(null)
 const profileMenu = ref<HTMLDetailsElement | null>(null)
+let avatarObjectUrl = ''
 
 const profileName = computed(() => {
   const fullName = [profile.value?.firstName, profile.value?.lastName]
@@ -35,12 +36,33 @@ async function loadProfile() {
   }
 
   try {
-    profile.value = await $fetch<ProfileSummary>(`${config.public.gatewayUrl}/api/v1/identity/profile/me`, {
+    const value = await $fetch<ProfileSummary>(`${config.public.gatewayUrl}/api/v1/identity/profile/me`, {
       headers: { Authorization: `Bearer ${token.value}` }
     })
+    if (value.photoUrl?.startsWith('/')) {
+      const photo = await $fetch<Blob>(`${config.public.gatewayUrl}${value.photoUrl}`, {
+        headers: { Authorization: `Bearer ${token.value}` },
+        responseType: 'blob'
+      })
+      if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
+      avatarObjectUrl = URL.createObjectURL(photo)
+      value.photoUrl = avatarObjectUrl
+    } else if (avatarObjectUrl) {
+      URL.revokeObjectURL(avatarObjectUrl)
+      avatarObjectUrl = ''
+    }
+    profile.value = value
   } catch {
     profile.value = null
+    if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
+    avatarObjectUrl = ''
   }
+}
+
+function onProfileUpdated(event: MessageEvent) {
+  if (event.origin !== new URL(config.public.remotes.identity).origin ||
+      event.data?.type !== 'aiyara.profile.updated') return
+  void loadProfile()
 }
 
 function closeProfileMenu() {
@@ -55,11 +77,21 @@ async function signOut() {
 
 onMounted(() => {
   restore()
+  window.addEventListener('message', onProfileUpdated)
 })
 
 watch(token, (value) => {
   if (value) void loadProfile()
-  else profile.value = null
+  else {
+    profile.value = null
+    if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
+    avatarObjectUrl = ''
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('message', onProfileUpdated)
+  if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
 })
 </script>
 

@@ -15,11 +15,20 @@ const { token, tenantId, renew, restore } = useSession()
 const { locale } = useLocale()
 const frame = ref<HTMLIFrameElement | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
+function onRemoteMessage(event: MessageEvent) {
+  if (!remoteUrl.value || event.source !== frame.value?.contentWindow ||
+      event.origin !== new URL(remoteUrl.value).origin || event.data?.type !== 'aiyara.ready') return
+  void sendSession()
+}
 onMounted(() => {
   restore()
+  window.addEventListener('message', onRemoteMessage)
   refreshTimer = setInterval(sendSession, 60_000)
 })
-onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  window.removeEventListener('message', onRemoteMessage)
+})
 async function sendSession() {
   if (!import.meta.client || !frame.value || !remoteUrl.value) return
   if (token.value) await renew()
