@@ -318,20 +318,21 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.profile-page { color: var(--color-ink); margin: 0 auto; max-width: 54rem; padding: clamp(1rem, 3vw, 2.5rem); }
+.profile-page { box-sizing: border-box; color: var(--color-ink); margin: 0 auto; max-width: 54rem; min-width: 0; padding: clamp(1rem, 3vw, 2.5rem); width: 100%; }
 .page-heading { margin-bottom: 1.75rem; }
 .eyebrow { color: var(--color-brand); font-size: .72rem; font-weight: 750; letter-spacing: .14em; }
 .page-heading h1 { font-size: clamp(1.75rem, 4vw, 2.3rem); letter-spacing: -.035em; line-height: 1.2; margin: .55rem 0 .45rem; }
 .page-heading p, .section-heading p { color: var(--color-muted); line-height: 1.55; margin: 0; }
 .profile-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 1rem; box-shadow: 0 8px 28px rgb(25 43 75 / 5%); margin-top: 1rem; padding: clamp(1rem, 2.5vw, 1.5rem); }
-.section-heading { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; }
+.section-heading { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; min-width: 0; }
+.section-heading > div { min-width: 0; }
 .section-heading h2 { font-size: 1.05rem; letter-spacing: -.01em; margin: 0 0 .35rem; }
 .photo-layout { align-items: center; display: flex; gap: 1.5rem; margin-top: 1.4rem; }
 .photo-preview { align-items: center; background: #eaf1ff; border: 4px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px var(--color-border); color: var(--color-brand); display: flex; flex: 0 0 7rem; font-size: 1.8rem; font-weight: 700; height: 7rem; justify-content: center; overflow: hidden; width: 7rem; }
 .photo-preview img { height: 100%; object-fit: cover; width: 100%; }
 .photo-actions { min-width: 0; }
-.profile-display-name { font-size: 1.05rem; font-weight: 700; margin: 0; }
-.profile-email { color: var(--color-muted); font-size: .88rem; margin: .2rem 0 .85rem; }
+.profile-display-name { font-size: 1.05rem; font-weight: 700; margin: 0; overflow-wrap: anywhere; }
+.profile-email { color: var(--color-muted); font-size: .88rem; margin: .2rem 0 .85rem; overflow-wrap: anywhere; }
 .photo-buttons { align-items: center; display: flex; flex-wrap: wrap; gap: .85rem; }
 .button { align-items: center; border: 1px solid transparent; border-radius: .55rem; cursor: pointer; display: inline-flex; font: inherit; font-size: .9rem; font-weight: 650; gap: .5rem; justify-content: center; min-height: 2.65rem; padding: .6rem .9rem; text-decoration: none; transition: background 120ms ease, border-color 120ms ease, transform 120ms ease; }
 .button:hover:not(:disabled) { transform: translateY(-1px); }
@@ -347,7 +348,7 @@ onBeforeUnmount(() => {
 .danger-button:disabled { cursor: wait; opacity: .55; }
 .drag-hint { color: var(--color-muted); font-size: .78rem; margin: .6rem 0 0; }
 .selected-file-row { align-items: center; display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; margin-top: .9rem; }
-.selected-file-row > span { color: var(--color-muted); font-size: .82rem; max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-file-row > span { color: var(--color-muted); font-size: .82rem; max-width: 18rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .visually-hidden { height: 1px; margin: -1px; overflow: hidden; position: absolute; clip: rect(0, 0, 0, 0); white-space: nowrap; width: 1px; }
 .account-badge { background: #f1f4f9; border-radius: 999px; color: var(--color-muted); font-size: .73rem; font-weight: 600; padding: .35rem .6rem; white-space: nowrap; }
 .fields-grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1.5rem; }
@@ -363,11 +364,26 @@ onBeforeUnmount(() => {
 .feedback-success { color: #067647; }
 .sign-in-message { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .75rem; color: var(--color-muted); padding: 1.25rem; }
 @media (max-width: 38rem) {
-  .photo-layout { align-items: flex-start; flex-direction: column; }
+  .profile-page { padding: 1rem; }
+  .page-heading { margin-bottom: 1.25rem; }
+  .photo-layout { align-items: flex-start; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+  .photo-preview { flex-basis: 5.5rem; height: 5.5rem; width: 5.5rem; }
+  .photo-actions { width: 100%; }
+  .photo-buttons { align-items: stretch; flex-direction: column; }
+  .photo-buttons > * { justify-content: center; text-align: center; width: 100%; }
+  .selected-file-row { align-items: stretch; flex-direction: column; }
+  .selected-file-row > span { max-width: 100%; }
+  .selected-file-row > button { width: 100%; }
+  .section-heading { flex-direction: column; gap: .65rem; }
   .fields-grid { grid-template-columns: 1fr; }
   .field-full { grid-column: auto; }
   .form-footer { align-items: stretch; flex-direction: column; }
   .form-footer > button { width: 100%; }
   .account-badge { display: none; }
+}
+@media (max-width: 22rem) {
+  .profile-page { padding: .75rem; }
+  .profile-card { border-radius: .75rem; padding: .85rem; }
+  .button { font-size: .84rem; padding-inline: .65rem; }
 }
 </style>

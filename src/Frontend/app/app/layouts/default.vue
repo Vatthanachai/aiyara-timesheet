@@ -155,6 +155,15 @@ onUnmounted(() => {
   .shell-header { align-items: center; flex-direction: row; flex-wrap: wrap; }
   .navigation { order: 3; width: 100%; }
   .header-actions { margin-left: auto; }
-  .profile-name { max-width: 8rem; }
+  .profile-trigger { gap: .4rem; max-width: min(55vw, 15rem); }
+  .profile-name { max-width: clamp(3.5rem, 25vw, 8rem); }
+  .profile-dropdown { max-width: calc(100vw - 2rem); min-width: min(13rem, calc(100vw - 2rem)); }
+}
+@media (max-width: 22rem) {
+  .header-actions { gap: .4rem; }
+  .header-actions .locale-button { padding: .45rem .55rem; }
+  .profile-trigger { padding-right: .5rem; }
+  .profile-avatar { flex-basis: 2rem; height: 2rem; width: 2rem; }
+  .profile-name { max-width: 5.5rem; }
 }
 </style>
