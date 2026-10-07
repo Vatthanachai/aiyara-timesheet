@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+
 type Definition = { id: string; kind: string; format: string; name: string }
 type Run = { id: string; subjectUserId: string | null; status: string; periodStartUtc: string; periodEndUtc: string; attemptCount: number; createdAtUtc: string; kind: string; format: string; name: string }
 type Schedule = { id: string; reportDefinitionId: string; timeZoneId: string; localTime: string; nextFireAtUtc: string; kind: string; format: string; name: string }
 type Dashboard = { total: number; ready: number; queued: number; failed: number }
 const config = useRuntimeConfig()
+useIframeAutoHeight(config.public.shellOrigin)
 const token = ref('')
 const gateway = ref('http://localhost:8081')
 const locale = ref<'th' | 'en'>('th')

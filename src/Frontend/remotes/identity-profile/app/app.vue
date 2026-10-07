@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+
 type Profile = {
   id: string
   email: string
@@ -10,6 +12,7 @@ type Profile = {
 
 const token = ref('')
 const config = useRuntimeConfig()
+useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<'th' | 'en'>('th')
 const profile = reactive({ firstName: '', lastName: '', photoUrl: '' as string | null, jobTitle: '' })

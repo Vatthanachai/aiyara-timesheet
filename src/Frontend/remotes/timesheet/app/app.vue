@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+
 type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null }
 type Task = { id: string; name: string; status: string; projectId: string | null; categoryId: string | null }
 type Leave = { id: string; date: string; kind: string; notes: string | null }
@@ -6,6 +8,7 @@ type Catalog = { projects: { id: string; name: string }[]; categories: { id: str
 type TrayItem = { name: string; projectId?: string | null; categoryId?: string | null; personalTaskId?: string | null }
 const token = ref('')
 const config = useRuntimeConfig()
+useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<'th' | 'en'>('th')
 const month = ref(new Date().toISOString().slice(0, 7))

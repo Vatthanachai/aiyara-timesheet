@@ -17,8 +17,14 @@ const frame = ref<HTMLIFrameElement | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 function onRemoteMessage(event: MessageEvent) {
   if (!remoteUrl.value || event.source !== frame.value?.contentWindow ||
-      event.origin !== new URL(remoteUrl.value).origin || event.data?.type !== 'aiyara.ready') return
-  void sendSession()
+      event.origin !== new URL(remoteUrl.value).origin) return
+  if (event.data?.type === 'aiyara.ready') {
+    void sendSession()
+    return
+  }
+  if (event.data?.type === 'aiyara.resize' && Number.isFinite(event.data.height)) {
+    frame.value.style.height = `${Math.max(200, Math.min(100_000, Math.ceil(event.data.height)))}px`
+  }
 }
 onMounted(() => {
   restore()

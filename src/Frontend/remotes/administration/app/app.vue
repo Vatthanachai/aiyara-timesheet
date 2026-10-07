@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+
 type Catalog = { projects: { id: string; name: string }[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[] }
 const token = ref('')
 const config = useRuntimeConfig()
+useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<'th' | 'en'>('th')
 const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [] })

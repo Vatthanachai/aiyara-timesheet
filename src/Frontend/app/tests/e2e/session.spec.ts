@@ -131,6 +131,11 @@ test('profile settings previews and uploads an image then refreshes the shell av
 
   const profileFrame = page.frameLocator('iframe')
   await expect(profileFrame.getByRole('heading', { name: 'ตั้งค่าโปรไฟล์' })).toBeVisible()
+  await expect.poll(async () => {
+    const frameHeight = await page.locator('iframe').evaluate(frame => frame.getBoundingClientRect().height)
+    const contentHeight = await profileFrame.locator('html').evaluate(element => element.scrollHeight)
+    return Math.abs(frameHeight - contentHeight) <= 2
+  }).toBe(true)
   for (const width of [768, 375, 320]) {
     await page.setViewportSize({ width, height: 820 })
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
