@@ -70,3 +70,45 @@ test('failed sign in displays an error and does not persist credentials', async 
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.access'))).toBeNull()
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.refresh'))).toBeNull()
 })
+
+test('activation submits the email code and new password then links to sign in', async ({ page }) => {
+  let activationRequest: unknown
+  await page.route('**/api/v1/auth/activate', async route => {
+    activationRequest = route.request().postDataJSON()
+    await route.fulfill({ status: 204 })
+  })
+
+  await page.goto('/activate')
+  await waitForHydration(page)
+  await page.getByLabel('รหัสเปิดใช้งานจากอีเมล').fill('one-time-activation-code')
+  await page.getByLabel('ตั้งรหัสผ่านใหม่').fill('New-Strong-Password-123!')
+  await page.getByLabel('ยืนยันรหัสผ่านใหม่').fill('New-Strong-Password-123!')
+  await page.getByRole('button', { name: 'เปิดใช้งานบัญชี' }).click()
+
+  await expect.poll(() => activationRequest).toEqual({
+    code: 'one-time-activation-code',
+    password: 'New-Strong-Password-123!'
+  })
+  await expect(page.locator('section[role="status"]')).toContainText('เปิดใช้งานสำเร็จ')
+  await expect(page.getByRole('link', { name: 'ไปหน้าเข้าสู่ระบบ' })).toHaveAttribute('href', '/')
+})
+
+test('activation failure shows a safe message and does not expose the API error', async ({ page }) => {
+  await page.route('**/api/v1/auth/activate', route => route.fulfill({
+    status: 400,
+    contentType: 'application/problem+json',
+    body: JSON.stringify({ title: 'Invalid or expired challenge.', status: 400 })
+  }))
+
+  await page.goto('/activate')
+  await waitForHydration(page)
+  await page.getByLabel('รหัสเปิดใช้งานจากอีเมล').fill('expired-code')
+  await page.getByLabel('ตั้งรหัสผ่านใหม่').fill('New-Strong-Password-123!')
+  await page.getByLabel('ยืนยันรหัสผ่านใหม่').fill('New-Strong-Password-123!')
+  await page.getByRole('button', { name: 'เปิดใช้งานบัญชี' }).click()
+
+  await expect(page.getByRole('alert')).toHaveText(
+    'เปิดใช้งานไม่สำเร็จ กรุณาตรวจสอบรหัสและข้อกำหนดรหัสผ่านขององค์กร'
+  )
+  await expect(page.getByRole('alert')).not.toContainText('Invalid or expired challenge')
+})

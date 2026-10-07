@@ -127,7 +127,9 @@ Tenant creation and invitation acceptance automatically send a one-time
 temporary password. `POST /api/v1/auth/activation/request` accepts a tenant ID
 and email to retry delivery. The temporary password expires after 24 hours; a
 replacement invalidates the previous one. Complete activation with
-`POST /api/v1/auth/activate` and `{"code":"...","password":"..."}`.
+the Shell page at `/activate` or with `POST /api/v1/auth/activate` and
+`{"code":"...","password":"..."}`. The page checks password confirmation
+and shows a generic error without exposing server exceptions.
 The reset request and completion endpoints are `/password/forgot` and
 `/password/reset`. Login uses
 `{"organizationCode":"ACME123","email":"...","password":"..."}`;
