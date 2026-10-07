@@ -57,17 +57,19 @@ Implementation status (2026-10-07): reporting APIs, tenant-local persisted
 schedule dispatch, durable RabbitMQ command/event consumers, PDF/XLSX rendering,
 RustFS object versioning, signed monthly PDF uploads, retention/audit purging,
 report-ready email delivery through Notifications, and the Thai/English Reports
-remote are implemented on
-`develop`; sign-off test coverage is on
-`feature/phase-four-signoff-validation`. Reports read immutable locked-month
+remote are implemented and validated on `develop`. Reports read immutable locked-month
 snapshots owned by Timesheet; employee names come from Identity gRPC. Calendar,
 tenant isolation, snapshot parsing, and renderer tests pass, as do reporting
 service builds, the frontend production build, Compose health, and an
 unauthenticated Gateway boundary smoke. The Phase 4 suite now exercises the
 production reporting auth middleware over HTTP with a test Identity validator,
 report request creation, PDF rendering, signed upload, latest-version download,
-audit recording, and transient notification retries. The live Identity gRPC
-token exchange remains outside this isolated integration test.
+audit recording, and transient notification retries. Live Compose E2E now also
+passes with a temporary account and real Identity-issued PASETO: it locks actual
+Timesheet data, has the worker render a PDF from its snapshot to RustFS, uploads
+and downloads a signed PDF, and verifies the report-ready email in MailDev.
+`tests/phase4/Smoke.ps1` reproduces this flow. RustFS bucket setup handles an
+empty bucket-list response.
 
 1. Model report definitions, schedule configuration, Quartz persistence, run state, report snapshots, RustFS object metadata, and retention configuration.
 2. Configure tenant-timezone schedules: Monday weekly reports, closed-month reports at 00:15 on the following month's first day, and annual reports on 1 January.

@@ -177,7 +177,7 @@ Run `pwsh -NoProfile -File tests/phase3/Smoke.ps1` against the Compose stack
 with MailDev enabled to exercise profile, tenant catalog, time entry, leave,
 access control, and month locking through Gateway.
 
-## Phase 4 reporting (in progress)
+## Phase 4 reporting (complete)
 
 Reporting now exposes tenant-authorized definition, run, schedule, retention,
 download, and signed-PDF upload APIs through Gateway. The worker consumes
@@ -196,6 +196,6 @@ signed uploads.
 Run `dotnet test tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj` for
 calendar, tenant-isolation, snapshot, document-renderer, authenticated HTTP
 report-request/signed-upload/download, audit, and notification retry checks.
-The HTTP integration test uses the production reporting authentication
-middleware with a test Identity validator; the live Identity gRPC token exchange
-is not covered by this isolated test.
+Run `pwsh -File tests/phase4/Smoke.ps1` against the Compose stack with MailDev
+enabled to exercise a real Identity-issued token, locked Timesheet snapshot,
+worker PDF generation into RustFS, signed upload/download, and report-ready email.

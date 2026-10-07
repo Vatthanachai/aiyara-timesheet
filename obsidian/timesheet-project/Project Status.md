@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 7 October 2026. Phases 0–3 are complete; Phase 4 reporting remains in progress. See [[Development Roadmap]].
+> Updated 7 October 2026. Phases 0–4 are complete; Phase 5 quality and operations is next. See [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
@@ -133,9 +133,11 @@
   production reporting-auth middleware using a test Identity validator, report
   request creation, PDF rendering, signed upload/download, and audit recording.
   Notification retries for transient failures and stop-on-permanent-failure are
-  covered. Live Identity gRPC token exchange is not part of the isolated test.
+  covered. The Compose E2E also passed with an Identity-issued PASETO, locked
+  Timesheet source data, worker PDF generation to RustFS, signed upload/download,
+  and a report-ready email received in MailDev. `tests/phase4/Smoke.ps1` is the
+  repeatable smoke test. Phase 4 is complete.
 - Automated frontend end-to-end flows.
-- Live Identity gRPC token-exchange integration test for reporting.
 - Domain and end-to-end test suites for later phases.
 
 ## Agreed Direction

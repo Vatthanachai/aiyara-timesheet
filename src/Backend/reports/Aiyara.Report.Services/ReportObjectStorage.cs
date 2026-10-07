@@ -12,7 +12,7 @@ public sealed class ReportObjectStorage(IAmazonS3 client, IConfiguration configu
     public async Task EnsureBucketAsync(CancellationToken cancellationToken = default)
     {
         var buckets = await client.ListBucketsAsync(cancellationToken);
-        if (buckets.Buckets.Any(x => x.BucketName == Bucket)) return;
+        if (buckets.Buckets?.Any(x => x.BucketName == Bucket) == true) return;
         await client.PutBucketAsync(new PutBucketRequest { BucketName = Bucket }, cancellationToken);
     }
 
