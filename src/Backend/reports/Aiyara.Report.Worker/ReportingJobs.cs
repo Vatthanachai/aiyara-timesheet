@@ -75,7 +75,8 @@ internal sealed class TimesheetMonthEventConsumer(IServiceScopeFactory scopes,
         request.Headers.Add("X-Internal-Service-Key", configuration["Reporting:InternalKey"]);
         using var response = await http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        var owners = await response.Content.ReadFromJsonAsync<List<SnapshotOwner>>(cancellationToken: cancellationToken) ?? [];
+        var owners = (await response.Content.ReadFromJsonAsync<SnapshotEnvelope<List<SnapshotOwner>>>(
+            cancellationToken: cancellationToken))?.Result ?? [];
         if (owners.Count == 0) return;
         var definition = await db.ReportDefinitions.SingleOrDefaultAsync(x =>
             x.Kind == ReportKind.Monthly && x.Format == ReportFormat.Pdf, cancellationToken);
@@ -108,6 +109,7 @@ internal sealed class TimesheetMonthEventConsumer(IServiceScopeFactory scopes,
     }
 
     private sealed record SnapshotOwner(Guid OwnerId, string PayloadJson, DateTime CreatedAtUtc);
+    private sealed record SnapshotEnvelope<T>(T Result);
 }
 
 internal sealed class ScheduleDispatchJob(IServiceScopeFactory scopes,

@@ -1,4 +1,9 @@
 ﻿namespace Aiyara.Timesheet.Component.Abstractions.ServiceResponses;
 
-[Serializable, JsonObject]
-public class ServiceResponse;
+public abstract class ServiceResponse(int statusCode, string statusMessage = "")
+{
+    public int StatusCode { get; } = statusCode;
+    public string StatusMessage { get; } = statusMessage;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? Location { get; protected set; }
+}

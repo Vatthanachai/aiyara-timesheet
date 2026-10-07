@@ -1,5 +1,6 @@
 ﻿using Aiyara.Timesheet.Component.Abstractions.ServiceResponses;
 
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Aiyara.Timesheet.Component.Abstractions.Controllers;
@@ -11,17 +12,17 @@ public class BaseController : ControllerBase
     {
         if (response == null) throw new ArgumentNullException(nameof(response));
 
-        var responseType = response.GetType();
+        if (response is ServiceFileResponse file)
+            return File(file.Content, file.ContentType, file.FileName);
 
-        if (responseType.IsGenericType && responseType.GetGenericTypeDefinition() == typeof(ServiceOkResponse<>))
-        {
-            return Ok(response);
-        }
+        if (response.Location is not null) Response.Headers.Location = response.Location;
 
-        return response switch
-        {
-            ServiceBadRequestResponse => BadRequest(response),
-            _ => throw new ArgumentOutOfRangeException(nameof(response))
-        };
+        if (response.StatusCode == StatusCodes.Status204NoContent)
+            return NoContent();
+
+        if (response.StatusCode is < 200 or > 599)
+            throw new ArgumentOutOfRangeException(nameof(response));
+
+        return StatusCode(response.StatusCode, response);
     }
 }

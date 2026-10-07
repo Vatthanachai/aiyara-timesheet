@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeError, unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
 type Profile = { id: string; email: string; firstName: string; lastName: string; photoUrl: string | null; jobTitle: string | null }
 const token = ref('')
 const config = useRuntimeConfig()
@@ -30,11 +31,11 @@ onMounted(() => {
 })
 async function load() {
   try {
-    const value = await $fetch<Profile>(`${gateway.value}/api/v1/identity/profile/me`, { headers: { Authorization: `Bearer ${token.value}` } })
+    const value = unwrapResponse(await $fetch<ApiEnvelope<Profile>>(`${gateway.value}/api/v1/identity/profile/me`, { headers: { Authorization: `Bearer ${token.value}` } }))
     email.value = value.email
     profile.firstName = value.firstName; profile.lastName = value.lastName
     profile.photoUrl = value.photoUrl || ''; profile.jobTitle = value.jobTitle || ''
-  } catch { error.value = copy.value.loadedError }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function save() {
   try {
@@ -44,7 +45,7 @@ async function save() {
     })
     error.value = ''
     notice.value = copy.value.saved
-  } catch { error.value = copy.value.saveError }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 </script>
 <template>

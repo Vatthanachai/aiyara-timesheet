@@ -113,10 +113,16 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
             response.EnsureSuccessStatusCode();
             if (run.SubjectUserId is null)
             {
-                var owners = await response.Content.ReadFromJsonAsync<List<SnapshotPayload>>(cancellationToken: cancellationToken) ?? [];
+                var owners = (await response.Content.ReadFromJsonAsync<SnapshotEnvelope<List<SnapshotPayload>>>(
+                    cancellationToken: cancellationToken))?.Result ?? [];
                 snapshots.AddRange(owners.Select(x => x.PayloadJson));
             }
-            else snapshots.Add(await response.Content.ReadAsStringAsync(cancellationToken));
+            else
+            {
+                var snapshot = await response.Content.ReadFromJsonAsync<SnapshotEnvelope<JsonElement>>(
+                    cancellationToken: cancellationToken);
+                snapshots.Add(snapshot?.Result.GetRawText() ?? throw new JsonException("Missing snapshot result."));
+            }
         }
 
         var lines = snapshots.SelectMany(ReportDocumentRenderer.ReadSnapshot)
@@ -186,6 +192,7 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
     }
 
     private sealed record SnapshotPayload(Guid OwnerId, string PayloadJson, DateTime CreatedAtUtc);
+    private sealed record SnapshotEnvelope<T>(T Result);
 
     private async Task<bool> RecordFailureAsync(ReadOnlyMemory<byte> body, Exception error,
         CancellationToken cancellationToken)

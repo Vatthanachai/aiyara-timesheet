@@ -1,9 +1,13 @@
 ﻿namespace Aiyara.Timesheet.Component.Abstractions.ServiceResponses;
 
-[Serializable, JsonObject]
-public class ServiceOkResponse<T>(T result) : ServiceResponse
+public sealed class ServiceOkResponse<T> : ServiceResponse
 {
-    public string? StatusCode { get; set; } = string.Empty;
-    public string? StatusMessage { get; set; } = string.Empty;
-    public T Result { get; set; } = result;
+    public ServiceOkResponse(T result, int statusCode = 200, string? location = null,
+        string statusMessage = "") : base(statusCode, statusMessage)
+    {
+        Result = result;
+        Location = location;
+    }
+
+    public T Result { get; }
 }

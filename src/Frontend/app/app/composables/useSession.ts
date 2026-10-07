@@ -1,3 +1,5 @@
+import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
+
 type AuthResponse = {
   accessToken: string
   accessExpiresAtUtc: string
@@ -32,9 +34,9 @@ export function useSession() {
   }
 
   async function login(tenantGuid: string, email: string, password: string) {
-    const response = await $fetch<AuthResponse>(`${config.public.gatewayUrl}/api/v1/auth/login`, {
+    const response = unwrapResponse(await $fetch<ApiEnvelope<AuthResponse>>(`${config.public.gatewayUrl}/api/v1/auth/login`, {
       method: 'POST', body: { tenantId: tenantGuid, email, password }
-    })
+    }))
     save(response)
     tenantId.value = tenantGuid
     if (import.meta.client) sessionStorage.setItem('aiyara.tenant', tenantGuid)
@@ -45,9 +47,9 @@ export function useSession() {
     if (token.value && Date.parse(expiresAt.value) > Date.now() + 60_000) return true
     if (!refreshToken.value) return false
     try {
-      const response = await $fetch<AuthResponse>(`${config.public.gatewayUrl}/api/v1/auth/refresh`, {
+      const response = unwrapResponse(await $fetch<ApiEnvelope<AuthResponse>>(`${config.public.gatewayUrl}/api/v1/auth/refresh`, {
         method: 'POST', body: { refreshToken: refreshToken.value }
-      })
+      }))
       save(response)
       return true
     } catch {

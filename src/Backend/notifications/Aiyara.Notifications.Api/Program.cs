@@ -1,4 +1,5 @@
 using Aiyara.Notifications.Databases;
+using Aiyara.Timesheet.Component.Abstractions.Controllers;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +12,8 @@ builder.Services.AddDbContext<NotificationDbContext>(options => options.UseNpgsq
     ?? throw new InvalidOperationException("ConnectionStrings:NotificationDb is required.")));
 builder.AddDatabaseHealthCheck<WebApplicationBuilder, NotificationDbContext>("notification-db");
 builder.Services.AddOpenApi();
+builder.Services.AddControllers();
+builder.Services.AddSafeApiErrors();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHostedService<NotificationDispatchWorker>();
@@ -18,6 +21,7 @@ builder.Services.AddScoped<CredentialEmailDispatcher>();
 builder.Services.AddScoped<ReportReadyEmailDispatcher>();
 
 var app = builder.Build();
+app.UseExceptionHandler();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -34,28 +38,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/", () => Results.Ok(new { service = "notification", status = "ready" }));
-app.MapPost("/internal/v1/credential-email", async (
-    CredentialEmailRequest request, HttpContext context,
-    CredentialEmailDispatcher dispatcher, IConfiguration configuration,
-    CancellationToken cancellationToken) =>
-{
-    if (!CredentialEmailDispatcher.ValidInternalKey(configuration["InternalApi:Key"],
-        context.Request.Headers["X-Internal-Key"].ToString())) return Results.Unauthorized();
-    return await dispatcher.SendAsync(request, cancellationToken)
-        ? Results.Accepted() : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-})
-.ExcludeFromDescription();
-
-app.MapPost("/internal/v1/report-ready", async (
-    ReportReadyEmailRequest request, HttpContext context,
-    ReportReadyEmailDispatcher dispatcher, IConfiguration configuration,
-    CancellationToken cancellationToken) =>
-{
-    if (!CredentialEmailDispatcher.ValidInternalKey(configuration["InternalApi:Key"],
-        context.Request.Headers["X-Internal-Key"].ToString())) return Results.Unauthorized();
-    return await dispatcher.SendAsync(request, cancellationToken)
-        ? Results.Accepted() : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-}).ExcludeFromDescription();
+app.MapControllers();
 
 app.Run();
 

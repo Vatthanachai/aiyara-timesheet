@@ -2,10 +2,10 @@ using System.Net;
 using System.Net.Mail;
 using Aiyara.Notifications.Databases;
 
-internal sealed record ReportReadyEmailRequest(string Email, string EmployeeName,
+public sealed record ReportReadyEmailRequest(string Email, string EmployeeName,
     string Period, string ReportUrl, Guid ReportRunId);
 
-internal sealed class ReportReadyEmailDispatcher(
+public sealed class ReportReadyEmailDispatcher(
     NotificationDbContext db, IConfiguration configuration)
 {
     public async Task<bool> SendAsync(ReportReadyEmailRequest request,

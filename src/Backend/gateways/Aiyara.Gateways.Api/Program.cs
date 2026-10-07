@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Aiyara.Timesheet.Contracts.Onboarding.V1;
+using Aiyara.Timesheet.Component.Abstractions.Controllers;
 using Scalar.AspNetCore;
 using Aiyara.Timesheet.Contracts.Identity.V1;
 using Grpc.Net.Client;
@@ -10,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 builder.Services.AddControllers();
+builder.Services.AddSafeApiErrors();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
@@ -84,6 +86,7 @@ builder.Services.AddAuthorization(options => options.AddPolicy("TenantMember", p
     policy.RequireAuthenticatedUser().RequireClaim("tenant_id")));
 
 var app = builder.Build();
+app.UseExceptionHandler();
 
 app.MapDefaultEndpoints();
 
@@ -109,43 +112,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
-var onboarding = app.MapGroup("/api/v1").WithTags("Onboarding")
-    .RequireCors("frontend").RequireRateLimiting("onboarding");
-onboarding.MapPost("/tenants", (CreateTenantRequest request, IdentityOnboardingClient client,
-    HttpContext context, CancellationToken cancellationToken) =>
-{
-    context.Response.Headers.CacheControl = "no-store";
-    return client.CreateTenantAsync(request, cancellationToken);
-})
-    .WithName("GatewayCreateTenantV1")
-    .Produces<CreateTenantResponse>(StatusCodes.Status201Created)
-    .ProducesProblem(StatusCodes.Status400BadRequest)
-    .ProducesProblem(StatusCodes.Status409Conflict)
-    .ProducesProblem(StatusCodes.Status502BadGateway);
-onboarding.MapPost("/tenants/{tenantId:guid}/invitations", (
-    Guid tenantId, IssueInvitationRequest request, HttpContext context,
-    IdentityOnboardingClient client, CancellationToken cancellationToken) =>
-{
-    context.Response.Headers.CacheControl = "no-store";
-    return client.IssueInvitationAsync(tenantId, request,
-        context.Request.Headers["X-Onboarding-Key"].ToString(), cancellationToken);
-})
-    .WithName("GatewayIssueInvitationV1")
-    .WithDescription("Requires the tenant-bound X-Onboarding-Key returned once when the tenant was created. The key expires after seven days.")
-    .Produces<IssueInvitationResponse>(StatusCodes.Status201Created)
-    .ProducesProblem(StatusCodes.Status400BadRequest)
-    .ProducesProblem(StatusCodes.Status401Unauthorized)
-    .ProducesProblem(StatusCodes.Status409Conflict)
-    .ProducesProblem(StatusCodes.Status502BadGateway);
-onboarding.MapPost("/invitations/accept", (AcceptInvitationRequest request,
-    IdentityOnboardingClient client, CancellationToken cancellationToken) =>
-    client.AcceptInvitationAsync(request, cancellationToken))
-    .WithName("GatewayAcceptInvitationV1")
-    .Produces<AcceptInvitationResponse>(StatusCodes.Status200OK)
-    .ProducesProblem(StatusCodes.Status400BadRequest)
-    .ProducesProblem(StatusCodes.Status409Conflict)
-    .ProducesProblem(StatusCodes.Status502BadGateway);
 
 app.MapReverseProxy();
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeError } from '../../../shared/api-response'
 const { navigation } = useRemoteNavigation()
 const { token, login } = useSession()
 const { locale } = useLocale()
@@ -11,7 +12,7 @@ async function signIn() {
   pending.value = true
   error.value = ''
   try { await login(tenantId.value, email.value, password.value) }
-  catch { error.value = locale.value === 'th' ? 'เข้าสู่ระบบไม่สำเร็จ' : 'Sign in failed' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
   finally { pending.value = false }
 }
 </script>

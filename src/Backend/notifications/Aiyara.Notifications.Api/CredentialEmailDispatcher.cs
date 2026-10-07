@@ -4,9 +4,9 @@ using System.Security.Cryptography;
 using System.Text;
 using Aiyara.Notifications.Databases;
 
-internal sealed record CredentialEmailRequest(string Email, string Template, string Code);
+public sealed record CredentialEmailRequest(string Email, string Template, string Code);
 
-internal sealed class CredentialEmailDispatcher(
+public sealed class CredentialEmailDispatcher(
     NotificationDbContext db, IConfiguration configuration)
 {
     public async Task<bool> SendAsync(CredentialEmailRequest request,

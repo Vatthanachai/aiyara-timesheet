@@ -14,6 +14,7 @@
 - [[Target Architecture]] — agreed target state for services, data, messaging, frontend, and local runtime.
 - [[Security And Tenant Model]] — tenancy, roles, account lifecycle, PASETO, and password decisions.
 - [[Development Roadmap]] — dependency-ordered delivery plan and acceptance outcomes.
+- [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 
 ## Repository Facts
 
@@ -31,3 +32,4 @@
 - [[Target Architecture]]
 - [[Security And Tenant Model]]
 - [[Development Roadmap]]
+- [[Full Api Controllers Plan]]
