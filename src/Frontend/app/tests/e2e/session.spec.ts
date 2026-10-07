@@ -93,6 +93,51 @@ test('activation submits the email code and new password then links to sign in',
   await expect(page.getByRole('link', { name: 'ไปหน้าเข้าสู่ระบบ' })).toHaveAttribute('href', '/')
 })
 
+test('organization admin can sign up and receives the organization code without exposing onboarding key', async ({ page }) => {
+  let signupRequest: unknown
+  let activationRequest: unknown
+  await page.route('**/api/v1/tenants', async route => {
+    signupRequest = route.request().postDataJSON()
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        tenantId,
+        organizationCode: 'ACME123',
+        accountId: 'ab7ada79-f0c9-4c10-8c6a-63422c329450',
+        membershipId: 'bb88c5cc-6eef-42d8-8a20-210730a29977',
+        role: 'TenantAdmin',
+        status: 'PendingActivation',
+        timeZoneId: 'Asia/Bangkok',
+        onboardingKey: 'must-not-be-shown-or-stored',
+        onboardingKeyExpiresAtUtc: new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString()
+      })
+    })
+  })
+  await page.route('**/api/v1/auth/activation/request', async route => {
+    activationRequest = route.request().postDataJSON()
+    await route.fulfill({ status: 202 })
+  })
+
+  await page.goto('/signup')
+  await waitForHydration(page)
+  await page.getByLabel('ชื่อองค์กร').fill('Acme Studio')
+  await page.getByLabel('ชื่อ URL องค์กร').fill('acme-studio')
+  await page.getByLabel('อีเมลผู้ดูแลองค์กร').fill('admin@example.test')
+  await page.getByRole('button', { name: 'สมัครองค์กร' }).click()
+
+  expect(signupRequest).toEqual({ name: 'Acme Studio', slug: 'acme-studio', adminEmail: 'admin@example.test' })
+  const confirmation = page.locator('.signup-result')
+  await expect(confirmation).toContainText('ACME123')
+  await expect(confirmation).toContainText('admin@example.test')
+  await expect(confirmation).not.toContainText('must-not-be-shown-or-stored')
+  await expect(confirmation.getByRole('link', { name: 'ไปหน้าเปิดใช้งานบัญชี' })).toHaveAttribute('href', '/activate')
+  await expect(confirmation).toContainText('อย่างน้อย 12 ตัว')
+  await confirmation.getByRole('button', { name: 'ยังไม่ได้รับอีเมล? ส่งรหัสอีกครั้ง' }).click()
+  expect(activationRequest).toEqual({ tenantId, email: 'admin@example.test' })
+  await expect(confirmation).toContainText('ระบบจะส่งรหัสใหม่')
+})
+
 test('activation failure shows a safe message and does not expose the API error', async ({ page }) => {
   await page.route('**/api/v1/auth/activate', route => route.fulfill({
     status: 400,

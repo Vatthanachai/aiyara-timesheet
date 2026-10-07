@@ -30,6 +30,7 @@ async function signIn() {
     <label>{{ locale === 'th' ? 'รหัสผ่าน' : 'Password' }}<input v-model="password" required type="password" autocomplete="current-password" /></label>
     <p v-if="error" role="alert">{{ error }}</p>
     <button class="button" type="submit" :disabled="pending">{{ locale === 'th' ? 'เข้าสู่ระบบ' : 'Sign in' }}</button>
+    <NuxtLink to="/signup">{{ locale === 'th' ? 'สมัครใช้งานองค์กร' : 'Sign up your organization' }}</NuxtLink>
     <NuxtLink to="/activate">{{ locale === 'th' ? 'เปิดใช้งานบัญชี' : 'Activate account' }}</NuxtLink>
   </form>
 
