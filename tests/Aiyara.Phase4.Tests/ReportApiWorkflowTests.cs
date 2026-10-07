@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Aiyara.Report.Api;
+using Aiyara.Report.Api.Controllers;
 using Aiyara.Report.Databases;
 using Aiyara.Report.Models;
 using Aiyara.Report.Services;
@@ -34,6 +35,9 @@ public sealed class ReportApiWorkflowTests
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
         builder.Services.AddSingleton(connection);
         builder.Services.AddScoped<ReportingTenantScope>();
+        builder.Services.AddScoped<ReportOperations>();
+        builder.Services.AddControllers().AddApplicationPart(typeof(ReportController).Assembly)
+            .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
         builder.Services.AddDbContext<ReportingDbContext>((services, options) =>
             options.UseSqlite(services.GetRequiredService<Microsoft.Data.Sqlite.SqliteConnection>()));
         builder.Services.AddSingleton<IReportObjectStorage>(storage);
@@ -42,7 +46,7 @@ public sealed class ReportApiWorkflowTests
         await using (var scope = app.Services.CreateAsyncScope())
             await scope.ServiceProvider.GetRequiredService<ReportingDbContext>().Database.EnsureCreatedAsync();
         app.UseReportAuthentication();
-        app.MapReportEndpoints();
+        app.MapControllers();
         await app.StartAsync();
         try
         {
@@ -60,14 +64,14 @@ public sealed class ReportApiWorkflowTests
                 new DefinitionRequest(ReportKind.Monthly, ReportFormat.Pdf, "Monthly report"));
             Assert.Equal(HttpStatusCode.Created, definitionResponse.StatusCode);
             using var definitionJson = JsonDocument.Parse(await definitionResponse.Content.ReadAsStringAsync());
-            var definitionId = definitionJson.RootElement.GetProperty("id").GetGuid();
+            var definitionId = definitionJson.RootElement.GetProperty("result").GetProperty("id").GetGuid();
             var start = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
             var end = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
             var runResponse = await client.PostAsJsonAsync("/api/v1/runs",
                 new RunRequest(definitionId, start, end, null));
             Assert.Equal(HttpStatusCode.Accepted, runResponse.StatusCode);
             using var runJson = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
-            var runId = runJson.RootElement.GetProperty("id").GetGuid();
+            var runId = runJson.RootElement.GetProperty("result").GetProperty("id").GetGuid();
 
             var generatedPdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("Employee",
                 "Team", "September 2026", [], 0));
@@ -97,7 +101,7 @@ public sealed class ReportApiWorkflowTests
             var uploadResponse = await client.PostAsync($"/api/v1/runs/{runId}/signed-document", multipart);
             Assert.Equal(HttpStatusCode.Created, uploadResponse.StatusCode);
             using var uploadJson = JsonDocument.Parse(await uploadResponse.Content.ReadAsStringAsync());
-            Assert.Equal(1, uploadJson.RootElement.GetProperty("version").GetInt32());
+            Assert.Equal(1, uploadJson.RootElement.GetProperty("result").GetProperty("version").GetInt32());
 
             var latestSignedPdf = "%PDF-1.7\nsecond signature version\n%%EOF"u8.ToArray();
             using var secondMultipart = new MultipartFormDataContent();
@@ -105,7 +109,7 @@ public sealed class ReportApiWorkflowTests
             var secondUpload = await client.PostAsync($"/api/v1/runs/{runId}/signed-document", secondMultipart);
             Assert.Equal(HttpStatusCode.Created, secondUpload.StatusCode);
             using var secondUploadJson = JsonDocument.Parse(await secondUpload.Content.ReadAsStringAsync());
-            Assert.Equal(2, secondUploadJson.RootElement.GetProperty("version").GetInt32());
+            Assert.Equal(2, secondUploadJson.RootElement.GetProperty("result").GetProperty("version").GetInt32());
 
             var download = await client.GetAsync($"/api/v1/runs/{runId}/download");
             Assert.Equal(HttpStatusCode.OK, download.StatusCode);

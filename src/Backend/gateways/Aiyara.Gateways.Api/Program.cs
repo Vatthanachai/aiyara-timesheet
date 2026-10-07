@@ -65,6 +65,8 @@ builder.Services.AddCors(options => options.AddPolicy("frontend", policy => poli
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, ct) => new ValueTask(SafeApiErrors.WriteErrorAsync(
+        context.HttpContext, 429, "RATE_LIMITED", ct));
     options.AddPolicy("onboarding", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions

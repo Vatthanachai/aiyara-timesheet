@@ -15,13 +15,13 @@ test('sign in persists the session, restores it after reload, and signs out', as
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
+      body: JSON.stringify({ statusCode: 200, statusMessage: '', result: {
         accessToken: 'test-access-token',
         accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
         refreshToken: 'test-refresh-token',
         refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
         mustChangePassword: false
-      })
+      } })
     })
   })
   await page.route('**/api/v1/auth/logout', route => route.fulfill({ status: 204 }))
@@ -52,8 +52,9 @@ test('sign in persists the session, restores it after reload, and signs out', as
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {
   await page.route('**/api/v1/auth/login', route => route.fulfill({
     status: 401,
-    contentType: 'application/problem+json',
-    body: JSON.stringify({ title: 'Unauthorized', status: 401 })
+    contentType: 'application/json',
+    body: JSON.stringify({ statusCode: 401, statusMessage: 'The request could not be completed.',
+      errorCode: 'INVALIDCREDENTIALS' })
   }))
 
   await page.goto('/')
@@ -63,7 +64,7 @@ test('failed sign in displays an error and does not persist credentials', async 
   await page.getByLabel('รหัสผ่าน').fill('wrong-password')
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()
 
-  await expect(page.getByRole('alert')).toHaveText('เข้าสู่ระบบไม่สำเร็จ')
+  await expect(page.getByRole('alert')).toHaveText('อีเมลหรือรหัสผ่านไม่ถูกต้อง')
   await expect(page.getByRole('region', { name: 'Available applications' })).toHaveCount(0)
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.access'))).toBeNull()
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.refresh'))).toBeNull()

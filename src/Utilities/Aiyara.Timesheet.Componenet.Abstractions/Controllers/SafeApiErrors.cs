@@ -9,6 +9,15 @@ namespace Aiyara.Timesheet.Component.Abstractions.Controllers;
 
 public static class SafeApiErrors
 {
+    public static async Task WriteErrorAsync(HttpContext context, int statusCode,
+        string errorCode, CancellationToken cancellationToken = default)
+    {
+        context.Response.StatusCode = statusCode;
+        await context.Response.WriteAsJsonAsync(new ServiceErrorResponse(statusCode, errorCode,
+            "The request could not be completed.", traceId: context.TraceIdentifier),
+            cancellationToken);
+    }
+
     public static IServiceCollection AddSafeApiErrors(this IServiceCollection services)
     {
         services.AddExceptionHandler<SafeExceptionHandler>();

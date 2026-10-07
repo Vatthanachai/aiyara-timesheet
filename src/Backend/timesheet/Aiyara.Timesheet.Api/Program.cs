@@ -13,6 +13,7 @@ builder.AddTcpDependencyHealthCheck("Postgres", 5432);
 builder.AddTcpDependencyHealthCheck("Redis", 6379);
 builder.AddTcpDependencyHealthCheck("RabbitMQ", 5672);
 builder.Services.AddScoped<TimesheetTenantScope>();
+builder.Services.AddScoped<TimesheetOperations>();
 builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
     builder.Configuration["IdentityGrpc:Url"] ?? "http://localhost:8082"));
 builder.Services.AddSingleton(provider => new IdentityValidationService.IdentityValidationServiceClient(
@@ -62,7 +63,7 @@ app.Use(async (context, next) =>
     var authorization = context.Request.Headers.Authorization.ToString();
     if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
     {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await SafeApiErrors.WriteErrorAsync(context, 401, "UNAUTHORIZED");
         return;
     }
     ValidateAccessTokenResponse validation;
@@ -77,14 +78,14 @@ app.Use(async (context, next) =>
     }
     catch (RpcException)
     {
-        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await SafeApiErrors.WriteErrorAsync(context, 503, "IDENTITY_UNAVAILABLE");
         return;
     }
     if (!validation.IsValid || !Guid.TryParse(validation.TenantId, out var tenantId) ||
         !Guid.TryParse(validation.SubjectId, out var userId) ||
         string.IsNullOrWhiteSpace(validation.TimeZoneId))
     {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await SafeApiErrors.WriteErrorAsync(context, 401, "UNAUTHORIZED");
         return;
     }
     try
@@ -93,7 +94,7 @@ app.Use(async (context, next) =>
     }
     catch (TimeZoneNotFoundException)
     {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await SafeApiErrors.WriteErrorAsync(context, 401, "UNAUTHORIZED");
         return;
     }
     var actor = new Actor(tenantId, userId, validation.Roles.FirstOrDefault() ?? "",
@@ -105,5 +106,4 @@ app.Use(async (context, next) =>
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapTimesheetEndpoints();
 app.Run();

@@ -1,6 +1,7 @@
 using Aiyara.Report.Databases;
 using Aiyara.Report.Api;
 using Aiyara.Report.Services;
+using Aiyara.Timesheet.Component.Abstractions.Controllers;
 using Aiyara.Timesheet.Contracts.Identity.V1;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -14,6 +15,7 @@ builder.AddTcpDependencyHealthCheck("Postgres", 5432);
 builder.AddTcpDependencyHealthCheck("RabbitMQ", 5672);
 builder.AddTcpDependencyHealthCheck("RustFs", 9000);
 builder.Services.AddScoped<ReportingTenantScope>();
+builder.Services.AddScoped<ReportOperations>();
 builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
     builder.Configuration["IdentityGrpc:Url"] ?? "http://localhost:8082"));
 builder.Services.AddSingleton(provider => new IdentityValidationService.IdentityValidationServiceClient(
@@ -31,12 +33,14 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddSafeApiErrors();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+app.UseExceptionHandler();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -60,6 +64,5 @@ app.UseReportAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapReportEndpoints();
 
 app.Run();

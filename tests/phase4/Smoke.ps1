@@ -21,7 +21,10 @@ function Expect($response, [int]$status, [string]$step) {
     if ($response.StatusCode -ne $status) {
         throw "$step returned $($response.StatusCode), expected $status. Response: $($response.Content)"
     }
-    if ($response.Content) { return $response.Content | ConvertFrom-Json }
+    if ($response.Content) {
+        $payload = $response.Content | ConvertFrom-Json
+        if ($status -ge 200 -and $status -lt 300) { return $payload.result }
+    }
 }
 
 function ActivationCode([string]$email) {
@@ -108,7 +111,7 @@ $uploadResponse = $client.PostAsync("$GatewayUrl/api/v1/reports/runs/$($run.id)/
 if ([int]$uploadResponse.StatusCode -ne 201) {
     throw "Signed PDF upload returned $([int]$uploadResponse.StatusCode)."
 }
-$signedDocument = $uploadResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+$signedDocument = ($uploadResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json).result
 if ($signedDocument.version -ne 1) { throw 'The signed PDF version was not recorded as version 1.' }
 $downloadSigned = $client.GetByteArrayAsync("$GatewayUrl/api/v1/reports/runs/$($run.id)/download").GetAwaiter().GetResult()
 if ([Convert]::ToBase64String($downloadSigned) -ne [Convert]::ToBase64String($signedPdf)) {

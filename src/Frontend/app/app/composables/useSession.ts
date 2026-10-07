@@ -43,8 +43,8 @@ export function useSession() {
     return response
   }
 
-  async function renew() {
-    if (token.value && Date.parse(expiresAt.value) > Date.now() + 60_000) return true
+  async function renew(force = false) {
+    if (!force && token.value && Date.parse(expiresAt.value) > Date.now() + 60_000) return true
     if (!refreshToken.value) return false
     try {
       const response = unwrapResponse(await $fetch<ApiEnvelope<AuthResponse>>(`${config.public.gatewayUrl}/api/v1/auth/refresh`, {

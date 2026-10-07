@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null }
 type Task = { id: string; name: string; status: string; projectId: string | null; categoryId: string | null }
 type Leave = { id: string; date: string; kind: string; notes: string | null }
@@ -40,9 +41,10 @@ onMounted(() => {
   })
 })
 async function api<T>(path: string, options: { method?: string; body?: object } = {}) {
-  return await $fetch<T>(`${gateway.value}/api/v1/timesheets${path}`, {
-    ...options, headers: { Authorization: `Bearer ${token.value}` }
-  })
+  return unwrapResponse(await withRemoteRefresh(accessToken =>
+    $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/timesheets${path}`, {
+      ...options, headers: { Authorization: `Bearer ${accessToken}` }
+    }), token, config.public.shellOrigin))
 }
 async function load() {
   if (!token.value) return
@@ -59,7 +61,7 @@ async function load() {
     if (!entries.value.length && month.value === new Date().toISOString().slice(0, 7) &&
         month.value !== context.currentMonth) month.value = context.currentMonth
     error.value = ''
-  } catch { error.value = locale.value === 'th' ? 'โหลดข้อมูลไม่สำเร็จ' : 'Could not load data' }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 watch(month, load)
 function resetForm() {
@@ -92,44 +94,44 @@ async function saveEntry() {
         projectId: form.projectId || null, categoryId: form.categoryId || null, personalTaskId: form.personalTaskId || null } })
     notice.value = locale.value === 'th' ? 'บันทึกแล้ว' : 'Saved'
     resetForm(); await load()
-  } catch { error.value = locale.value === 'th' ? 'บันทึกไม่สำเร็จ' : 'Save failed' }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function removeEntry(id: string) {
   if (!canEdit.value || !confirm(locale.value === 'th' ? 'ลบรายการนี้?' : 'Delete this entry?')) return
   try { await api(`/entries/${id}`, { method: 'DELETE' }); await load() }
-  catch { error.value = locale.value === 'th' ? 'ลบไม่สำเร็จ' : 'Delete failed' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function addTask() {
   if (!taskName.value.trim()) return
   try { await api('/tasks', { method: 'POST', body: { name: taskName.value, status: 'todo' } }); taskName.value = ''; await load() }
-  catch { error.value = locale.value === 'th' ? 'เพิ่มงานไม่สำเร็จ' : 'Could not add task' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function setStatus(task: Task, status: string) {
   try { await api(`/tasks/${task.id}`, { method: 'PUT', body: { name: task.name, status, projectId: task.projectId, categoryId: task.categoryId } }); await load() }
-  catch { error.value = locale.value === 'th' ? 'เปลี่ยนสถานะไม่สำเร็จ' : 'Could not update task' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function renameTask(task: Task) {
   try { await api(`/tasks/${task.id}`, { method: 'PUT', body: { name: task.name, status: task.status, projectId: task.projectId, categoryId: task.categoryId } }); await load() }
-  catch { error.value = locale.value === 'th' ? 'แก้ไขงานไม่สำเร็จ' : 'Could not update task' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function removeTask(id: string) {
   try { await api(`/tasks/${id}`, { method: 'DELETE' }); await load() }
-  catch { error.value = locale.value === 'th' ? 'ลบงานไม่สำเร็จ' : 'Could not delete task' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function addLeave() {
   if (!canEdit.value) return
   try { await api('/leave', { method: 'POST', body: { date: leaveDate.value, kind: leaveKind.value } }); await load() }
-  catch { error.value = locale.value === 'th' ? 'เพิ่มวันลาไม่สำเร็จ' : 'Could not add leave' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function removeLeave(id: string) {
   if (!canEdit.value) return
   try { await api(`/leave/${id}`, { method: 'DELETE' }); await load() }
-  catch { error.value = locale.value === 'th' ? 'ลบวันลาไม่สำเร็จ' : 'Could not delete leave' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function updateLeave(leave: Leave) {
   if (!canEdit.value) return
   try { await api(`/leave/${leave.id}`, { method: 'PUT', body: { date: leave.date, kind: leave.kind, notes: leave.notes } }); await load() }
-  catch { error.value = locale.value === 'th' ? 'แก้ไขวันลาไม่สำเร็จ' : 'Could not update leave' }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 </script>
 
@@ -139,7 +141,7 @@ async function updateLeave(leave: Leave) {
     <template v-else>
       <header><h2>{{ text.title }}</h2><label>{{ text.month }} <input v-model="month" type="month" /></label></header>
       <p v-if="!canEdit" class="notice">{{ text.readOnly }}</p>
-      <p v-if="error" role="alert" class="error">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p>
+      <p v-if="error" role="alert" class="error">{{ error }} <button type="button" @click="load">{{ locale === 'th' ? 'ลองใหม่' : 'Retry' }}</button></p><p v-if="notice" role="status">{{ notice }}</p>
       <section class="panel">
         <h3>{{ text.title }}</h3>
         <div class="table-wrap"><table><thead><tr><th>{{ text.date }}</th><th>{{ text.start }}</th><th>{{ text.end }}</th><th>{{ text.duration }}</th><th>{{ text.task }}</th><th>{{ text.project }}</th><th>{{ text.category }}</th><th></th></tr></thead>

@@ -18,7 +18,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
+    <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
+    <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.Componenet.Abstractions\Aiyara.Timesheet.Component.Abstractions.csproj" />
     <ProjectReference Include="..\Aiyara.Report.Databases\Aiyara.Report.Databases.csproj" />
     <ProjectReference Include="..\Aiyara.Report.Services\Aiyara.Report.Services.csproj" />
     <ProjectReference Include="..\..\contracts\Aiyara.Timesheet.Contracts\Aiyara.Timesheet.Contracts.csproj" />

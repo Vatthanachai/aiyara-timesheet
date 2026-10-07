@@ -18,8 +18,25 @@ let refreshTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   restore()
   refreshTimer = setInterval(sendSession, 60_000)
+  window.addEventListener('message', handleRemoteMessage)
 })
-onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  window.removeEventListener('message', handleRemoteMessage)
+})
+async function handleRemoteMessage(event: MessageEvent) {
+  if (!frame.value || !remoteUrl.value || event.source !== frame.value.contentWindow ||
+      event.origin !== new URL(remoteUrl.value).origin) return
+  if (event.data?.type === 'aiyara.sign-in-required') {
+    await navigateTo('/')
+    return
+  }
+  if (event.data?.type !== 'aiyara.refresh-request' || typeof event.data.requestId !== 'string') return
+  const success = await renew(true)
+  frame.value?.contentWindow?.postMessage({ type: 'aiyara.refresh-result',
+    requestId: event.data.requestId, token: success ? token.value : null }, event.origin)
+  if (!success) await navigateTo('/')
+}
 async function sendSession() {
   if (!import.meta.client || !frame.value || !remoteUrl.value) return
   if (token.value) await renew()

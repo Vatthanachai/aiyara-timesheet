@@ -24,8 +24,8 @@ foreach ($service in @('identities-api', 'timesheet-api', 'reports-api', 'notifi
 $suffix = [Guid]::NewGuid().ToString('N')[0..7] -join ''
 $firstBody = @{name='Phase 1 First'; slug="phase1-first-$suffix"; adminEmail="first-$suffix@example.test"} | ConvertTo-Json
 $secondBody = @{name='Phase 1 Second'; slug="phase1-second-$suffix"; adminEmail="second-$suffix@example.test"} | ConvertTo-Json
-$first = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/tenants" -Method Post -ContentType 'application/json' -Body $firstBody
-$second = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/tenants" -Method Post -ContentType 'application/json' -Body $secondBody
+$first = (Invoke-RestMethod -Uri "$GatewayUrl/api/v1/tenants" -Method Post -ContentType 'application/json' -Body $firstBody).result
+$second = (Invoke-RestMethod -Uri "$GatewayUrl/api/v1/tenants" -Method Post -ContentType 'application/json' -Body $secondBody).result
 if ($first.tenantId -eq $second.tenantId -or $first.status -ne 'PendingActivation') {
     throw 'Tenant creation did not produce isolated pending memberships.'
 }
@@ -39,13 +39,13 @@ $missingKey = Invoke-WebRequest -Uri $inviteUrl -Method Post -ContentType 'appli
 if ($missingKey.StatusCode -ne 401) { throw "Missing key returned $($missingKey.StatusCode), expected 401." }
 $wrongTenant = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/tenants/$($second.tenantId)/invitations" -Method Post -ContentType 'application/json' -Body $inviteBody -Headers @{'X-Onboarding-Key'=$first.onboardingKey} -SkipHttpErrorCheck
 if ($wrongTenant.StatusCode -ne 401) { throw "Cross-tenant key returned $($wrongTenant.StatusCode), expected 401." }
-$issued = Invoke-RestMethod -Uri $inviteUrl -Method Post -ContentType 'application/json' -Body $inviteBody -Headers @{'X-Onboarding-Key'=$first.onboardingKey;'X-Tenant-Id'=$second.tenantId}
+$issued = (Invoke-RestMethod -Uri $inviteUrl -Method Post -ContentType 'application/json' -Body $inviteBody -Headers @{'X-Onboarding-Key'=$first.onboardingKey;'X-Tenant-Id'=$second.tenantId}).result
 if ($issued.tenantId -ne $first.tenantId -or -not $issued.code) { throw 'Invitation issuance returned the wrong tenant or no code.' }
 $grants = & docker compose @compose exec -T postgres psql -U $postgresUser -d postgres -tAc "select has_database_privilege('identity_app','identity_db','CONNECT'), has_database_privilege('identity_app','timesheet_db','CONNECT'), has_database_privilege('timesheet_app','identity_db','CONNECT')"
 if ($LASTEXITCODE -ne 0 -or $grants.Trim() -ne 't|f|f') { throw "Service database isolation failed: $grants" }
 
 $acceptBody = @{code=$issued.code} | ConvertTo-Json
-$accepted = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/invitations/accept" -Method Post -ContentType 'application/json' -Body $acceptBody -Headers @{'X-Tenant-Id'=$second.tenantId}
+$accepted = (Invoke-RestMethod -Uri "$GatewayUrl/api/v1/invitations/accept" -Method Post -ContentType 'application/json' -Body $acceptBody -Headers @{'X-Tenant-Id'=$second.tenantId}).result
 if ($accepted.tenantId -ne $first.tenantId -or $accepted.status -ne 'PendingActivation') {
     throw 'Invitation acceptance returned the wrong tenant or status.'
 }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Aiyara.Timesheet.Api;
+using Aiyara.Timesheet.Api.Controllers;
 using Aiyara.Timesheet.Databases;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -22,6 +23,8 @@ public sealed class TimesheetHttpContractTests
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddScoped<TimesheetTenantScope>();
+        builder.Services.AddScoped<TimesheetOperations>();
+        builder.Services.AddControllers().AddApplicationPart(typeof(TimesheetController).Assembly);
         builder.Services.AddDbContext<TimesheetDbContext>(options => options.UseSqlite(connection));
         await using var app = builder.Build();
         app.Use(async (context, next) =>
@@ -34,7 +37,7 @@ public sealed class TimesheetHttpContractTests
             }
             await next();
         });
-        app.MapTimesheetEndpoints();
+        app.MapControllers();
         using (var scope = app.Services.CreateScope())
             await scope.ServiceProvider.GetRequiredService<TimesheetDbContext>().Database.EnsureCreatedAsync();
         await app.StartAsync();
@@ -56,22 +59,22 @@ public sealed class TimesheetHttpContractTests
             (await client.PostAsJsonAsync("/api/v1/projects", new NameRequest("Denied"))).StatusCode);
         var created = await client.PostAsJsonAsync("/api/v1/entries", body);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var entry = await created.Content.ReadFromJsonAsync<TimeEntry>();
+        var entry = (await created.Content.ReadFromJsonAsync<Envelope<TimeEntry>>())?.Result;
         Assert.NotNull(entry);
         Assert.Equal(240, entry.DurationMinutes);
         Assert.Equal(tenantA, entry.TenantId);
-        var own = await client.GetFromJsonAsync<List<TimeEntry>>(
-            $"/api/v1/entries?year={today.Year}&month={today.Month}");
+        var own = (await client.GetFromJsonAsync<Envelope<List<TimeEntry>>>(
+            $"/api/v1/entries?year={today.Year}&month={today.Month}"))?.Result;
         Assert.Single(own!);
 
         SetActor(client, tenantA, userB);
-        Assert.Empty((await client.GetFromJsonAsync<List<TimeEntry>>(
-            $"/api/v1/entries?year={today.Year}&month={today.Month}"))!);
+        Assert.Empty((await client.GetFromJsonAsync<Envelope<List<TimeEntry>>>(
+            $"/api/v1/entries?year={today.Year}&month={today.Month}"))!.Result);
         Assert.Equal(HttpStatusCode.NotFound,
             (await client.DeleteAsync($"/api/v1/entries/{entry.Id}")).StatusCode);
         SetActor(client, tenantB, userA);
-        Assert.Empty((await client.GetFromJsonAsync<List<TimeEntry>>(
-            $"/api/v1/entries?year={today.Year}&month={today.Month}"))!);
+        Assert.Empty((await client.GetFromJsonAsync<Envelope<List<TimeEntry>>>(
+            $"/api/v1/entries?year={today.Year}&month={today.Month}"))!.Result);
 
         var previous = today.AddMonths(-1);
         var closed = await client.PostAsJsonAsync("/api/v1/entries", body with { Date = previous });
@@ -86,4 +89,6 @@ public sealed class TimesheetHttpContractTests
         client.DefaultRequestHeaders.Add("X-Test-Tenant", tenant.ToString());
         client.DefaultRequestHeaders.Add("X-Test-User", user.ToString());
     }
+
+    private sealed record Envelope<T>(T Result);
 }

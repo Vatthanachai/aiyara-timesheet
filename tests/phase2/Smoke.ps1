@@ -47,7 +47,7 @@ $created = Send-Json '/api/v1/tenants' @{
     name = 'Phase 2 E2E'; slug = "phase2-e2e-$suffix"; adminEmail = $adminEmail
 }
 Expect-Status $created 201 'tenant creation'
-$tenant = $created.Content | ConvertFrom-Json
+$tenant = ($created.Content | ConvertFrom-Json).result
 $code = Get-Code $adminEmail 'Activate your Aiyara Timesheet account'
 $activated = Send-Json '/api/v1/auth/activate' @{ code = $code; password = $oldPassword }
 Expect-Status $activated 204 'activation'
@@ -59,7 +59,7 @@ $login = Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail; password = $oldPassword
 }
 Expect-Status $login 200 'login'
-$session = $login.Content | ConvertFrom-Json
+$session = ($login.Content | ConvertFrom-Json).result
 if (-not $session.accessToken.StartsWith('v4.public.')) {
     throw 'Login did not issue a PASETO v4.public token.'
 }
@@ -77,7 +77,7 @@ $invitation = Send-Json "/api/v1/auth/tenants/$($tenant.tenantId)/invitations" @
     email = $employeeEmail; role = 'Employee'
 } 'Post' $authorization
 Expect-Status $invitation 201 'authenticated invitation'
-$invitationData = $invitation.Content | ConvertFrom-Json
+$invitationData = ($invitation.Content | ConvertFrom-Json).result
 $inviteMailCode = Get-Code $employeeEmail 'Your Aiyara Timesheet invitation'
 if ($inviteMailCode -ne $invitationData.code) {
     throw 'Invitation email did not match the issued invitation.'
@@ -97,7 +97,7 @@ $refreshed = Send-Json '/api/v1/auth/refresh' @{
     refreshToken = $session.refreshToken
 }
 Expect-Status $refreshed 200 'refresh rotation'
-$newSession = $refreshed.Content | ConvertFrom-Json
+$newSession = ($refreshed.Content | ConvertFrom-Json).result
 Expect-Status (Send-Json '/api/v1/auth/refresh' @{
     refreshToken = $session.refreshToken
 }) 401 'refresh replay'
@@ -109,7 +109,7 @@ $login = Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail; password = $oldPassword
 }
 Expect-Status $login 200 'second login'
-$session = $login.Content | ConvertFrom-Json
+$session = ($login.Content | ConvertFrom-Json).result
 $authorization = @{ Authorization = "Bearer $($session.accessToken)" }
 $cached = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
     -Headers $authorization -SkipHttpErrorCheck
@@ -135,7 +135,7 @@ $login = Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail; password = $newPassword
 }
 Expect-Status $login 200 'login after reset'
-$session = $login.Content | ConvertFrom-Json
+$session = ($login.Content | ConvertFrom-Json).result
 $authorization = @{ Authorization = "Bearer $($session.accessToken)" }
 Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
     -Headers $authorization -SkipHttpErrorCheck | Out-Null
@@ -155,10 +155,10 @@ $forced = Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail; password = $newPassword
 }
 Expect-Status $forced 200 'forced-change login'
-if (-not ($forced.Content | ConvertFrom-Json).mustChangePassword) {
+if (-not (($forced.Content | ConvertFrom-Json).result).mustChangePassword) {
     throw 'Policy migration did not force password change.'
 }
-$forcedToken = ($forced.Content | ConvertFrom-Json).accessToken
+$forcedToken = (($forced.Content | ConvertFrom-Json).result).accessToken
 $forcedRoute = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
     -Headers @{ Authorization = "Bearer $forcedToken" } -SkipHttpErrorCheck
 if ($forcedRoute.StatusCode -ne 401) {
@@ -168,14 +168,14 @@ Expect-Status (Send-Json '/api/v1/auth/password/change' @{
     currentPassword = $newPassword; newPassword = 'Very-Strong-New-Password-789!'
 } 'Post' @{ Authorization = "Bearer $forcedToken" }) 204 'forced policy password change'
 Expect-Status (Send-Json '/api/v1/auth/refresh' @{
-    refreshToken = ($forced.Content | ConvertFrom-Json).refreshToken
+    refreshToken = (($forced.Content | ConvertFrom-Json).result).refreshToken
 }) 401 'forced policy old session revoked'
 $compliant = Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail
     password = 'Very-Strong-New-Password-789!'
 }
 Expect-Status $compliant 200 'login after forced policy reset'
-if (($compliant.Content | ConvertFrom-Json).mustChangePassword) {
+if ((($compliant.Content | ConvertFrom-Json).result).mustChangePassword) {
     throw 'Compliant password still requires a change.'
 }
 

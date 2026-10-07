@@ -19,7 +19,10 @@ function Expect($response, [int]$status, [string]$step) {
     if ($response.StatusCode -ne $status) {
         throw "$step returned $($response.StatusCode), expected $status."
     }
-    if ($response.Content) { return $response.Content | ConvertFrom-Json }
+    if ($response.Content) {
+        $payload = $response.Content | ConvertFrom-Json
+        if ($status -ge 200 -and $status -lt 300) { return $payload.result }
+    }
 }
 
 function ActivationCode([string]$email) {

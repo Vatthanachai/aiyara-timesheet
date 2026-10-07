@@ -1,4 +1,5 @@
 using Aiyara.Report.Databases;
+using Aiyara.Timesheet.Component.Abstractions.Controllers;
 using Aiyara.Timesheet.Contracts.Identity.V1;
 using Grpc.Core;
 
@@ -43,7 +44,7 @@ public static class ReportAuthentication
             var authorization = context.Request.Headers.Authorization.ToString();
             if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await SafeApiErrors.WriteErrorAsync(context, 401, "UNAUTHORIZED");
                 return;
             }
 
@@ -55,14 +56,14 @@ public static class ReportAuthentication
             }
             catch (RpcException)
             {
-                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                await SafeApiErrors.WriteErrorAsync(context, 503, "IDENTITY_UNAVAILABLE");
                 return;
             }
 
             if (!validation.IsValid || !Guid.TryParse(validation.TenantId, out var tenantId) ||
                 !Guid.TryParse(validation.SubjectId, out var userId))
             {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await SafeApiErrors.WriteErrorAsync(context, 401, "UNAUTHORIZED");
                 return;
             }
 

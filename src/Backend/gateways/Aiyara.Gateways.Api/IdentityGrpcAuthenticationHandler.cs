@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Aiyara.Timesheet.Contracts.Identity.V1;
+using Aiyara.Timesheet.Component.Abstractions.Controllers;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
@@ -13,6 +14,12 @@ internal sealed class IdentityGrpcAuthenticationHandler(
     RedisIdentityValidationCache cache)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
+    protected override Task HandleChallengeAsync(AuthenticationProperties properties) =>
+        SafeApiErrors.WriteErrorAsync(Context, 401, "UNAUTHORIZED", Context.RequestAborted);
+
+    protected override Task HandleForbiddenAsync(AuthenticationProperties properties) =>
+        SafeApiErrors.WriteErrorAsync(Context, 403, "FORBIDDEN", Context.RequestAborted);
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var authorization = Request.Headers.Authorization.ToString();

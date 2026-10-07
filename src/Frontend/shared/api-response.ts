@@ -14,8 +14,8 @@ export type ApiError = {
 
 export type Locale = 'th' | 'en'
 
-export function unwrapResponse<T>(response: ApiEnvelope<T>): T {
-  return response.result
+export function unwrapResponse<T>(response: ApiEnvelope<T> | null | undefined): T {
+  return response?.result as T
 }
 
 export function safeError(error: unknown, locale: Locale): string {
@@ -24,6 +24,8 @@ export function safeError(error: unknown, locale: Locale): string {
   const status = payload?.statusCode ?? candidate?.status
   const code = payload?.errorCode
   const thai = locale === 'th'
+  if (code === 'INVALIDCREDENTIALS')
+    return thai ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : 'Incorrect email or password.'
   if (status === 401) return thai ? 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง' : 'Session expired. Please sign in again.'
   if (status === 403) return thai ? 'คุณไม่มีสิทธิ์ทำรายการนี้' : 'You do not have permission for this action.'
   if (status === 404) return thai ? 'ไม่พบข้อมูลที่ต้องการ' : 'The requested item was not found.'
@@ -37,11 +39,50 @@ export function safeError(error: unknown, locale: Locale): string {
 
 export function fieldErrors(error: unknown, locale: Locale): Record<string, string[]> {
   const fields = (error as { data?: ApiError } | null)?.data?.errors ?? {}
-  return Object.fromEntries(Object.entries(fields).map(([field, codes]) => [field,
+  return Object.fromEntries(Object.entries(fields).map(([field, codes]) => [
+    field.split('.').at(-1)!.replace(/^./, first => first.toLowerCase()),
     codes.map(code => {
       if (code === 'REQUIRED') return locale === 'th' ? 'จำเป็นต้องกรอก' : 'Required'
       if (code === 'INVALID_DATE') return locale === 'th' ? 'วันที่ไม่ถูกต้อง' : 'Invalid date'
       return locale === 'th' ? 'ข้อมูลไม่ถูกต้อง' : 'Invalid value'
     })
   ]))
+}
+
+export async function withRemoteRefresh<T>(
+  send: (accessToken: string) => Promise<T>,
+  currentToken: { value: string }, shellOrigin: string
+): Promise<T> {
+  try { return await send(currentToken.value) }
+  catch (cause) {
+    const status = (cause as { status?: number; data?: ApiError } | null)?.status ??
+      (cause as { data?: ApiError } | null)?.data?.statusCode
+    if (status !== 401 || window.parent === window) throw cause
+    const renewed = await requestShellRefresh(shellOrigin)
+    if (!renewed) {
+      window.parent.postMessage({ type: 'aiyara.sign-in-required' }, shellOrigin)
+      throw cause
+    }
+    currentToken.value = renewed
+    return await send(renewed)
+  }
+}
+
+function requestShellRefresh(shellOrigin: string): Promise<string | null> {
+  return new Promise(resolve => {
+    const requestId = crypto.randomUUID()
+    const timeout = window.setTimeout(() => finish(null), 10_000)
+    function finish(token: string | null) {
+      window.clearTimeout(timeout)
+      window.removeEventListener('message', receive)
+      resolve(token)
+    }
+    function receive(event: MessageEvent) {
+      if (event.origin !== shellOrigin || event.source !== window.parent ||
+          event.data?.type !== 'aiyara.refresh-result' || event.data.requestId !== requestId) return
+      finish(typeof event.data.token === 'string' && event.data.token ? event.data.token : null)
+    }
+    window.addEventListener('message', receive)
+    window.parent.postMessage({ type: 'aiyara.refresh-request', requestId }, shellOrigin)
+  })
 }

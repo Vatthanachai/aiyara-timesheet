@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 type Definition = { id: string; kind: string; format: string; name: string }
 type Run = { id: string; subjectUserId: string | null; status: string; periodStartUtc: string; periodEndUtc: string; attemptCount: number; createdAtUtc: string; kind: string; format: string; name: string }
 type Schedule = { id: string; reportDefinitionId: string; timeZoneId: string; localTime: string; nextFireAtUtc: string; kind: string; format: string; name: string }
@@ -62,9 +63,10 @@ onMounted(() => window.addEventListener('message', (event: MessageEvent) => {
 }))
 
 async function api<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) {
-  return await $fetch<T>(`${gateway.value}/api/v1/reports${path}`, {
-    ...options, headers: { Authorization: `Bearer ${token.value}`, ...options.headers }
-  })
+  return unwrapResponse(await withRemoteRefresh(accessToken =>
+    $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/reports${path}`, {
+      ...options, headers: { Authorization: `Bearer ${accessToken}`, ...options.headers }
+    }), token, config.public.shellOrigin))
 }
 
 async function load() {
@@ -87,7 +89,7 @@ async function load() {
       retentionYears.value = policy.years
     }
     error.value = ''
-  } catch { error.value = copy.value.loadingError }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 
 async function createRun() {
@@ -102,7 +104,7 @@ async function createRun() {
     } })
     notice.value = copy.value.generated
     await load()
-  } catch { error.value = `${copy.value.actionError} · ${copy.value.requiresLocked}` }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 
 function tenantLocalMidnight(dateText: string, zone: string) {
@@ -129,7 +131,7 @@ async function addDefinition() {
     definitionForm.name = ''
     notice.value = copy.value.saved
     await load()
-  } catch { error.value = copy.value.actionError }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 
 async function addSchedule() {
@@ -137,30 +139,29 @@ async function addSchedule() {
     await api('/schedules', { method: 'POST', body: { ...scheduleForm, localTime: `${scheduleForm.localTime}:00` } })
     notice.value = copy.value.saved
     await load()
-  } catch { error.value = copy.value.actionError }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 
 async function disableSchedule(id: string) {
   try { await api(`/schedules/${id}`, { method: 'DELETE' }); await load() }
-  catch { error.value = copy.value.actionError }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 
 async function saveRetention() {
   try { await api('/retention', { method: 'PUT', body: { years: retentionYears.value } }); notice.value = copy.value.saved }
-  catch { error.value = copy.value.actionError }
+  catch (cause) { error.value = safeError(cause, locale.value) }
 }
 
 async function download(run: Run) {
   try {
-    const response = await fetch(`${gateway.value}/api/v1/reports/runs/${run.id}/download`, {
-      headers: { Authorization: `Bearer ${token.value}` }
-    })
-    if (!response.ok) throw new Error()
+    const response = await withRemoteRefresh(accessToken => reportFetch(
+      `${gateway.value}/api/v1/reports/runs/${run.id}/download`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }), token, config.public.shellOrigin)
     const objectUrl = URL.createObjectURL(await response.blob())
     const anchor = document.createElement('a')
     anchor.href = objectUrl; anchor.download = `report-${run.id}.${run.format.toLowerCase()}`
     anchor.click(); URL.revokeObjectURL(objectUrl)
-  } catch { error.value = copy.value.actionError }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 
 async function uploadSigned(run: Run, event: Event) {
@@ -168,14 +169,23 @@ async function uploadSigned(run: Run, event: Event) {
   if (!file) return
   try {
     const form = new FormData(); form.append('file', file)
-    const response = await fetch(`${gateway.value}/api/v1/reports/runs/${run.id}/signed-document`, {
-      method: 'POST', headers: { Authorization: `Bearer ${token.value}` }, body: form
-    })
-    if (!response.ok) throw new Error()
+    await withRemoteRefresh(accessToken => reportFetch(
+      `${gateway.value}/api/v1/reports/runs/${run.id}/signed-document`,
+      { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }),
+      token, config.public.shellOrigin)
     notice.value = copy.value.saved
     await load()
-  } catch { error.value = copy.value.actionError }
+  } catch (cause) { error.value = safeError(cause, locale.value) }
   ;(event.target as HTMLInputElement).value = ''
+}
+
+async function reportFetch(url: string, options: RequestInit): Promise<Response> {
+  const response = await fetch(url, options)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw { status: response.status, data }
+  }
+  return response
 }
 
 function statusLabel(status: string) {
@@ -189,7 +199,7 @@ function statusLabel(status: string) {
     <h2>{{ copy.title }}</h2>
     <p v-if="!token">{{ copy.signIn }}</p>
     <template v-else>
-      <p v-if="error" role="alert">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p>
+      <p v-if="error" role="alert">{{ error }} <button type="button" @click="load">{{ locale === 'th' ? 'ลองใหม่' : 'Retry' }}</button></p><p v-if="notice" role="status">{{ notice }}</p>
       <section><h3>{{ copy.dashboard }}</h3><dl class="dashboard">
         <div><dt>{{ copy.total }}</dt><dd>{{ dashboard.total }}</dd></div>
         <div><dt>{{ copy.ready }}</dt><dd>{{ dashboard.ready }}</dd></div>

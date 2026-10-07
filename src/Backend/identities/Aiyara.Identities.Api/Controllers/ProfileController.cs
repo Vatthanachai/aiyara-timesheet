@@ -44,12 +44,17 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     {
         var account = await AuthenticatedAccount(ct);
         if (account is null) return Error(401, "UNAUTHORIZED");
-        if (string.IsNullOrWhiteSpace(body.FirstName) || body.FirstName.Length > 100 ||
-            string.IsNullOrWhiteSpace(body.LastName) || body.LastName.Length > 100 ||
-            body.JobTitle?.Length > 160 || body.PhotoUrl?.Length > 2048 ||
-            body.PhotoUrl is not null &&
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(body.FirstName) || body.FirstName.Length > 100)
+            errors["firstName"] = ["INVALID_VALUE"];
+        if (string.IsNullOrWhiteSpace(body.LastName) || body.LastName.Length > 100)
+            errors["lastName"] = ["INVALID_VALUE"];
+        if (body.JobTitle?.Length > 160) errors["jobTitle"] = ["INVALID_VALUE"];
+        if (body.PhotoUrl?.Length > 2048 || body.PhotoUrl is not null &&
             (!Uri.TryCreate(body.PhotoUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps))
-            return Error(400, "VALIDATION_FAILED");
+            errors["photoUrl"] = ["INVALID_VALUE"];
+        if (errors.Count > 0) return ReturnResponseWithHttpStatus(
+            new ServiceErrorResponse(400, "VALIDATION_FAILED", "The request contains invalid fields.", errors));
         account.FirstName = body.FirstName.Trim();
         account.LastName = body.LastName.Trim();
         account.JobTitle = body.JobTitle?.Trim();

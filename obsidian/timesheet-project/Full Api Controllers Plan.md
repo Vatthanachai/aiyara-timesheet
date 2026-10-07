@@ -5,9 +5,12 @@
 ## Progress
 
 - Shared response types, BaseController status mapping, safe exception handler, and validation error mapping implemented.
-- Gateway onboarding, Identity onboarding/auth/profile, Notification internal email, and Timesheet internal snapshot routes moved to controllers.
-- Report Worker updated for the Timesheet internal snapshot envelope; Shell login/refresh and Identity Profile remote updated for envelopes.
-- Remaining: Timesheet business routes, Report API routes, other frontend remotes and Shell refresh handshake, contract/smoke test updates, runtime/API verification, and primary validation. Do not merge until these pass.
+- Gateway onboarding, Identity onboarding/auth/profile, Notification internal email, Timesheet business/internal snapshot, and Report business routes moved to controllers. Business route handlers now delegate through operation classes where applicable.
+- Report Worker and internal HTTP clients updated for the response envelope. Shell and all four remotes unwrap responses, localize safe errors, and the Shell handles a single remote refresh/retry handshake.
+- WeatherForecast templates removed. Phase 1–4 smoke scripts and Phase 3/4 HTTP tests updated for envelopes.
+- Validation: solution build passed; all 41 .NET tests passed; production builds passed for Shell and all four remotes; `git diff --check` passed. Docker Compose configuration passed. The Phase 5 stack was rebuilt and deployed; all application containers report healthy, `http://localhost:3000/` and gateway health return 200. The separate `aiyara-maildev` stack remains healthy at `http://localhost:8080`; its API token returns 200 and the requested SMTP account authenticated successfully on port 1025. Notifications API is configured to use that SMTP endpoint through `host.docker.internal`.
+- The local deployment settings are in the ignored `.env`; no MailDev credentials were added to tracked files. The requested Vue Font Awesome wrapper is installed in the Shell package and its production build passed.
+- Remaining before merge: review OpenAPI response metadata and final diff, then record the primary validation summary. Do not merge until these pass.
 
 ## Scope
 
