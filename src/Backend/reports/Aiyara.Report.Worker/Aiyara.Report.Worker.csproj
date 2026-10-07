@@ -1,7 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Quartz" />
     <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
+    <ProjectReference Include="..\Aiyara.Report.Databases\Aiyara.Report.Databases.csproj" />
+    <ProjectReference Include="..\Aiyara.Report.Models\Aiyara.Report.Models.csproj" />
+    <ProjectReference Include="..\Aiyara.Report.Services\Aiyara.Report.Services.csproj" />
+    <ProjectReference Include="..\..\contracts\Aiyara.Timesheet.Contracts\Aiyara.Timesheet.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

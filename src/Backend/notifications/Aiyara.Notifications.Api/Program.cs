@@ -15,6 +15,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHostedService<NotificationDispatchWorker>();
 builder.Services.AddScoped<CredentialEmailDispatcher>();
+builder.Services.AddScoped<ReportReadyEmailDispatcher>();
 
 var app = builder.Build();
 
@@ -44,6 +45,17 @@ app.MapPost("/internal/v1/credential-email", async (
         ? Results.Accepted() : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 })
 .ExcludeFromDescription();
+
+app.MapPost("/internal/v1/report-ready", async (
+    ReportReadyEmailRequest request, HttpContext context,
+    ReportReadyEmailDispatcher dispatcher, IConfiguration configuration,
+    CancellationToken cancellationToken) =>
+{
+    if (!CredentialEmailDispatcher.ValidInternalKey(configuration["InternalApi:Key"],
+        context.Request.Headers["X-Internal-Key"].ToString())) return Results.Unauthorized();
+    return await dispatcher.SendAsync(request, cancellationToken)
+        ? Results.Accepted() : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+}).ExcludeFromDescription();
 
 app.Run();
 

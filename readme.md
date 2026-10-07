@@ -177,17 +177,24 @@ Run `pwsh -NoProfile -File tests/phase3/Smoke.ps1` against the Compose stack
 with MailDev enabled to exercise profile, tenant catalog, time entry, leave,
 access control, and month locking through Gateway.
 
-## Phase 4 reporting foundation (in progress)
+## Phase 4 reporting (in progress)
 
-The Reporting database now has tenant-scoped definitions, schedules, runs,
-immutable snapshot records, object metadata, and retention settings. Its
-run records carry an optional subject user ID for employee-specific reports;
-null is reserved for tenant-wide reports. Database writes require a matching
-tenant scope, and snapshots are append-only. The calendar helper computes
-Monday weekly, first-of-next-month 00:15, and
-1-January annual fire times in each tenant's timezone. Weekly and annual local
-times default to 00:15 until schedule configuration is exposed. Run
-`dotnet test tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj` to check
-calendar boundaries and tenant isolation. Quartz scheduling, RabbitMQ dispatch,
-generation, RustFS files, signed uploads, and the Reports UI are not yet wired;
-they depend partly on Phase 3's immutable timesheet data.
+Reporting now exposes tenant-authorized definition, run, schedule, retention,
+download, and signed-PDF upload APIs through Gateway. The worker consumes
+durable RabbitMQ commands and month-lock events, generates PDF/XLSX from
+Timesheet's immutable locked-month snapshots, and stores versioned objects in
+RustFS. The monthly PDF uses Noto Sans Thai and includes work-hour, worked-day,
+overtime-day, leave, and signature summaries. Identity gRPC supplies employee
+names; the signed PDF versions and generated source snapshots are audited and
+purged under tenant retention policy. Successful employee reports trigger a
+report-ready email through Notifications, which records delivery outcomes.
+Persistent schedule rows are dispatched by Quartz jobs in tenant-local time.
+The Thai/English Reports remote supports
+employee history/download and admin definitions, schedules, retention, and
+signed uploads.
+
+Run `dotnet test tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj` for
+calendar, tenant-isolation, snapshot, and document-renderer checks. Compose
+health and unauthenticated Gateway/API boundary checks are also exercised.
+Full authenticated report-generation and signed-upload E2E coverage and
+notification retry coverage remain in Phase 4 follow-up.

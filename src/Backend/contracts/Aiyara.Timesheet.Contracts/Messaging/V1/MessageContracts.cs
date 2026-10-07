@@ -29,4 +29,4 @@ public sealed record ReportGenerationRequestedV1(Guid TenantId, Guid ReportRunId
 
 public sealed record TimesheetMonthChangedV1(Guid TenantId, Guid SubjectId, int Year, int Month);
 
-public sealed record TimesheetMonthLockedV1(Guid TenantId, int Year, int Month);
+public sealed record TimesheetMonthLockedV1(Guid TenantId, int Year, int Month, string TimeZoneId);

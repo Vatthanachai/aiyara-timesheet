@@ -103,5 +103,45 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapTimesheetEndpoints();
+app.MapGet("/internal/v1/report-snapshots/{subjectId:guid}/{year:int}/{month:int}",
+    async (Guid subjectId, int year, int month, HttpContext context, TimesheetDbContext db,
+        TimesheetTenantScope tenantScope, IConfiguration configuration) =>
+    {
+        var configuredKey = configuration["Reporting:InternalKey"];
+        var suppliedKey = context.Request.Headers["X-Internal-Service-Key"].ToString();
+        if (string.IsNullOrEmpty(configuredKey) || string.IsNullOrEmpty(suppliedKey) ||
+            !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(configuredKey)),
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(suppliedKey))))
+            return Results.Unauthorized();
+        if (!Guid.TryParse(context.Request.Headers["X-Tenant-Id"], out var tenantId) ||
+            tenantId == Guid.Empty || year is < 2000 or > 2100 || month is < 1 or > 12)
+            return Results.BadRequest();
+        tenantScope.TenantId = tenantId;
+        var snapshot = await db.MonthSnapshots.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.OwnerId == subjectId && x.Year == year && x.Month == month);
+        return snapshot is null ? Results.NotFound() :
+            Results.Content(snapshot.PayloadJson, "application/json");
+    }).WithName("GetInternalReportSnapshotV1");
+app.MapGet("/internal/v1/report-snapshots/{year:int}/{month:int}",
+    async (int year, int month, HttpContext context, TimesheetDbContext db,
+        TimesheetTenantScope tenantScope, IConfiguration configuration) =>
+    {
+        var configuredKey = configuration["Reporting:InternalKey"];
+        var suppliedKey = context.Request.Headers["X-Internal-Service-Key"].ToString();
+        if (string.IsNullOrEmpty(configuredKey) || string.IsNullOrEmpty(suppliedKey) ||
+            !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(configuredKey)),
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(suppliedKey))))
+            return Results.Unauthorized();
+        if (!Guid.TryParse(context.Request.Headers["X-Tenant-Id"], out var tenantId) ||
+            tenantId == Guid.Empty || year is < 2000 or > 2100 || month is < 1 or > 12)
+            return Results.BadRequest();
+        tenantScope.TenantId = tenantId;
+        var snapshots = await db.MonthSnapshots.AsNoTracking().Where(x =>
+            x.Year == year && x.Month == month && x.OwnerId != Guid.Empty)
+            .Select(x => new { x.OwnerId, x.PayloadJson, x.CreatedAtUtc }).ToListAsync();
+        return Results.Ok(snapshots);
+    }).WithName("ListInternalReportSnapshotsV1");
 
 app.Run();

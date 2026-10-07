@@ -12,6 +12,7 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
     public DbSet<ReportSnapshot> ReportSnapshots => Set<ReportSnapshot>();
     public DbSet<ReportObject> ReportObjects => Set<ReportObject>();
     public DbSet<ReportRetentionPolicy> RetentionPolicies => Set<ReportRetentionPolicy>();
+    public DbSet<ReportAudit> Audits => Set<ReportAudit>();
 
     public Guid? CurrentTenantId => tenantScope.TenantId;
 
@@ -75,6 +76,8 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
             entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.IdempotencyKey).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.FailureReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.SubjectUserId, x.CreatedAtUtc });
             entity.HasIndex(x => new { x.TenantId, x.Status, x.CreatedAtUtc });
@@ -117,6 +120,16 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
         {
             entity.ToTable("report_retention_policies");
             entity.HasKey(x => x.TenantId);
+            entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<ReportAudit>(entity =>
+        {
+            entity.ToTable("report_audits");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Action).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.DetailsJson).IsRequired();
+            entity.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
             entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
         });
     }

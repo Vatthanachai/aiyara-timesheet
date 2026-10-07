@@ -94,7 +94,7 @@ public sealed class TimesheetOutboxPublisher(IServiceScopeFactory scopes,
         object envelope = item.EventType == MessageTypes.TimesheetMonthLocked
             ? new MessageEnvelope<TimesheetMonthLockedV1>(item.Id, item.Id, idempotencyKey,
                 item.TenantId, occurred, item.EventType,
-                new TimesheetMonthLockedV1(item.TenantId, item.Year, item.Month))
+                new TimesheetMonthLockedV1(item.TenantId, item.Year, item.Month, item.TimeZoneId))
             : new MessageEnvelope<TimesheetMonthChangedV1>(item.Id, item.Id, idempotencyKey,
                 item.TenantId, occurred, item.EventType,
                 new TimesheetMonthChangedV1(item.TenantId, item.SubjectId, item.Year, item.Month));

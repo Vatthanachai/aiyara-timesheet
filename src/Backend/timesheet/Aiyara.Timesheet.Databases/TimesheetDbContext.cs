@@ -47,6 +47,8 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
         Configure<MonthLock>(modelBuilder, "month_locks");
         Configure<TimesheetAudit>(modelBuilder, "timesheet_audit");
         Configure<TimesheetOutboxEvent>(modelBuilder, "timesheet_outbox");
+        modelBuilder.Entity<TimesheetOutboxEvent>().Property(x => x.TimeZoneId)
+            .HasMaxLength(100).IsRequired();
         Configure<MonthSnapshot>(modelBuilder, "month_snapshots");
         modelBuilder.Entity<MonthSnapshot>().HasIndex(x => new { x.TenantId, x.OwnerId, x.Year, x.Month }).IsUnique();
         modelBuilder.Entity<MonthLock>().HasIndex(x => new { x.TenantId, x.Year, x.Month }).IsUnique();

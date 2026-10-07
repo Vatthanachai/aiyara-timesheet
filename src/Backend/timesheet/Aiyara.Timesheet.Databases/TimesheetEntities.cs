@@ -88,6 +88,7 @@ public sealed class TimesheetOutboxEvent : TenantRecord
     public Guid SubjectId { get; set; }
     public int Year { get; set; }
     public int Month { get; set; }
+    public string TimeZoneId { get; set; } = "Asia/Bangkok";
     public DateTime OccurredAtUtc { get; set; }
     public DateTime? PublishedAtUtc { get; set; }
 }

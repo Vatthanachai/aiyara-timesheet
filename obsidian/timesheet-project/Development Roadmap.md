@@ -53,13 +53,18 @@ tests passed before the `develop` merge.
 
 ## Phase 4 — Reporting And Signed Documents
 
-Implementation status (2026-10-06): the independent reporting foundation is
-underway on `feature/phase-four-report-foundation`: tenant-scoped definitions,
-schedules, run state, snapshots, object metadata and retention policy have an
-EF migration, and a timezone-aware calendar calculator covers the scheduled
-weekly/monthly/annual boundaries. Quartz persistence/dispatch, RabbitMQ,
-generation, RustFS upload, signed PDFs and Reports UI remain pending; Phase 3
-must supply immutable time-entry source data before report output can be built.
+Implementation status (2026-10-07): reporting APIs, tenant-local persisted
+schedule dispatch, durable RabbitMQ command/event consumers, PDF/XLSX rendering,
+RustFS object versioning, signed monthly PDF uploads, retention/audit purging,
+report-ready email delivery through Notifications, and the Thai/English Reports
+remote are implemented on
+`feature/phase-four-reporting-completion`. Reports read immutable locked-month
+snapshots owned by Timesheet; employee names come from Identity gRPC. Calendar,
+tenant isolation, snapshot parsing, and renderer tests pass, as do reporting
+service builds, the frontend production build, Compose health, and an
+unauthenticated Gateway boundary smoke. Authenticated generation/upload E2E
+authenticated generation/upload E2E tests and notification retry coverage are
+still required for Phase 4 sign-off.
 
 1. Model report definitions, schedule configuration, Quartz persistence, run state, report snapshots, RustFS object metadata, and retention configuration.
 2. Configure tenant-timezone schedules: Monday weekly reports, closed-month reports at 00:15 on the following month's first day, and annual reports on 1 January.

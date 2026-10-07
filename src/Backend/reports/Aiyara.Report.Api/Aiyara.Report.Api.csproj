@@ -8,13 +8,20 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
 		<PackageReference Include="Swashbuckle.AspNetCore" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
-		<ProjectReference Include="..\Aiyara.Report.Databases\Aiyara.Report.Databases.csproj" />
+    <ProjectReference Include="..\Aiyara.Report.Databases\Aiyara.Report.Databases.csproj" />
+    <ProjectReference Include="..\Aiyara.Report.Services\Aiyara.Report.Services.csproj" />
+    <ProjectReference Include="..\..\contracts\Aiyara.Timesheet.Contracts\Aiyara.Timesheet.Contracts.csproj" />
 	</ItemGroup>
 
 </Project>

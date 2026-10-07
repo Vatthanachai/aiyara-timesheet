@@ -7,6 +7,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="PDFsharp" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <ProjectReference Include="..\Aiyara.Report.Models\Aiyara.Report.Models.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Fonts\NotoSansThai-Regular.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Fonts\OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -121,10 +121,15 @@
 
 ## Not Yet Implemented
 
-- Phase 4 has started with reporting data models and calendar rules; Quartz,
-  RabbitMQ dispatch, PDF/XLSX generation, RustFS storage, signed upload, and
-  Reports UI remain pending. Phase 3 time-entry snapshots are a prerequisite
-  for meaningful generated reports.
+- Phase 4 reporting APIs, tenant-local schedule dispatch, durable RabbitMQ
+  consumers, PDF/XLSX generation from immutable locked-month snapshots, RustFS
+  storage, signed monthly PDF versioning, retention/audit handling, and the
+  Thai/English Reports remote are implemented on the current feature branch.
+  Calendar, tenant-isolation, snapshot parsing, and PDF/XLSX renderer tests
+  pass; Compose services and Gateway's unauthenticated reporting boundary are
+  healthy. Report-ready email delivery is integrated through Notifications and
+  delivery outcomes are recorded. Authenticated generation/upload E2E tests and
+  notification retry coverage remain pending before Phase 4 can be marked complete.
 - Approval workflows and reporting generation endpoints.
 - Automated frontend end-to-end flows.
 - Application clients for RabbitMQ and RustFS beyond dependency probes.

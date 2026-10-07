@@ -193,13 +193,26 @@ public static class TimesheetEndpoints
                 x.Date.Year == year && x.Date.Month == month).ToListAsync();
             var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
                 x.Date.Year == year && x.Date.Month == month).ToListAsync();
+            var projects = await db.Projects.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
+            var categories = await db.Categories.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
+            var entrySnapshots = entries.Select(entry => new
+            {
+                entry.Id, entry.TenantId, entry.OwnerId, entry.Date, entry.StartTime, entry.EndTime,
+                entry.DurationMinutes, entry.TaskName, entry.Detail, entry.Notes, entry.ProjectId,
+                ProjectName = entry.ProjectId is { } projectId && projects.TryGetValue(projectId, out var projectName)
+                    ? projectName : "",
+                entry.CategoryId,
+                CategoryName = entry.CategoryId is { } categoryId && categories.TryGetValue(categoryId, out var categoryName)
+                    ? categoryName : "",
+                entry.PersonalTaskId, entry.IsDeleted, entry.UpdatedAtUtc
+            }).ToArray();
             db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId,
                 OwnerId = Guid.Empty, Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
-                PayloadJson = JsonSerializer.Serialize(new { entries, leaves, holidays }) });
+                PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots, leaves, holidays }) });
             foreach (var ownerId in entries.Select(x => x.OwnerId).Concat(leaves.Select(x => x.OwnerId)).Distinct())
                 db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId, OwnerId = ownerId,
                     Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
-                    PayloadJson = JsonSerializer.Serialize(new { entries = entries.Where(x => x.OwnerId == ownerId),
+                    PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots.Where(x => x.OwnerId == ownerId),
                         leaves = leaves.Where(x => x.OwnerId == ownerId), holidays }) });
             var monthLock = new MonthLock { TenantId = actor.TenantId, Year = year, Month = month,
                 LockedBy = actor.UserId, LockedAtUtc = DateTime.UtcNow };
@@ -207,7 +220,7 @@ public static class TimesheetEndpoints
             Audit(db, actor, "month", monthLock.Id, "locked", null, monthLock);
             db.OutboxEvents.Add(new TimesheetOutboxEvent { TenantId = actor.TenantId,
                 EventType = MessageTypes.TimesheetMonthLocked, SubjectId = Guid.Empty, Year = year,
-                Month = month, OccurredAtUtc = DateTime.UtcNow });
+                Month = month, TimeZoneId = actor.TimeZoneId, OccurredAtUtc = DateTime.UtcNow });
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
             return Results.Ok(monthLock);

@@ -48,6 +48,31 @@ public sealed class ReportFoundationTests
     }
 
     [Fact]
+    public void Snapshot_reader_maps_work_and_leave_rows_and_calculates_document_totals()
+    {
+        const string snapshot = """{"entries":[{"Date":"2026-10-01","StartTime":"09:00:00","EndTime":"18:00:00","DurationMinutes":540,"TaskName":"ออกแบบ","Detail":"หน้ารายงาน","Notes":"ทดสอบ","ProjectId":"project-1","CategoryId":"category-1"}],"leaves":[{"Date":"2026-10-02","Kind":"Vacation","Notes":"พักร้อน"}]}""";
+
+        var lines = ReportDocumentRenderer.ReadSnapshot(snapshot);
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("work", lines[0].Kind);
+        Assert.Equal("leave", lines[1].Kind);
+        Assert.Equal(1, ReportDocumentRenderer.CountLeaveDays(snapshot));
+        var xlsx = ReportDocumentRenderer.RenderXlsx(new ReportDocumentData("ทดสอบ", "ทีม", "ตุลาคม",
+            lines, ReportDocumentRenderer.CountLeaveDays(snapshot)));
+        Assert.Equal((byte)'P', xlsx[0]);
+        Assert.Equal((byte)'K', xlsx[1]);
+    }
+
+    [Fact]
+    public void Pdf_renderer_embeds_thai_document_content()
+    {
+        var pdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("พนักงาน", "ทีม", "ตุลาคม",
+            [new ReportLine(new DateOnly(2026, 10, 1), "09:00", "18:00", 480,
+                "งานทดสอบ", "รายละเอียด", "หมายเหตุ", "โครงการ", "หมวดหมู่", "work")], 0));
+        Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
+    }
+
+    [Fact]
     public async Task Tenant_filter_fails_closed_and_composite_foreign_key_blocks_cross_tenant_run()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
@@ -81,6 +106,7 @@ public sealed class ReportFoundationTests
         {
             Id = Guid.NewGuid(), TenantId = first,
             ReportDefinitionId = secondDefinition.Id,
+            TimeZoneId = "Asia/Bangkok",
             IdempotencyKey = "cross-tenant-test",
             PeriodStartUtc = DateTime.UtcNow.AddDays(-7),
             PeriodEndUtc = DateTime.UtcNow,
@@ -178,6 +204,7 @@ public sealed class ReportFoundationTests
     private static ReportRun NewRun(Guid tenantId, Guid definitionId, string key) => new()
     {
         Id = Guid.NewGuid(), TenantId = tenantId, ReportDefinitionId = definitionId,
+        TimeZoneId = "Asia/Bangkok",
         IdempotencyKey = key, PeriodStartUtc = DateTime.UtcNow.AddDays(-30),
         PeriodEndUtc = DateTime.UtcNow, CreatedAtUtc = DateTime.UtcNow
     };

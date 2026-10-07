@@ -86,6 +86,7 @@ services:
       Dependencies__RabbitMQ__Host: rabbitmq
       ConnectionStrings__TimesheetDb: Host=postgres;Database=timesheet_db;Username=timesheet_app;Password=${TIMESHEET_DB_PASSWORD:?Set TIMESHEET_DB_PASSWORD in .env}
       IdentityGrpc__Url: http://identities-api:8082
+      Reporting__InternalKey: ${REPORTING_INTERNAL_KEY:?Set REPORTING_INTERNAL_KEY in .env}
       RabbitMQ__Host: rabbitmq
       RabbitMQ__User: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
@@ -117,10 +118,26 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       Dependencies__Postgres__Host: postgres
+      Dependencies__RabbitMQ__Host: rabbitmq
+      Dependencies__RustFs__Host: rustfs
       ConnectionStrings__ReportingDb: Host=postgres;Database=reporting_db;Username=reporting_app;Password=${REPORTING_DB_PASSWORD:?Set REPORTING_DB_PASSWORD in .env}
+      IdentityGrpc__Url: http://identities-api:8082
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__User: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+      ObjectStorage__Endpoint: http://rustfs:9000
+      ObjectStorage__AccessKey: ${RUSTFS_ACCESS_KEY:?Set RUSTFS_ACCESS_KEY in .env}
+      ObjectStorage__SecretKey: ${RUSTFS_SECRET_KEY:?Set RUSTFS_SECRET_KEY in .env}
+      ObjectStorage__Bucket: aiyara-reports
     depends_on:
       db-provisioner:
         condition: service_completed_successfully
+      identities-api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 15s
@@ -174,7 +191,30 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Dependencies__RabbitMq__Host: rabbitmq
       Dependencies__RustFs__Host: rustfs
+      Dependencies__Postgres__Host: postgres
+      ConnectionStrings__ReportingDb: Host=postgres;Database=reporting_db;Username=reporting_app;Password=${REPORTING_DB_PASSWORD:?Set REPORTING_DB_PASSWORD in .env}
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__User: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+      ObjectStorage__Endpoint: http://rustfs:9000
+      ObjectStorage__AccessKey: ${RUSTFS_ACCESS_KEY:?Set RUSTFS_ACCESS_KEY in .env}
+      ObjectStorage__SecretKey: ${RUSTFS_SECRET_KEY:?Set RUSTFS_SECRET_KEY in .env}
+      ObjectStorage__Bucket: aiyara-reports
+      Timesheet__BaseUrl: http://timesheet-api:8080
+      IdentityGrpc__Url: http://identities-api:8082
+      Notifications__BaseUrl: http://notifications-api:8080
+      Notifications__InternalKey: ${NOTIFICATION_INTERNAL_KEY:?Set NOTIFICATION_INTERNAL_KEY in .env}
+      Notifications__ReportUrl: ${REPORTING_PUBLIC_URL:-http://localhost:3000}
+      Reporting__InternalKey: ${REPORTING_INTERNAL_KEY:?Set REPORTING_INTERNAL_KEY in .env}
     depends_on:
+      db-provisioner:
+        condition: service_completed_successfully
+      timesheet-api:
+        condition: service_healthy
+      identities-api:
+        condition: service_healthy
+      notifications-api:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       rustfs:

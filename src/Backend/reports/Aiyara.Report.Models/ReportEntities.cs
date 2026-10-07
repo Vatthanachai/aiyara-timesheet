@@ -38,11 +38,14 @@ public sealed class ReportRun : ITenantOwnedReportRecord
     public Guid TenantId { get; set; }
     public Guid ReportDefinitionId { get; set; }
     public Guid? SubjectUserId { get; set; }
+    public Guid RequestedBy { get; set; }
+    public required string TimeZoneId { get; set; }
     public required string IdempotencyKey { get; set; }
     public ReportRunStatus Status { get; set; } = ReportRunStatus.Queued;
     public DateTime PeriodStartUtc { get; set; }
     public DateTime PeriodEndUtc { get; set; }
     public int AttemptCount { get; set; }
+    public string? FailureReason { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
 }
@@ -77,4 +80,15 @@ public sealed class ReportRetentionPolicy : ITenantOwnedReportRecord
     public Guid TenantId { get; set; }
     public int Years { get; set; } = 7;
     public DateTime UpdatedAtUtc { get; set; }
+}
+
+public sealed class ReportAudit : ITenantOwnedReportRecord
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ActorId { get; set; }
+    public Guid? ReportRunId { get; set; }
+    public required string Action { get; set; }
+    public required string DetailsJson { get; set; }
+    public DateTime OccurredAtUtc { get; set; }
 }
