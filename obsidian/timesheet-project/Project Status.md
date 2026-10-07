@@ -159,6 +159,12 @@
   The default Compose project has
   an existing PostgreSQL volume whose stored password differs from current
   `.env`; it was left intact.
+- Merge-gate review on 7 October 2026: branch scope, tenant isolation, service
+  ownership, secrets, generated artifacts, conflict markers, and diff whitespace
+  passed inspection. The refreshed Phase 4 live smoke confirmed Notification's
+  persisted delivery outcome; Phase 5 smoke found the exact Gateway/Identity
+  login trace and checked its password was absent from both traces and logs.
+  Telemetry collectors no longer gate backend startup.
 - `docs/developer-runbook.md` documents Compose startup, local email inspection,
   migrations, Scalar/OpenAPI discovery, test commands, and troubleshooting.
 

@@ -73,7 +73,9 @@ pwsh -NoProfile -File tests/phase5/Smoke.ps1
 
 Run the focused end-to-end smoke tests with Compose running. Phase 1–4 smoke
 tests use Gateway and MailDev; phase 4 runs a report to completion, stores it in
-RustFS, tests signed upload/download, and confirms the email notification.
+RustFS, tests signed upload/download, confirms the email notification, and
+checks the persisted Notification delivery outcome. Pass `-ProjectName` to the
+Phase 4 script when using a non-default Compose project.
 
 ```powershell
 pwsh -NoProfile -File tests/phase1/Smoke.ps1

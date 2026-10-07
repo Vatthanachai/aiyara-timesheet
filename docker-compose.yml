@@ -19,10 +19,6 @@ services:
       ReverseProxy__Clusters__reporting__Destinations__primary__Address: http://reports-api:8080/
       ReverseProxy__Clusters__notification__Destinations__primary__Address: http://notifications-api:8080/
     depends_on:
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
       identities-api:
         condition: service_healthy
       timesheet-api:
@@ -67,10 +63,6 @@ services:
     depends_on:
       db-provisioner:
         condition: service_completed_successfully
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
       redis:
         condition: service_healthy
       notifications-api:
@@ -107,10 +99,6 @@ services:
     depends_on:
       db-provisioner:
         condition: service_completed_successfully
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
       redis:
         condition: service_healthy
       identities-api:
@@ -152,10 +140,6 @@ services:
     depends_on:
       db-provisioner:
         condition: service_completed_successfully
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
       identities-api:
         condition: service_healthy
       rabbitmq:
@@ -195,10 +179,6 @@ services:
     depends_on:
       db-provisioner:
         condition: service_completed_successfully
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
       rabbitmq:
         condition: service_healthy
     healthcheck:
@@ -241,10 +221,6 @@ services:
     depends_on:
       db-provisioner:
         condition: service_completed_successfully
-      prometheus:
-        condition: service_healthy
-      jaeger:
-        condition: service_started
       timesheet-api:
         condition: service_healthy
       identities-api:

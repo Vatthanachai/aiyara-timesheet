@@ -96,7 +96,8 @@ export HTTP, .NET runtime, readiness, report-run, authentication, RabbitMQ,
 Quartz, and RustFS metrics to Prometheus; Grafana provisions ten panels. Jaeger
 receives OTLP traces with its UI loopback-bound and transient in-memory storage.
 The Phase 5 smoke checks trace receipt and ensures a generated authentication
-probe secret is absent from trace data and Identity logs. `docs/developer-runbook.md`
+probe secret is absent from its Gateway/Identity trace and both service logs.
+`docs/developer-runbook.md`
 covers Compose startup, email inspection, migrations, API discovery, tests, and
 troubleshooting. Validation: Phase 1–5 Compose smoke tests passed; Phase 4
 Compose E2E generated a PDF, uploaded/downloaded a signed version, and received

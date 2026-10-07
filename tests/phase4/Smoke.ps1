@@ -1,6 +1,8 @@
 param(
     [string]$GatewayUrl = 'http://127.0.0.1:8081',
-    [string]$MailDevUrl = 'http://127.0.0.1:8080'
+    [string]$MailDevUrl = 'http://127.0.0.1:8080',
+    [string]$EnvFile = '.env',
+    [string]$ProjectName = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -124,6 +126,20 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 }
 if (-not $readyEmail) { throw 'Report-ready email was not received by the test account.' }
 
+$compose = @('--env-file', $EnvFile)
+if ($ProjectName) { $compose += @('-p', $ProjectName) }
+$postgresUser = (& docker compose @compose config --format json | ConvertFrom-Json).services.postgres.environment.POSTGRES_USER
+if ($LASTEXITCODE -ne 0 -or -not $postgresUser) { throw 'PostgreSQL user is not configured.' }
+$deliveryPersisted = $false
+for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    $deliveryCount = & docker compose @compose exec -T postgres psql -U $postgresUser -d notification_db -tAc `
+        "select count(*) from notification_deliveries where `"RecipientEmail`" = '$adminEmail' and `"Template`" = 'report-ready' and `"Outcome`" = 'sent'"
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect Notification delivery outcomes.' }
+    if ([int]$deliveryCount -gt 0) { $deliveryPersisted = $true; break }
+    Start-Sleep -Milliseconds 500
+}
+if (-not $deliveryPersisted) { throw 'Notification did not persist the report-ready delivery outcome.' }
+
 $upload.Dispose()
 $client.Dispose()
-Write-Output "Phase 4 live E2E passed: tenant=$($tenant.tenantId) run=$($run.id) generatedPdfBytes=$($generatedPdf.Length) signedVersion=$($signedDocument.version) reportReadyEmail=received"
+Write-Output "Phase 4 live E2E passed: tenant=$($tenant.tenantId) run=$($run.id) generatedPdfBytes=$($generatedPdf.Length) signedVersion=$($signedDocument.version) reportReadyEmail=received deliveryPersisted=yes"

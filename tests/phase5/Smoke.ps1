@@ -94,10 +94,13 @@ if ($missingStatuses.Count -gt 0) {
 }
 
 $authProbePassword = "phase5-probe-$([guid]::NewGuid().ToString('N'))"
+$probeTraceId = [guid]::NewGuid().ToString('N')
+$probeSpanId = [guid]::NewGuid().ToString('N').Substring(0, 16)
 $authProbeBody = @{ tenantId = '00000000-0000-0000-0000-000000000001';
     email = 'phase5-probe@invalid.example'; password = $authProbePassword } | ConvertTo-Json
 $authProbe = Invoke-WebRequest -Uri "http://127.0.0.1:$gatewayPort/api/v1/auth/login" `
-    -Method Post -ContentType 'application/json' -Body $authProbeBody -SkipHttpErrorCheck
+    -Method Post -ContentType 'application/json' -Body $authProbeBody `
+    -Headers @{ traceparent = "00-$probeTraceId-$probeSpanId-01" } -SkipHttpErrorCheck
 if ($authProbe.StatusCode -lt 400 -or $authProbe.StatusCode -ge 500) {
     throw "Authentication metrics probe returned unexpected HTTP $($authProbe.StatusCode)."
 }
@@ -109,32 +112,43 @@ for ($attempt = 0; $attempt -lt 24; $attempt++) {
 }
 if ($authMetricSeries.Count -eq 0) { throw 'Prometheus has no authentication failure metric after the probe.' }
 
-$traceServices = @()
+$traceResult = $null
 for ($attempt = 0; $attempt -lt 24; $attempt++) {
-    try { $traceServices = @( (Invoke-RestMethod -Uri "$jaegerUrl/api/v3/services").services ) }
-    catch { $traceServices = @() }
-    if ('Aiyara.Identities.Api' -in $traceServices) { break }
+    try { $traceResult = Invoke-RestMethod -Uri "$jaegerUrl/api/v3/traces/$probeTraceId" }
+    catch { $traceResult = $null }
+    if ($traceResult.result.resourceSpans.Count -gt 0) { break }
     Start-Sleep -Seconds 5
 }
-if ('Aiyara.Identities.Api' -notin $traceServices) {
-    throw 'Jaeger has not received an Identity API trace after the authentication probe.'
+if ($null -eq $traceResult -or $traceResult.result.resourceSpans.Count -eq 0) {
+    throw 'Jaeger has not received the authentication probe trace.'
 }
-$traceEnd = [DateTimeOffset]::UtcNow.ToString('o')
-$traceStart = [DateTimeOffset]::UtcNow.AddMinutes(-10).ToString('o')
-$traceResult = Invoke-RestMethod -Uri "$jaegerUrl/api/v3/traces?query.serviceName=Aiyara.Identities.Api&query.startTimeMin=$([uri]::EscapeDataString($traceStart))&query.startTimeMax=$([uri]::EscapeDataString($traceEnd))&query.pagination.pageSize=20"
-$traceJson = $traceResult | ConvertTo-Json -Depth 30 -Compress
+$traceServices = @($traceResult.result.resourceSpans | ForEach-Object {
+    $_.resource.attributes | Where-Object { $_.key -eq 'service.name' } |
+        ForEach-Object { $_.value.stringValue }
+})
+$loginSpans = @($traceResult.result.resourceSpans | ForEach-Object {
+    $_.scopeSpans | ForEach-Object { $_.spans } |
+        Where-Object { $_.name -eq 'POST /api/v1/auth/login' }
+})
+if ('Aiyara.Gateways.Api' -notin $traceServices -or
+    'Aiyara.Identities.Api' -notin $traceServices -or $loginSpans.Count -eq 0) {
+    throw 'The authentication probe trace is missing Gateway or Identity login spans.'
+}
+$traceJson = $traceResult | ConvertTo-Json -Depth 50 -Compress
 if ($traceJson.Contains($authProbePassword)) {
     throw 'An authentication probe password appeared in an exported trace.'
 }
 
-$identityContainers = @(& docker ps --filter 'label=com.docker.compose.service=identities-api' --format '{{.ID}}')
-if ($LASTEXITCODE -ne 0 -or $identityContainers.Count -eq 0) {
-    throw 'Cannot inspect Identity API logs for the secret-redaction check.'
-}
-foreach ($container in $identityContainers) {
-    $containerLogs = (& docker logs $container --since 10m 2>&1 | Out-String)
-    if ($containerLogs.Contains($authProbePassword)) {
-        throw 'An authentication probe password appeared in Identity API logs.'
+foreach ($service in @('gateway-api', 'identities-api')) {
+    $containers = @(& docker ps --filter "label=com.docker.compose.service=$service" --format '{{.ID}}')
+    if ($LASTEXITCODE -ne 0 -or $containers.Count -eq 0) {
+        throw "Cannot inspect $service logs for the secret-redaction check."
+    }
+    foreach ($container in $containers) {
+        $containerLogs = (& docker logs $container --since 10m 2>&1 | Out-String)
+        if ($containerLogs.Contains($authProbePassword)) {
+            throw "An authentication probe password appeared in $service logs."
+        }
     }
 }
 
@@ -174,4 +188,4 @@ if ($datasource.name -ne 'Prometheus') { throw 'Grafana Prometheus data source i
 if ($dashboard.dashboard.title -ne 'Aiyara Platform Overview') { throw 'Grafana platform dashboard is not provisioned.' }
 if ($dashboard.dashboard.panels.Count -ne 10) { throw 'Grafana platform dashboard should contain ten panels.' }
 
-Write-Output 'Phase 5 observability smoke test passed: backend, authentication, RabbitMQ, Quartz, report run, and RustFS metrics are present; Jaeger received an Identity trace; Grafana has its provisioned data source and dashboard.'
+Write-Output 'Phase 5 observability smoke test passed: backend, authentication, RabbitMQ, Quartz, report run, and RustFS metrics are present; Jaeger received the Gateway/Identity probe trace without its password; both service logs are redacted; Grafana has its provisioned data source and dashboard.'
