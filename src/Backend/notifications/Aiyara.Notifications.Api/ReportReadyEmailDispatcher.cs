@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Mail;
+using System.Net.Mime;
+using System.Text;
 using Aiyara.Notifications.Databases;
 
 internal sealed record ReportReadyEmailRequest(string Email, string EmployeeName,
@@ -26,13 +28,15 @@ internal sealed class ReportReadyEmailDispatcher(
         var outcome = "failed";
         try
         {
+            var content = EmailTemplates.ReportReady(request.EmployeeName, request.Period,
+                reportUri, request.ReportRunId);
             using var mail = new MailMessage(sender, recipient)
             {
-                Subject = $"Aiyara timesheet report ready: {request.Period}",
-                Body = $"Hello {request.EmployeeName},\n\nYour timesheet report for {request.Period} is ready.\n" +
-                    $"Sign in to Aiyara to view it: {reportUri}\n\nReport reference: {request.ReportRunId:D}",
-                IsBodyHtml = false
+                Subject = content.Subject, SubjectEncoding = Encoding.UTF8,
+                Body = content.TextBody, BodyEncoding = Encoding.UTF8, IsBodyHtml = false
             };
+            mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
+                content.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html));
             using var smtp = new SmtpClient(host, configuration.GetValue("Smtp:Port", 25))
             { EnableSsl = configuration.GetValue("Smtp:UseTls", true) };
             var username = configuration["Smtp:Username"];

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
+using System.Net.Mime;
 using Aiyara.Notifications.Databases;
 
 internal sealed record CredentialEmailRequest(string Email, string Template, string Code);
@@ -22,25 +23,23 @@ internal sealed class CredentialEmailDispatcher(
             return false;
         var port = configuration.GetValue("Smtp:Port", 25);
         var useTls = configuration.GetValue("Smtp:UseTls", true);
-        var subject = request.Template switch
-        {
-            "activation" => "Activate your Aiyara Timesheet account",
-            "invitation" => "Your Aiyara Timesheet invitation",
-            _ => "Reset your Aiyara Timesheet password"
-        };
-        var body = request.Template switch
-        {
-            "activation" => $"Use this one-time activation password within 24 hours: {request.Code}",
-            "invitation" => $"Use this one-time invitation code within 7 days: {request.Code}",
-            _ => $"Use this one-time reset password within 24 hours: {request.Code}"
-        };
+        var activationUrl = Uri.TryCreate(configuration["Frontend:PublicUrl"],
+            UriKind.Absolute, out var configuredUrl) &&
+            configuredUrl.Scheme is "http" or "https"
+                ? new Uri(configuredUrl, "/activate")
+                : null;
+        var content = EmailTemplates.Credential(request.Template, request.Code,
+            activationUrl);
         var outcome = "failed";
         try
         {
             using var mail = new MailMessage(sender, recipient)
             {
-                Subject = subject, Body = body, IsBodyHtml = false
+                Subject = content.Subject, SubjectEncoding = Encoding.UTF8,
+                Body = content.TextBody, BodyEncoding = Encoding.UTF8, IsBodyHtml = false
             };
+            mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
+                content.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html));
             using var smtp = new SmtpClient(host, port) { EnableSsl = useTls };
             var username = configuration["Smtp:Username"];
             if (!string.IsNullOrWhiteSpace(username))
