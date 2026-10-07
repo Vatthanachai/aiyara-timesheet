@@ -14,6 +14,10 @@ var notificationInternalKey = builder.Configuration["NOTIFICATION_INTERNAL_KEY"]
     ?? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
 var pasetoSigningSeed = builder.Configuration["PASETO_SIGNING_SEED"]
     ?? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+var rustFsAccessKey = builder.AddParameterFromConfiguration(
+    "rustfs-access-key", "RUSTFS_ACCESS_KEY", secret: true);
+var rustFsSecretKey = builder.AddParameterFromConfiguration(
+    "rustfs-secret-key", "RUSTFS_SECRET_KEY", secret: true);
 var redisPassword = builder.AddParameterFromConfiguration(
     "redis-password", "REDIS_PASSWORD", secret: true);
 var redisConnectionString = ReferenceExpression.Create(
@@ -48,15 +52,22 @@ var gatewayApi = builder.AddProject<Projects.Aiyara_Gateways_Api>("aiyara-gatewa
 var identityApi = builder.AddProject<Projects.Aiyara_Identities_Api>("aiyara-identities-api")
     .WithReference(composePostgres)
     .WithReference(composeRedis)
+    .WithReference(composeRustFs)
     .WithReference(identityDb)
     .WithEnvironment("Dependencies__Postgres__Host", "localhost")
     .WithEnvironment("Dependencies__Postgres__Port", postgresPort)
     .WithEnvironment("Dependencies__Redis__Host", "localhost")
-    .WithEnvironment("Dependencies__Redis__Port", redisPort);
+    .WithEnvironment("Dependencies__Redis__Port", redisPort)
+    .WithEnvironment("Dependencies__RustFs__Host", "localhost")
+    .WithEnvironment("Dependencies__RustFs__Port", rustFsPort);
 identityApi
     .WithEnvironment("Paseto__Key", pasetoSigningSeed)
     .WithEnvironment("Notification__InternalKey", notificationInternalKey)
-    .WithEnvironment("Redis__ConnectionString", redisConnectionString);
+    .WithEnvironment("Redis__ConnectionString", redisConnectionString)
+    .WithEnvironment("ObjectStorage__Endpoint", $"http://localhost:{rustFsPort}")
+    .WithEnvironment("ObjectStorage__AccessKey", rustFsAccessKey)
+    .WithEnvironment("ObjectStorage__SecretKey", rustFsSecretKey)
+    .WithEnvironment("ObjectStorage__Bucket", "aiyara-profile-photos");
 if (builder.Configuration["BOOTSTRAP_PLATFORM_ADMIN_EMAIL"] is { Length: > 0 } bootstrapEmail)
     identityApi.WithEnvironment("Bootstrap__PlatformAdminEmail", bootstrapEmail);
 

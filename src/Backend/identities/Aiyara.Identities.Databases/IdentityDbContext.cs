@@ -24,6 +24,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(x => x.Slug).HasMaxLength(80).IsRequired();
             entity.HasIndex(x => x.Slug).IsUnique();
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.OrganizationCode).HasMaxLength(7).IsRequired();
+            entity.HasIndex(x => x.OrganizationCode).IsUnique();
             entity.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired();
             entity.HasQueryFilter(x => CurrentTenantId != null && x.Id == CurrentTenantId);
         });

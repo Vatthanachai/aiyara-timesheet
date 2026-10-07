@@ -29,14 +29,17 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         }
 
         var now = DateTime.UtcNow;
+        var organizationCode = await OrganizationCodeGenerator.GenerateAsync(db, name,
+            slug, cancellationToken);
         var account = await FindOrCreateAccountAsync(email, now, cancellationToken);
         var tenant = new Tenant
         {
-            Id = Guid.NewGuid(), Name = name, Slug = slug, CreatedAtUtc = now
+            Id = IdentityGuid.New(), OrganizationCode = organizationCode,
+            Name = name, Slug = slug, CreatedAtUtc = now
         };
         var membership = new Membership
         {
-            Id = Guid.NewGuid(), TenantId = tenant.Id, AccountId = account.Id,
+            Id = IdentityGuid.New(), TenantId = tenant.Id, AccountId = account.Id,
             Role = TenantRole.TenantAdmin, Status = MembershipStatus.PendingActivation,
             CreatedAtUtc = now
         };
@@ -44,7 +47,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         var onboardingKeyExpiresAtUtc = now.AddDays(7);
         var capability = new OnboardingCapability
         {
-            Id = Guid.NewGuid(), TenantId = tenant.Id, AccountId = account.Id,
+            Id = IdentityGuid.New(), TenantId = tenant.Id, AccountId = account.Id,
             KeyHash = InvitationCode.Hash(onboardingKey), CreatedAtUtc = now,
             ExpiresAtUtc = onboardingKeyExpiresAtUtc
         };
@@ -55,7 +58,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        return new CreateTenantResponse(tenant.Id, account.Id, membership.Id,
+        return new CreateTenantResponse(tenant.Id, tenant.OrganizationCode, account.Id, membership.Id,
             membership.Role.ToString(), membership.Status.ToString(), tenant.TimeZoneId,
             onboardingKey, onboardingKeyExpiresAtUtc);
     }
@@ -88,7 +91,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
 
         var membership = new Membership
         {
-            Id = Guid.NewGuid(), TenantId = invitation.TenantId, AccountId = account.Id,
+            Id = IdentityGuid.New(), TenantId = invitation.TenantId, AccountId = account.Id,
             Role = invitation.Role, Status = MembershipStatus.PendingActivation,
             CreatedAtUtc = now
         };
@@ -132,7 +135,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         var code = InvitationCode.Generate();
         var invitation = new Invitation
         {
-            Id = Guid.NewGuid(), TenantId = tenantId, Email = email,
+            Id = IdentityGuid.New(), TenantId = tenantId, Email = email,
             TokenHash = InvitationCode.Hash(code), Role = role,
             InvitedByAccountId = actorAccountId,
             CreatedAtUtc = DateTime.UtcNow,
@@ -209,7 +212,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
         if (account is not null) return account;
 
-        account = new Account { Id = Guid.NewGuid(), Email = email, CreatedAtUtc = now };
+        account = new Account { Id = IdentityGuid.New(), Email = email, CreatedAtUtc = now };
         db.Accounts.Add(account);
         return account;
     }

@@ -84,8 +84,13 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 });
-builder.Services.AddAuthorization(options => options.AddPolicy("TenantMember", policy =>
-    policy.RequireAuthenticatedUser().RequireClaim("tenant_id")));
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("TenantMember", policy =>
+        policy.RequireAuthenticatedUser().RequireClaim("tenant_id"));
+    options.AddPolicy("PlatformAdmin", policy =>
+        policy.RequireAuthenticatedUser().RequireRole("PlatformAdmin"));
+});
 
 var app = builder.Build();
 app.UseExceptionHandler();

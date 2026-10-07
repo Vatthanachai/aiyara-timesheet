@@ -22,15 +22,17 @@
 
 ## Phase 2 — Identity And Notification
 
-Implementation status (2026-10-06): Identity activation/login/reset and
-authenticated password change, rotating refresh sessions, policy migration,
-PASETO v4.public, gRPC validation, Redis cache/revocation and local SMTP
-delivery are implemented and unit/Compose-smoke tested on
-`feature/phase-two-identity-notification`. Primary validation and two-axis
-review passed before the `develop` merge; this is not a release.
+Implementation status (2026-10-07): Identity activation/login/reset and
+authenticated password change, rotating refresh sessions, tenant password
+policies, PASETO v4.public, gRPC validation, Redis cache/revocation, local SMTP,
+and organization-code login are implemented and validated on `develop`.
+Tenant codes use a four-character organization prefix and three digits; the
+Platform Admin code is `AIYA001`. New Identity entity IDs use the Component
+Abstractions UUIDv8 generator with random region/shard IDs from 1–9. See
+[[Organization Codes And Identity IDs]].
 
 1. Replace `EncryptionService` password behavior with Argon2id PHC storage and a cryptographically secure temporary-password generator.
-2. Implement tenant password policies, email-only login, activation, forced password reset, forgot-password, refresh-token rotation, session revocation, and the bootstrap Platform Admin flow.
+2. Implement tenant password policies, organization-code plus email login, activation, forced password reset, forgot-password, refresh-token rotation, session revocation, and the bootstrap Platform Admin flow.
 3. Implement PASETO `v4.public`, signing-key configuration, Identity gRPC validation, Redis validation cache, and revocation events.
 4. Implement Notification templates and MailDev SMTP adapter for local flows; record delivery outcomes without recording secrets.
 
@@ -82,7 +84,7 @@ empty bucket-list response.
 ## Phase 5 — Quality, Operations, And Hardening
 
 Implementation status (2026-10-07): Phase 5 implementation and primary-agent
-validation are complete on `feature/phase-five-observability`, ready for merge.
+validation are complete and merged on `develop`.
 Unit/contract tests and Compose smoke tests cover onboarding, identity,
 timesheet, reporting, signed uploads, tenant isolation, session revocation,
 retries, and database ownership. Live report-run E2E proves the API's durable

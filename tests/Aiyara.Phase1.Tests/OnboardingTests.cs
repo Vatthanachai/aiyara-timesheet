@@ -1,4 +1,5 @@
 using Aiyara.Identities.Databases;
+using Aiyara.Identities.Models.Tenancy;
 using System.Security.Claims;
 using Aiyara.Identities.Services.Onboarding;
 using Aiyara.Timesheet.Contracts.Onboarding.V1;
@@ -78,6 +79,38 @@ public sealed class OnboardingTests
     }
 
     [Fact]
+    public async Task Tenant_creation_assigns_unique_seven_character_organization_codes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var first = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Acme Corporation", "acme-corp", "admin@acme.test"), default);
+        var second = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Acme Consulting", "acme-consulting", "admin2@acme.test"), default);
+
+        Assert.Matches("^ACME[0-9]{3}$", first.OrganizationCode);
+        Assert.Matches("^ACME[0-9]{3}$", second.OrganizationCode);
+        Assert.NotEqual(first.OrganizationCode, second.OrganizationCode);
+        Assert.Equal(first.OrganizationCode, await fixture.Db.Tenants.IgnoreQueryFilters()
+            .Where(x => x.Id == first.TenantId).Select(x => x.OrganizationCode).SingleAsync());
+    }
+
+    [Fact]
+    public async Task Identity_ids_use_component_v8_with_random_region_and_shard_values()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Guid test", "guid-test", "admin@guid.test"), default);
+        foreach (var id in new[] { tenant.TenantId, tenant.AccountId, tenant.MembershipId })
+        {
+            var bytes = id.ToByteArray();
+            Assert.InRange(bytes[0], (byte)1, (byte)9);
+            Assert.InRange(bytes[1], (byte)1, (byte)9);
+            Assert.Equal(8, bytes[6] >> 4);
+            Assert.Equal(2, bytes[8] >> 6);
+        }
+    }
+
+    [Fact]
     public async Task Onboarding_key_authorizes_only_its_tenant_and_expires()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -114,6 +147,40 @@ public sealed class OnboardingTests
             fixture.Service.IssueInvitationWithKeyAsync(first.TenantId,
                 first.OnboardingKey, request, default));
         Assert.Equal(OnboardingFailure.Unauthorized, expired.Failure);
+    }
+
+    [Fact]
+    public async Task Platform_organization_list_searches_admins_and_excludes_platform_tenant()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var first = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("First Studio", "first-studio", "admin@first.test"), default);
+        var second = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Second Studio", "second-studio", "admin@second.test"), default);
+        fixture.Db.Tenants.Add(new Tenant
+        {
+            Id = Guid.NewGuid(), Slug = "platform-system", Name = "Platform System",
+            OrganizationCode = "SYS0001", CreatedAtUtc = DateTime.UtcNow
+        });
+        fixture.Scope.TenantId = first.TenantId;
+        var firstAdmin = await fixture.Db.Memberships.SingleAsync();
+        firstAdmin.Status = MembershipStatus.Active;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Scope.TenantId = null;
+
+        var service = new PlatformOrganizationService(fixture.Db);
+        var filtered = await service.ListAsync("ADMIN@SECOND.TEST", 1, 25, default);
+        var item = Assert.Single(filtered.Items);
+        Assert.Equal(second.TenantId, item.TenantId);
+        Assert.Equal("PendingActivation", Assert.Single(item.Admins).Status);
+        Assert.DoesNotContain(filtered.Items, tenant => tenant.Slug == "platform-system");
+
+        var paged = await service.ListAsync(null, 999, 1, default);
+        Assert.Equal(2, paged.Page);
+        Assert.Equal(2, paged.TotalCount);
+        Assert.Single(paged.Items);
+        Assert.Contains(paged.Items, tenant => tenant.TenantId == first.TenantId);
+        Assert.DoesNotContain(paged.Items, tenant => tenant.TenantId == second.TenantId);
     }
 
     [Fact]

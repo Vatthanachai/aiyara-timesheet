@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
+import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+
 type Definition = { id: string; kind: string; format: string; name: string }
 type Run = { id: string; subjectUserId: string | null; status: string; periodStartUtc: string; periodEndUtc: string; attemptCount: number; createdAtUtc: string; kind: string; format: string; name: string }
 type Schedule = { id: string; reportDefinitionId: string; timeZoneId: string; localTime: string; nextFireAtUtc: string; kind: string; format: string; name: string }
 type Dashboard = { total: number; ready: number; queued: number; failed: number }
 const config = useRuntimeConfig()
+useIframeAutoHeight(config.public.shellOrigin)
 const token = ref('')
 const gateway = ref('http://localhost:8081')
 const locale = ref<'th' | 'en'>('th')
@@ -67,6 +70,19 @@ async function api<T>(path: string, options: { method?: string; body?: unknown; 
     $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/reports${path}`, {
       ...options, headers: { Authorization: `Bearer ${accessToken}`, ...options.headers }
     }), token, config.public.shellOrigin))
+}
+
+async function reportFetch(path: string, options: RequestInit = {}) {
+  return withRemoteRefresh(async accessToken => {
+    const response = await fetch(`${gateway.value}/api/v1/reports${path}`, {
+      ...options, headers: { ...options.headers, Authorization: `Bearer ${accessToken}` }
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => undefined)
+      throw { status: response.status, data }
+    }
+    return response
+  }, token, config.public.shellOrigin)
 }
 
 async function load() {
@@ -154,9 +170,7 @@ async function saveRetention() {
 
 async function download(run: Run) {
   try {
-    const response = await withRemoteRefresh(accessToken => reportFetch(
-      `${gateway.value}/api/v1/reports/runs/${run.id}/download`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }), token, config.public.shellOrigin)
+    const response = await reportFetch(`/runs/${run.id}/download`)
     const objectUrl = URL.createObjectURL(await response.blob())
     const anchor = document.createElement('a')
     anchor.href = objectUrl; anchor.download = `report-${run.id}.${run.format.toLowerCase()}`
@@ -169,23 +183,12 @@ async function uploadSigned(run: Run, event: Event) {
   if (!file) return
   try {
     const form = new FormData(); form.append('file', file)
-    await withRemoteRefresh(accessToken => reportFetch(
-      `${gateway.value}/api/v1/reports/runs/${run.id}/signed-document`,
-      { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }),
-      token, config.public.shellOrigin)
+    const response = await reportFetch(`/runs/${run.id}/signed-document`, { method: 'POST', body: form })
+    unwrapResponse(await response.json() as ApiEnvelope<unknown>)
     notice.value = copy.value.saved
     await load()
   } catch (cause) { error.value = safeError(cause, locale.value) }
   ;(event.target as HTMLInputElement).value = ''
-}
-
-async function reportFetch(url: string, options: RequestInit): Promise<Response> {
-  const response = await fetch(url, options)
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw { status: response.status, data }
-  }
-  return response
 }
 
 function statusLabel(status: string) {
@@ -199,7 +202,7 @@ function statusLabel(status: string) {
     <h2>{{ copy.title }}</h2>
     <p v-if="!token">{{ copy.signIn }}</p>
     <template v-else>
-      <p v-if="error" role="alert">{{ error }} <button type="button" @click="load">{{ locale === 'th' ? 'ลองใหม่' : 'Retry' }}</button></p><p v-if="notice" role="status">{{ notice }}</p>
+      <p v-if="error" role="alert">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p>
       <section><h3>{{ copy.dashboard }}</h3><dl class="dashboard">
         <div><dt>{{ copy.total }}</dt><dd>{{ dashboard.total }}</dd></div>
         <div><dt>{{ copy.ready }}</dt><dd>{{ dashboard.ready }}</dd></div>

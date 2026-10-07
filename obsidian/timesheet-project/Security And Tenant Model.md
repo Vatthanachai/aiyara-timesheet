@@ -1,10 +1,10 @@
 # Security And Tenant Model
 
-> Agreed design, 5 October 2026.
+> Updated 7 October 2026.
 
 ## Authentication And Sessions
 
-- Login uses email only. UI and reports display a person's first and last name from their profile.
+- Login uses the seven-character organization code plus email and password. The organization code selects the tenant; email identifies the account within that tenant. UI and reports display a person's first and last name from their profile. See [[Organization Codes And Identity IDs]].
 - Identity issues PASETO `v4.public` access tokens signed with Ed25519. Access tokens are short-lived (target: 15 minutes); refresh tokens are opaque, one-time rotating secrets stored only as hashes.
 - Token claims include subject, tenant context, role, security/session version, token ID, password-change state, issuer, audience, issued-at, and expiry.
 - Gateway and internal APIs validate access tokens through Identity's gRPC API. They cache validation by token ID and session version in Redis for 1–5 minutes. The gRPC response carries the tenant policy version so an in-flight pre-change validation cannot be cached after a policy update. Logout, password reset, account disable, or policy-forced password change publishes an event that revokes the session and invalidates the cache.
@@ -17,6 +17,7 @@
 - Activation and reset temporary passwords are stored only as SHA-256 challenge hashes. The user supplies a new policy-compliant password when redeeming one. Identity stores the resulting Argon2id PHC string; Notification stores only the delivery outcome, recipient, and template. MailDev is a local-only inbox.
 - The bootstrap Platform Admin account follows the same activation and forced-password-change flow as other accounts. Bootstrap credentials must be supplied through runtime secrets, never committed.
 - Platform Admin manages the platform, Tenant Admin manages only its tenant, and Employee manages only their own profile/timesheet data.
+- New Identity entity IDs use UUIDv8 from `Aiyara.Timesheet.Component.Abstractions`; the generator receives cryptographically random region and shard IDs in the inclusive range 1–9. The fixed Platform Admin tenant ID is a reserved bootstrap ID, not a generated ID.
 
 ## Password Handling
 

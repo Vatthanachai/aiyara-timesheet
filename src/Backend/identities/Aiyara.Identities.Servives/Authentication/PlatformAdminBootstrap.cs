@@ -1,6 +1,7 @@
 using System.Net.Mail;
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Models.Tenancy;
+using Aiyara.Identities.Services.Onboarding;
 using Microsoft.EntityFrameworkCore;
 
 namespace Aiyara.Identities.Services.Authentication;
@@ -24,11 +25,14 @@ public sealed class PlatformAdminBootstrap(IdentityDbContext db, TenantScope ten
         {
             tenant = new Tenant
             {
-                Id = PlatformTenantId, Name = "Aiyara Platform", Slug = "platform-system",
+                Id = PlatformTenantId, OrganizationCode = OrganizationCodeGenerator.PlatformCode,
+                Name = "Aiyara Platform", Slug = "platform-system",
                 CreatedAtUtc = DateTime.UtcNow
             };
             db.Tenants.Add(tenant);
         }
+        else if (string.IsNullOrWhiteSpace(tenant.OrganizationCode))
+            tenant.OrganizationCode = OrganizationCodeGenerator.PlatformCode;
         tenantScope.TenantId = PlatformTenantId;
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
@@ -36,7 +40,7 @@ public sealed class PlatformAdminBootstrap(IdentityDbContext db, TenantScope ten
         {
             account = new Account
             {
-                Id = Guid.NewGuid(), Email = email, CreatedAtUtc = DateTime.UtcNow
+                Id = IdentityGuid.New(), Email = email, CreatedAtUtc = DateTime.UtcNow
             };
             db.Accounts.Add(account);
         }
@@ -46,7 +50,7 @@ public sealed class PlatformAdminBootstrap(IdentityDbContext db, TenantScope ten
         {
             membership = new Membership
             {
-                Id = Guid.NewGuid(), TenantId = PlatformTenantId, AccountId = account.Id,
+                Id = IdentityGuid.New(), TenantId = PlatformTenantId, AccountId = account.Id,
                 Role = TenantRole.PlatformAdmin,
                 Status = MembershipStatus.PendingActivation,
                 CreatedAtUtc = DateTime.UtcNow

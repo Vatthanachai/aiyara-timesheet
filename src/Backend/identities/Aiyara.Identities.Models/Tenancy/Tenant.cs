@@ -5,6 +5,7 @@ public sealed class Tenant
     public Guid Id { get; set; }
     public required string Slug { get; set; }
     public required string Name { get; set; }
+    public string OrganizationCode { get; set; } = string.Empty;
     public string TimeZoneId { get; set; } = "Asia/Bangkok";
     public int PasswordMinimumLength { get; set; } = 12;
     public int PasswordExpiryDays { get; set; } = 180;

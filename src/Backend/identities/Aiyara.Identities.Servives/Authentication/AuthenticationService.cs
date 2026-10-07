@@ -53,7 +53,7 @@ public sealed class AuthenticationService(
                 "Credential generation is unavailable.");
         db.CredentialChallenges.Add(new CredentialChallenge
         {
-            Id = Guid.NewGuid(), TenantId = request.TenantId, AccountId = account.Id,
+            Id = IdentityGuid.New(), TenantId = request.TenantId, AccountId = account.Id,
             TokenHash = InvitationCode.Hash(code), Purpose = purpose,
             CreatedAtUtc = now, ExpiresAtUtc = now.Add(ChallengeLifetime)
         });
@@ -124,11 +124,14 @@ public sealed class AuthenticationService(
     public async Task<AuthenticationResponse> LoginAsync(LoginRequest request,
         CancellationToken cancellationToken)
     {
-        if (request.TenantId == Guid.Empty || !ValidEmail(request.Email) ||
+        var tenantId = request.TenantId is { } requestedTenantId && requestedTenantId != Guid.Empty
+            ? requestedTenantId
+            : await ResolveOrganizationCodeAsync(request.OrganizationCode, cancellationToken);
+        if (tenantId == Guid.Empty || !ValidEmail(request.Email) ||
             string.IsNullOrEmpty(request.Password)) throw InvalidCredentials();
-        tenantScope.TenantId = request.TenantId;
+        tenantScope.TenantId = tenantId;
         var email = request.Email.Trim().ToLowerInvariant();
-        await attempts.CheckAsync(request.TenantId, email, "Login", cancellationToken);
+        await attempts.CheckAsync(tenantId, email, "Login", cancellationToken);
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
         if (account is null || account.PasswordHash is null ||
@@ -324,7 +327,7 @@ public sealed class AuthenticationService(
         var refresh = InvitationCode.Generate();
         db.RefreshSessions.Add(new RefreshSession
         {
-            Id = Guid.NewGuid(), TenantId = membership.TenantId, AccountId = account.Id,
+            Id = IdentityGuid.New(), TenantId = membership.TenantId, AccountId = account.Id,
             TokenHash = InvitationCode.Hash(refresh), CreatedAtUtc = now,
             SessionVersion = account.SessionVersion,
             ExpiresAtUtc = now.Add(RefreshLifetime)
@@ -333,12 +336,13 @@ public sealed class AuthenticationService(
         var access = tokens.GenerateToken(new PasetoTokenClaims
         {
             UserId = account.Id, TenantId = membership.TenantId,
-            TokenId = Guid.NewGuid().ToString(), Email = account.Email,
+            TokenId = IdentityGuid.New().ToString(), Email = account.Email,
             Role = membership.Role.ToString(), SessionVersion = account.SessionVersion,
             MustChangePassword = mustChange
         });
         return new AuthenticationResponse(access.Value, access.ExpiresAt, refresh,
-            new DateTimeOffset(now.Add(RefreshLifetime), TimeSpan.Zero), mustChange);
+            new DateTimeOffset(now.Add(RefreshLifetime), TimeSpan.Zero), mustChange,
+            membership.TenantId, membership.Role.ToString());
     }
 
     private async Task PublishAccountAcrossTenantsAsync(Guid accountId, long sessionVersion,
@@ -354,6 +358,17 @@ public sealed class AuthenticationService(
 
     private static AuthenticationException InvalidCredentials() =>
         new(AuthenticationFailure.InvalidCredentials, "Invalid credentials.");
+
+    private async Task<Guid> ResolveOrganizationCodeAsync(string? organizationCode,
+        CancellationToken cancellationToken)
+    {
+        if (organizationCode is not { Length: 7 } code ||
+            code.Any(c => !char.IsAsciiLetterOrDigit(c))) return Guid.Empty;
+        var tenant = await db.Tenants.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OrganizationCode == code.ToUpperInvariant(),
+                cancellationToken);
+        return tenant?.Id ?? Guid.Empty;
+    }
 
     private static bool RequiresPasswordChange(Account account, Membership membership,
         Tenant tenant) => account.MustChangePassword || membership.MustChangePassword ||

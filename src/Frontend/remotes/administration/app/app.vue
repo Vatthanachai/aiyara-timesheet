@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
+import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 type Catalog = { projects: { id: string; name: string }[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[] }
 const token = ref('')
 const config = useRuntimeConfig()
+useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<'th' | 'en'>('th')
 const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [] })
@@ -99,10 +101,10 @@ async function update(kind: 'projects' | 'categories' | 'holidays', item: { id: 
 async function savePolicy() {
   isSavingPolicy.value = true
   try {
-    await withRemoteRefresh(accessToken =>
-      $fetch(`${gateway.value}/api/v1/auth/tenants/${tenantId.value}/password-policy`, {
+    unwrapResponse(await withRemoteRefresh(accessToken =>
+      $fetch<ApiEnvelope<unknown>>(`${gateway.value}/api/v1/auth/tenants/${tenantId.value}/password-policy`, {
         method: 'PUT', body: policy, headers: { Authorization: `Bearer ${accessToken}` }
-      }), token, config.public.shellOrigin)
+      }), token, config.public.shellOrigin))
     notice.value = copy.value.policySaved
   } catch (cause) { error.value = safeError(cause, locale.value) }
   finally { isSavingPolicy.value = false }

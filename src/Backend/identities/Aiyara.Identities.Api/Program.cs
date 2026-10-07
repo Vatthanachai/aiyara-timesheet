@@ -14,14 +14,18 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddTcpDependencyHealthCheck("Postgres", 5432);
 builder.AddTcpDependencyHealthCheck("Redis", 6379);
+builder.AddTcpDependencyHealthCheck("RustFs", 9000);
 builder.Services.AddScoped<TenantScope>();
 builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("IdentityDb")
     ?? throw new InvalidOperationException("ConnectionStrings:IdentityDb is required.")));
 builder.AddDatabaseHealthCheck<WebApplicationBuilder, IdentityDbContext>("identity-db");
 builder.Services.AddScoped<OnboardingService>();
+builder.Services.AddScoped<PlatformOrganizationService>();
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<PlatformAdminBootstrap>();
+builder.Services.AddSingleton(ProfilePhotoStorage.CreateClient(builder.Configuration));
+builder.Services.AddSingleton<IProfilePhotoStorage, ProfilePhotoStorage>();
 builder.Services.AddSingleton<ISessionRevocationPublisher, RedisSessionRevocationPublisher>();
 builder.Services.AddSingleton<ICredentialAttemptLimiter, RedisCredentialAttemptLimiter>();
 builder.Services.Configure<PasswordGenerateSetting>(builder.Configuration.GetSection("PasswordGeneration"));
@@ -130,6 +134,7 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
+app.MapPlatformOrganizationEndpoints();
 app.MapGrpcService<IdentityValidationGrpcService>();
 
 app.Run();

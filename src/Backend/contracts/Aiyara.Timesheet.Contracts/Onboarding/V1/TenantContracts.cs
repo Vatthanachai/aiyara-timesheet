@@ -4,6 +4,7 @@ public sealed record CreateTenantRequest(string Name, string Slug, string AdminE
 
 public sealed record CreateTenantResponse(
     Guid TenantId,
+    string OrganizationCode,
     Guid AccountId,
     Guid MembershipId,
     string Role,

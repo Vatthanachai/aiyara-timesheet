@@ -6,6 +6,7 @@
     <PackageReference Include="Swashbuckle.AspNetCore" />
     <PackageReference Include="Grpc.AspNetCore" />
     <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="AWSSDK.S3" />
   </ItemGroup>
 
   <ItemGroup>

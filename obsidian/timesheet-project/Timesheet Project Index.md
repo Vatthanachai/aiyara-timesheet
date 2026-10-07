@@ -1,6 +1,6 @@
 # Aiyara Timesheet Project
 
-> Repository snapshot: 5 October 2026
+> Repository snapshot: 7 October 2026
 
 ## Purpose
 
@@ -13,6 +13,7 @@
 - [[Project Status]] — verified capabilities, gaps, and suggested next work.
 - [[Target Architecture]] — agreed target state for services, data, messaging, frontend, and local runtime.
 - [[Security And Tenant Model]] — tenancy, roles, account lifecycle, PASETO, and password decisions.
+- [[Organization Codes And Identity IDs]] — tenant login code format and Identity UUIDv8 allocation.
 - [[Development Roadmap]] — dependency-ordered delivery plan and acceptance outcomes.
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 
