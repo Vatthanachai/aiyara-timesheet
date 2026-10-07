@@ -52,6 +52,38 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value;
+    if (path is null || !path.StartsWith("/api/v1/auth/", StringComparison.OrdinalIgnoreCase))
+    {
+        await next(context);
+        return;
+    }
+
+    try
+    {
+        await next(context);
+    }
+    finally
+    {
+        var action = path[13..] switch
+        {
+            "activation/request" => "activation_request",
+            "activate" => "activation_complete",
+            "login" => "login",
+            "refresh" => "refresh",
+            "logout" => "logout",
+            "password/forgot" => "password_reset_request",
+            "password/reset" => "password_reset_complete",
+            "password/change" => "password_change",
+            _ => "other"
+        };
+        AuthenticationMetrics.Record(action,
+            context.Response.StatusCode < StatusCodes.Status400BadRequest ? "success" : "failure");
+    }
+});
+
 var signingSeed = app.Configuration["Paseto:Key"];
 if (signingSeed is null || !Convert.TryFromBase64String(signingSeed,
     new byte[32], out var signingSeedLength) || signingSeedLength != 32)

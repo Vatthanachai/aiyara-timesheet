@@ -90,7 +90,9 @@ public static class Extensions
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
                     .AddMeter("Aiyara.Timesheet.ServiceHealth")
-                    .AddMeter("Aiyara.Report.Worker");
+                    .AddMeter("Aiyara.Report.Worker")
+                    .AddMeter("Aiyara.Identities.Authentication")
+                    .AddMeter("Aiyara.Report.Storage");
             });
 
         var metricsEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"];
@@ -120,6 +122,20 @@ public static class Extensions
                     //.AddGrpcClientInstrumentation()
                     .AddHttpClientInstrumentation();
             });
+
+        var tracesEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"];
+        if (!string.IsNullOrWhiteSpace(tracesEndpoint))
+        {
+            if (!Uri.TryCreate(tracesEndpoint, UriKind.Absolute, out var endpoint))
+                throw new InvalidOperationException(
+                    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT must be an absolute URI.");
+
+            openTelemetry.WithTracing(tracing => tracing.AddOtlpExporter(options =>
+            {
+                options.Endpoint = endpoint;
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
+            }));
+        }
 
         builder.AddOpenTelemetryExporters();
 

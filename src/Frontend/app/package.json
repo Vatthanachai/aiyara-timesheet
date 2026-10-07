@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "build": "nuxt build",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
@@ -15,6 +17,7 @@
     "vue-router": "^5.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.1.14",
     "tailwindcss": "^4.1.14"
   }

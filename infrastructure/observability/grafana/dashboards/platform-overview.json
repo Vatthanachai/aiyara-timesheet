@@ -81,6 +81,49 @@
       "targets": [{ "expr": "aiyara_report_runs", "legendFormat": "{{status}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 7,
+      "title": "Authentication outcomes per second",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
+      "targets": [{ "expr": "sum by (action, outcome) (rate(aiyara_authentication_attempts_total[5m]))", "legendFormat": "{{action}} · {{outcome}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 8,
+      "title": "Report queue messages and consumers",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "targets": [
+        { "expr": "aiyara_rabbitmq_queue_messages", "legendFormat": "{{queue}} messages", "refId": "A" },
+        { "expr": "aiyara_rabbitmq_queue_consumers", "legendFormat": "{{queue}} consumers", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 9,
+      "title": "Quartz job executions per second",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "targets": [{ "expr": "sum by (job, outcome) (rate(aiyara_quartz_job_executions_total[5m]))", "legendFormat": "{{job}} · {{outcome}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 10,
+      "title": "RustFS operation outcomes per second",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 50 },
+      "targets": [{ "expr": "sum by (operation, outcome) (rate(aiyara_rustfs_operations_total[5m]))", "legendFormat": "{{operation}} · {{outcome}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     }
   ]
 }

@@ -29,6 +29,7 @@ builder.Services.AddHttpClient("notifications", client =>
 builder.Services.AddHostedService<ReportGenerationConsumer>();
 builder.Services.AddHostedService<TimesheetMonthEventConsumer>();
 builder.Services.AddHostedService<ReportRunMetricsPublisher>();
+builder.Services.AddHostedService<RabbitQueueMetricsPublisher>();
 builder.Services.AddQuartz(options =>
 {
     var key = new JobKey("report-schedule-dispatch");

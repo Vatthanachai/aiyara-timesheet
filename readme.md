@@ -11,6 +11,9 @@ MailDev stays an optional profile because the agreed local MailDev instance
 already owns its host ports. The pinned RustFS image targets x86-64 development
 hosts.
 
+See the [developer runbook](docs/developer-runbook.md) for the full local
+workflow, migrations, validation, observability, and troubleshooting steps.
+
 1. Copy `.env.example` to `.env` and replace every `change-this-*` value. Never
    commit `.env` or reuse development secrets outside a local machine.
 2. Start the core stack with `docker compose up -d`.
@@ -51,11 +54,12 @@ available at `http://localhost:${PROMETHEUS_PORT:-9090}` and Grafana at
 `GRAFANA_ADMIN_PASSWORD` from `.env` to sign in. Grafana provisions the
 Prometheus data source and the **Aiyara Platform Overview** dashboard, which
 shows backend readiness, request rate, 5xx rate, p95 latency, .NET process
-memory, and report runs by status. The Prometheus host port binds to loopback.
-Business metrics for authentication, RabbitMQ, Quartz, and RustFS are still to
-be added. Run
-`pwsh -File tests/phase5/Smoke.ps1` to verify metrics from all six backend
-processes, report run status metrics, and Grafana's provisioned data source and dashboard.
+memory, report runs by status, authentication outcomes, RabbitMQ queue depth,
+Quartz jobs, and RustFS operation outcomes. The Prometheus host port binds to
+loopback. Jaeger receives OTLP traces at
+`http://localhost:${JAEGER_UI_PORT:-16686}` using temporary in-memory storage.
+Run `pwsh -File tests/phase5/Smoke.ps1` to verify the metrics, trace ingestion,
+and Grafana's provisioned data source and dashboard.
 
 The Aspire AppHost starts application projects for debugging and displays the
 Compose infrastructure as external resources. Start Compose infrastructure

@@ -37,8 +37,8 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
             if (tenantScope.TenantId is not { } tenantId || tenantId == Guid.Empty ||
                 entry.Entity.TenantId != tenantId)
                 throw new InvalidOperationException("Report writes require a matching tenant scope.");
-            if (entry.Entity is ReportSnapshot && entry.State != EntityState.Added)
-                throw new InvalidOperationException("Report snapshots are append-only.");
+            if (entry.Entity is ReportSnapshot && entry.State == EntityState.Modified)
+                throw new InvalidOperationException("Report snapshots are immutable until retention purge.");
         }
     }
 

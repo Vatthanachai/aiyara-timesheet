@@ -81,19 +81,32 @@ empty bucket-list response.
 
 ## Phase 5 — Quality, Operations, And Hardening
 
-Implementation status (2026-10-07): Phase 5 is in progress. The initial
-observability slice exports HTTP, .NET runtime, readiness, and report-run
-metrics from the APIs and Report Worker to Prometheus over OTLP, and provisions
-a Grafana platform overview dashboard. Phase 1–4 tests and Compose smoke tests
-provide partial coverage, including onboarding, identity, timesheet, reporting, signed uploads,
-tenant isolation, session revocation, and retry behavior. Business metrics for
-authentication, RabbitMQ, Quartz, and RustFS still need to be
-added. A dedicated clean-volume Compose run verified metric ingestion from all
-six backend processes and Grafana dashboard provisioning; the platform smoke
-test and all 40 solution tests passed. Compose has no trace collector/backend.
-Retention/purge and secret-redaction behavior lack systematic automated
-scenario coverage, and the developer runbook still needs migration and
-troubleshooting procedures.
+Implementation status (2026-10-07): Phase 5 implementation and primary-agent
+validation are complete on `feature/phase-five-observability`, ready for merge.
+Unit/contract tests and Compose smoke tests cover onboarding, identity,
+timesheet, reporting, signed uploads, tenant isolation, session revocation,
+retries, and database ownership. Live report-run E2E proves the API's durable
+RabbitMQ command reaches the worker and changes persisted run status to
+Succeeded; the Phase 1 contract suite verifies message-envelope serialization
+and metadata, and the gRPC validation contract is exercised through Gateway.
+Playwright tests cover browser session restore,
+reload, logout, and failed login. Retention tests verify expired-object purge,
+snapshot lifecycle/immutability, and audit records. Six backend processes
+export HTTP, .NET runtime, readiness, report-run, authentication, RabbitMQ,
+Quartz, and RustFS metrics to Prometheus; Grafana provisions ten panels. Jaeger
+receives OTLP traces with its UI loopback-bound and transient in-memory storage.
+The Phase 5 smoke checks trace receipt and ensures a generated authentication
+probe secret is absent from trace data and Identity logs. `docs/developer-runbook.md`
+covers Compose startup, email inspection, migrations, API discovery, tests, and
+troubleshooting. Validation: Phase 1–5 Compose smoke tests passed; Phase 4
+Compose E2E generated a PDF, uploaded/downloaded a signed version, and received
+the report-ready email; Phase 5 smoke confirmed telemetry and secret redaction.
+Solution tests passed 41/41, solution build passed with zero warnings/errors,
+frontend production build passed, Playwright E2E passed 2/2, Compose config and
+`git diff --check` passed; platform smoke previously passed with all 17 core
+containers healthy. Service-specific tests and live phase smoke scripts cover
+the owning APIs and their database/messaging dependencies across the phases;
+tenant isolation and report retention also have focused database tests.
 
 1. Add unit tests for domain logic and password/token components; integration tests for every service/database; contract tests for gRPC and RabbitMQ; and E2E tests for registration, activation, login/reset, time entry, report generation, and signed upload.
 2. Add Prometheus metrics and Grafana dashboards for service health, requests, authentication, RabbitMQ, Quartz, report runs, and RustFS failures. Add trace collection when the chosen backend is enabled.

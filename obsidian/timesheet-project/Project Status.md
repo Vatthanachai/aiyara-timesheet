@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 7 October 2026. Phases 0–4 are complete. Phase 5 is partially covered and remains outstanding. See [[Development Roadmap]].
+> Updated 7 October 2026. Phases 0–5 are implemented and validated on `feature/phase-five-observability`; Phase 5 is ready for primary-agent review and merge. See [[Development Roadmap]].
 
 ## Phase 0 Platform Baseline
 
@@ -119,7 +119,7 @@
   spoof rejection, RabbitMQ delivery and outbox publish state, and
   `git diff --check` passed. Report-event consumption belongs to Phase 4.
 
-## Not Yet Implemented
+## Phase 4 — Reporting (complete)
 
 - Phase 4 reporting APIs, tenant-local schedule dispatch, durable RabbitMQ
   consumers, PDF/XLSX generation from immutable locked-month snapshots, RustFS
@@ -137,39 +137,30 @@
   Timesheet source data, worker PDF generation to RustFS, signed upload/download,
   and a report-ready email received in MailDev. `tests/phase4/Smoke.ps1` is the
   repeatable smoke test. Phase 4 is complete.
-- Automated frontend end-to-end flows.
-- Domain and end-to-end test suites for later phases.
 
-## Phase 5 — Quality, Operations, And Hardening (incomplete)
+## Phase 5 — Quality, Operations, And Hardening (implemented; validation passed)
 
-- Existing Phase 1–4 unit tests and Compose smoke tests cover onboarding,
-  identity, timesheet, and reporting flows. They also exercise selected tenant
-  isolation, session revocation, and retry behavior. They do not yet provide
-  integration coverage for every service/database or complete gRPC and
-  RabbitMQ contract execution; frontend browser E2E coverage is also absent.
-- Initial observability implementation: APIs and Report Worker export HTTP,
-  .NET runtime, readiness, and aggregate report-run metrics over OTLP to Prometheus. Grafana
-  provisions a Prometheus data source and a platform overview dashboard for
-  readiness, request rate, 5xx rate, p95 latency, process memory, and report
-  runs grouped by status.
-  Prometheus remains available only on the host loopback port. Business metrics
-  for authentication, RabbitMQ, Quartz, and RustFS failures still need
-  instrumentation and dashboard coverage. Compose does not include a trace
-  collector/backend.
-  Validation on 7 October 2026: all six backend processes appeared in
-  Prometheus request, memory, and readiness metrics; Grafana loaded the
-  provisioned six-panel dashboard; an isolated clean-volume Compose stack
-  passed
-  `tests/platform/Smoke.ps1` with all 17 core containers healthy; solution
-  tests passed 40/40, and `tests/phase5/Smoke.ps1` passed. The default Compose
-  project could not reuse its existing PostgreSQL volume because its stored
-  password did not match the current `.env`; that volume was left intact.
-- Retention/purge and secret-redaction implementations exist in parts of the
-  system, but systematic automated tests for purge outcomes and secret absence
-  from logs/traces/snapshots are still needed.
-- The root README documents Compose startup, MailDev, API references, test
-  commands, and the initial metrics/dashboard setup. A complete developer
-  runbook still needs migration procedures and troubleshooting guidance.
+- Unit/contract tests and Compose smoke tests cover onboarding, identity,
+  timesheet, reporting, signed uploads, tenant isolation, session revocation,
+  retry, and database ownership. Playwright browser tests cover session restore,
+  reload, logout, and failed login. Phase 4 retention tests cover expired object
+  deletion, snapshot cleanup/immutability, and audit records.
+- The six backend processes export HTTP, .NET runtime, readiness, report-run,
+  authentication, RabbitMQ queue, Quartz execution, and RustFS operation metrics
+  over OTLP to Prometheus. Grafana provisions ten panels. Jaeger receives OTLP
+  traces; its UI is bound to loopback and the default all-in-one storage is
+  transient memory. Phase 5 smoke verifies a real Identity trace and checks
+  that a generated probe password is absent from trace data and service logs.
+- Validation on 7 October 2026: Phase 1–5 Compose smoke tests passed against
+  the isolated stack; Phase 4 generated a PDF, signed version, and report-ready
+  email. Solution tests passed 41/41, Playwright E2E passed 2/2, the frontend
+  production build and solution build passed, and Compose configuration passed.
+  The platform smoke previously passed with all 17 core containers healthy.
+  The default Compose project has
+  an existing PostgreSQL volume whose stored password differs from current
+  `.env`; it was left intact.
+- `docs/developer-runbook.md` documents Compose startup, local email inspection,
+  migrations, Scalar/OpenAPI discovery, test commands, and troubleshooting.
 
 ## Agreed Direction
 

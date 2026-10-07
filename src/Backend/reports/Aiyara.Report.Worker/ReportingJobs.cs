@@ -113,7 +113,10 @@ internal sealed class TimesheetMonthEventConsumer(IServiceScopeFactory scopes,
 internal sealed class ScheduleDispatchJob(IServiceScopeFactory scopes,
     IConfiguration configuration) : IJob
 {
-    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken = default)
+    public ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken = default) =>
+        ReportQuartzMetrics.MeasureAsync("schedule_dispatch", () => ExecuteCoreAsync(context));
+
+    private async ValueTask ExecuteCoreAsync(IJobExecutionContext context)
     {
         using var scope = scopes.CreateScope();
         var tenantScope = scope.ServiceProvider.GetRequiredService<ReportingTenantScope>();
@@ -160,27 +163,30 @@ internal sealed class ScheduleDispatchJob(IServiceScopeFactory scopes,
 internal sealed class RetentionPurgeJob(IServiceScopeFactory scopes,
     IReportObjectStorage storage) : IJob
 {
-    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken = default)
+    public ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken = default) =>
+        ReportQuartzMetrics.MeasureAsync("retention_purge", () => ExecuteAsync(context.CancellationToken));
+
+    internal async ValueTask ExecuteAsync(CancellationToken cancellationToken)
     {
         using var scope = scopes.CreateScope();
         var tenantScope = scope.ServiceProvider.GetRequiredService<ReportingTenantScope>();
         var db = scope.ServiceProvider.GetRequiredService<ReportingDbContext>();
         var expired = await db.ReportObjects.IgnoreQueryFilters().Where(x => x.RetainUntilUtc <= DateTime.UtcNow)
-            .Take(200).ToListAsync(context.CancellationToken);
+            .Take(200).ToListAsync(cancellationToken);
         foreach (var item in expired)
         {
             tenantScope.TenantId = item.TenantId;
-            await storage.DeleteAsync(item.ObjectKey, context.CancellationToken);
+            await storage.DeleteAsync(item.ObjectKey, cancellationToken);
             db.ReportObjects.Remove(item);
             db.Audits.Add(new ReportAudit { TenantId = item.TenantId, ActorId = Guid.Empty,
                 ReportRunId = item.ReportRunId, Action = "object.purged.retention",
                 DetailsJson = JsonSerializer.Serialize(new { item.ObjectKey, item.Version, item.Sha256 }),
                 OccurredAtUtc = DateTime.UtcNow });
             if (!await db.ReportObjects.AnyAsync(x => x.ReportRunId == item.ReportRunId &&
-                    x.Id != item.Id && x.RetainUntilUtc > DateTime.UtcNow, context.CancellationToken))
+                    x.Id != item.Id && x.RetainUntilUtc > DateTime.UtcNow, cancellationToken))
             {
                 var snapshot = await db.ReportSnapshots.SingleOrDefaultAsync(x =>
-                    x.ReportRunId == item.ReportRunId, context.CancellationToken);
+                    x.ReportRunId == item.ReportRunId, cancellationToken);
                 if (snapshot is not null)
                 {
                     db.Audits.Add(new ReportAudit { TenantId = item.TenantId, ActorId = Guid.Empty,
@@ -190,7 +196,7 @@ internal sealed class RetentionPurgeJob(IServiceScopeFactory scopes,
                     db.ReportSnapshots.Remove(snapshot);
                 }
             }
-            await db.SaveChangesAsync(context.CancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
         }
     }
 }

@@ -17,8 +17,11 @@ foreach ($line in Get-Content -LiteralPath $EnvFile) {
 
 $prometheusPort = if ($settings.ContainsKey('PROMETHEUS_PORT')) { $settings['PROMETHEUS_PORT'] } else { '9090' }
 $grafanaPort = if ($settings.ContainsKey('GRAFANA_PORT')) { $settings['GRAFANA_PORT'] } else { '3001' }
+$gatewayPort = if ($settings.ContainsKey('GATEWAY_API_PORT')) { $settings['GATEWAY_API_PORT'] } else { '8081' }
+$jaegerPort = if ($settings.ContainsKey('JAEGER_UI_PORT')) { $settings['JAEGER_UI_PORT'] } else { '16686' }
 $prometheusUrl = "http://127.0.0.1:$prometheusPort"
 $grafanaUrl = "http://127.0.0.1:$grafanaPort"
+$jaegerUrl = "http://127.0.0.1:$jaegerPort"
 
 function Get-PrometheusQuery {
     param([string]$Expression)
@@ -90,6 +93,69 @@ if ($missingStatuses.Count -gt 0) {
     throw "Report run metrics missing status series: $($missingStatuses -join ', ')."
 }
 
+$authProbePassword = "phase5-probe-$([guid]::NewGuid().ToString('N'))"
+$authProbeBody = @{ tenantId = '00000000-0000-0000-0000-000000000001';
+    email = 'phase5-probe@invalid.example'; password = $authProbePassword } | ConvertTo-Json
+$authProbe = Invoke-WebRequest -Uri "http://127.0.0.1:$gatewayPort/api/v1/auth/login" `
+    -Method Post -ContentType 'application/json' -Body $authProbeBody -SkipHttpErrorCheck
+if ($authProbe.StatusCode -lt 400 -or $authProbe.StatusCode -ge 500) {
+    throw "Authentication metrics probe returned unexpected HTTP $($authProbe.StatusCode)."
+}
+$authMetricSeries = @()
+for ($attempt = 0; $attempt -lt 24; $attempt++) {
+    $authMetricSeries = @(Get-PrometheusQuery 'aiyara_authentication_attempts_total{action="login",outcome="failure"}')
+    if ($authMetricSeries.Count -gt 0) { break }
+    Start-Sleep -Seconds 5
+}
+if ($authMetricSeries.Count -eq 0) { throw 'Prometheus has no authentication failure metric after the probe.' }
+
+$traceServices = @()
+for ($attempt = 0; $attempt -lt 24; $attempt++) {
+    try { $traceServices = @( (Invoke-RestMethod -Uri "$jaegerUrl/api/v3/services").services ) }
+    catch { $traceServices = @() }
+    if ('Aiyara.Identities.Api' -in $traceServices) { break }
+    Start-Sleep -Seconds 5
+}
+if ('Aiyara.Identities.Api' -notin $traceServices) {
+    throw 'Jaeger has not received an Identity API trace after the authentication probe.'
+}
+$traceEnd = [DateTimeOffset]::UtcNow.ToString('o')
+$traceStart = [DateTimeOffset]::UtcNow.AddMinutes(-10).ToString('o')
+$traceResult = Invoke-RestMethod -Uri "$jaegerUrl/api/v3/traces?query.serviceName=Aiyara.Identities.Api&query.startTimeMin=$([uri]::EscapeDataString($traceStart))&query.startTimeMax=$([uri]::EscapeDataString($traceEnd))&query.pagination.pageSize=20"
+$traceJson = $traceResult | ConvertTo-Json -Depth 30 -Compress
+if ($traceJson.Contains($authProbePassword)) {
+    throw 'An authentication probe password appeared in an exported trace.'
+}
+
+$identityContainers = @(& docker ps --filter 'label=com.docker.compose.service=identities-api' --format '{{.ID}}')
+if ($LASTEXITCODE -ne 0 -or $identityContainers.Count -eq 0) {
+    throw 'Cannot inspect Identity API logs for the secret-redaction check.'
+}
+foreach ($container in $identityContainers) {
+    $containerLogs = (& docker logs $container --since 10m 2>&1 | Out-String)
+    if ($containerLogs.Contains($authProbePassword)) {
+        throw 'An authentication probe password appeared in Identity API logs.'
+    }
+}
+
+$rabbitMetrics = @(Get-PrometheusQuery 'aiyara_rabbitmq_queue_messages')
+if (-not ($rabbitMetrics | Where-Object { $_.metric.queue -eq 'reporting.generate.v1' })) {
+    throw 'Prometheus has no report generation RabbitMQ queue metrics.'
+}
+
+$quartzMetrics = @()
+for ($attempt = 0; $attempt -lt 24; $attempt++) {
+    $quartzMetrics = @(Get-PrometheusQuery 'aiyara_quartz_job_executions_total')
+    if ($quartzMetrics.Count -gt 0) { break }
+    Start-Sleep -Seconds 5
+}
+if ($quartzMetrics.Count -eq 0) { throw 'Prometheus has no Quartz job execution metrics.' }
+
+$rustFsMetrics = @(Get-PrometheusQuery 'aiyara_rustfs_operations_total')
+if ($rustFsMetrics.Count -eq 0) {
+    throw 'Prometheus has no RustFS operation metrics. Run tests/phase4/Smoke.ps1 first to exercise report storage.'
+}
+
 $username = $settings['GRAFANA_ADMIN_USER']
 $password = $settings['GRAFANA_ADMIN_PASSWORD']
 if ([string]::IsNullOrWhiteSpace($username) -or [string]::IsNullOrWhiteSpace($password)) {
@@ -106,6 +172,6 @@ $dashboard = Invoke-RestMethod -Uri "$grafanaUrl/api/dashboards/uid/aiyara-platf
 
 if ($datasource.name -ne 'Prometheus') { throw 'Grafana Prometheus data source is not provisioned.' }
 if ($dashboard.dashboard.title -ne 'Aiyara Platform Overview') { throw 'Grafana platform dashboard is not provisioned.' }
-if ($dashboard.dashboard.panels.Count -ne 6) { throw 'Grafana platform dashboard should contain six panels.' }
+if ($dashboard.dashboard.panels.Count -ne 10) { throw 'Grafana platform dashboard should contain ten panels.' }
 
-Write-Output 'Phase 5 observability smoke test passed: six services export request, runtime, and readiness metrics; report run metrics expose all statuses; Grafana has its provisioned data source and dashboard.'
+Write-Output 'Phase 5 observability smoke test passed: backend, authentication, RabbitMQ, Quartz, report run, and RustFS metrics are present; Jaeger received an Identity trace; Grafana has its provisioned data source and dashboard.'
