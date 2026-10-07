@@ -3,6 +3,7 @@ type AuthResponse = {
   accessExpiresAtUtc: string
   refreshToken: string
   mustChangePassword: boolean
+  tenantId: string
 }
 
 export function useSession() {
@@ -24,20 +25,20 @@ export function useSession() {
     token.value = value.accessToken
     refreshToken.value = value.refreshToken
     expiresAt.value = value.accessExpiresAtUtc
+    tenantId.value = value.tenantId
     if (import.meta.client) {
       sessionStorage.setItem('aiyara.access', token.value)
       sessionStorage.setItem('aiyara.refresh', refreshToken.value)
       sessionStorage.setItem('aiyara.expires', expiresAt.value)
+      sessionStorage.setItem('aiyara.tenant', tenantId.value)
     }
   }
 
-  async function login(tenantGuid: string, email: string, password: string) {
+  async function login(organizationCode: string, email: string, password: string) {
     const response = await $fetch<AuthResponse>(`${config.public.gatewayUrl}/api/v1/auth/login`, {
-      method: 'POST', body: { tenantId: tenantGuid, email, password }
+      method: 'POST', body: { organizationCode, email, password }
     })
     save(response)
-    tenantId.value = tenantGuid
-    if (import.meta.client) sessionStorage.setItem('aiyara.tenant', tenantGuid)
     return response
   }
 

@@ -78,6 +78,38 @@ public sealed class OnboardingTests
     }
 
     [Fact]
+    public async Task Tenant_creation_assigns_unique_seven_character_organization_codes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var first = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Acme Corporation", "acme-corp", "admin@acme.test"), default);
+        var second = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Acme Consulting", "acme-consulting", "admin2@acme.test"), default);
+
+        Assert.Matches("^ACME[0-9]{3}$", first.OrganizationCode);
+        Assert.Matches("^ACME[0-9]{3}$", second.OrganizationCode);
+        Assert.NotEqual(first.OrganizationCode, second.OrganizationCode);
+        Assert.Equal(first.OrganizationCode, await fixture.Db.Tenants.IgnoreQueryFilters()
+            .Where(x => x.Id == first.TenantId).Select(x => x.OrganizationCode).SingleAsync());
+    }
+
+    [Fact]
+    public async Task Identity_ids_use_component_v8_with_random_region_and_shard_values()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Service.CreateTenantAsync(
+            new CreateTenantRequest("Guid test", "guid-test", "admin@guid.test"), default);
+        foreach (var id in new[] { tenant.TenantId, tenant.AccountId, tenant.MembershipId })
+        {
+            var bytes = id.ToByteArray();
+            Assert.InRange(bytes[0], (byte)1, (byte)9);
+            Assert.InRange(bytes[1], (byte)1, (byte)9);
+            Assert.Equal(8, bytes[6] >> 4);
+            Assert.Equal(2, bytes[8] >> 6);
+        }
+    }
+
+    [Fact]
     public async Task Onboarding_key_authorizes_only_its_tenant_and_expires()
     {
         await using var fixture = await Fixture.CreateAsync();

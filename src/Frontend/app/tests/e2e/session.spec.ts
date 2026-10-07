@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 
+const organizationCode = 'ACME123'
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
 
 async function waitForHydration(page: import('@playwright/test').Page) {
@@ -20,7 +21,8 @@ test('sign in persists the session, restores it after reload, and signs out', as
         accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
         refreshToken: 'test-refresh-token',
         refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
-        mustChangePassword: false
+        mustChangePassword: false,
+        tenantId
       })
     })
   })
@@ -28,12 +30,12 @@ test('sign in persists the session, restores it after reload, and signs out', as
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('รหัสองค์กร').fill(tenantId)
+  await page.getByLabel('รหัสองค์กร').fill(organizationCode)
   await page.getByLabel('อีเมล').fill('admin@example.test')
   await page.getByLabel('รหัสผ่าน').fill('test-password')
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()
 
-  expect(loginRequest).toMatchObject({ tenantId, email: 'admin@example.test', password: 'test-password' })
+  expect(loginRequest).toMatchObject({ organizationCode, email: 'admin@example.test', password: 'test-password' })
   await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
   await expect(page.getByRole('link', { name: /รายงาน.*ดูรายงาน/ })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
@@ -58,7 +60,7 @@ test('failed sign in displays an error and does not persist credentials', async 
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('รหัสองค์กร').fill(tenantId)
+  await page.getByLabel('รหัสองค์กร').fill(organizationCode)
   await page.getByLabel('อีเมล').fill('admin@example.test')
   await page.getByLabel('รหัสผ่าน').fill('wrong-password')
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()

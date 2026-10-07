@@ -311,6 +311,11 @@ namespace Aiyara.Identities.Databases.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("OrganizationCode")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
                     b.Property<int>("PasswordExpiryDays")
                         .HasColumnType("integer");
 
@@ -343,6 +348,9 @@ namespace Aiyara.Identities.Databases.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrganizationCode")
+                        .IsUnique();
 
                     b.HasIndex("Slug")
                         .IsUnique();

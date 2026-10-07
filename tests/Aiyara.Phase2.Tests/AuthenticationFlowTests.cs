@@ -58,6 +58,30 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task Organization_code_login_resolves_tenant_and_returns_internal_tenant_id()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Acme", "acme", "admin@acme.test"), default);
+        await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
+            tenant.TenantId, "admin@acme.test"), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Single().Code, "Correct-Password-123!"), default);
+
+        var login = await fixture.Auth.LoginAsync(new LoginRequest
+        {
+            OrganizationCode = tenant.OrganizationCode.ToLowerInvariant(),
+            Email = "admin@acme.test", Password = "Correct-Password-123!"
+        }, default);
+
+        Assert.Equal(tenant.TenantId, login.TenantId);
+        Assert.StartsWith("v4.public.", login.AccessToken);
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginAsync(
+            new LoginRequest { OrganizationCode = "WRONG99", Email = "admin@acme.test",
+                Password = "Correct-Password-123!" }, default));
+    }
+
+    [Fact]
     public async Task Password_reset_revokes_prior_sessions_and_rejects_weak_password()
     {
         await using var fixture = await Fixture.CreateAsync();
