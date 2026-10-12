@@ -4,6 +4,7 @@ const organizationCode = 'ACME123'
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
 const apiOk = <T>(result: T) => ({ statusCode: 200, statusMessage: 'OK', result })
 const signInOk = <T>(session: T) => apiOk({ session, organizations: [] })
+const emptyOverview = apiOk({ organizationCount: 0, activeCount: 0, suspendedCount: 0, awaitingAdministratorCount: 0, newestOrganizations: [], recentActivity: [] })
 
 async function waitForHydration(page: import('@playwright/test').Page) {
   await page.waitForFunction(() => Boolean(
@@ -408,7 +409,10 @@ test('platform admin can manage organization details, administrators, and lifecy
   await page.getByLabel('Email').fill('sysadmin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Organizations' }).click()
+  await page.route('**/api/v1/platform/overview', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(emptyOverview) }))
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'System admin' }).click()
+  await page.getByRole('navigation', { name: 'System administration' }).getByRole('link', { name: 'Organizations' }).click()
 
   await expect(page.getByRole('heading', { name: 'Organizations' })).toBeVisible()
   await expect(page.getByText('Acme Studio')).toBeVisible()
@@ -455,7 +459,7 @@ test('tenant administrator cannot see the platform organization management page'
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
 
-  await expect(page.getByRole('link', { name: 'Organizations' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'System admin' })).toHaveCount(0)
   await page.goto('/sys-admin/organizations')
   await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
 })
@@ -480,7 +484,7 @@ test('activation failure shows a safe message and does not expose the API error'
   await expect(page.getByRole('alert')).not.toContainText('Invalid or expired challenge')
 })
 
-test('platform admin signs in without an organization code and lands on organizations', async ({ page }) => {
+test('platform admin signs in without an organization code and lands on the overview', async ({ page }) => {
   let loginRequest: unknown
   await page.route('**/api/v1/auth/platform-admin/login', async route => {
     loginRequest = route.request().postDataJSON()
@@ -498,11 +502,8 @@ test('platform admin signs in without an organization code and lands on organiza
       }))
     })
   })
-  await page.route('**/api/v1/platform/organizations**', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify(apiOk({ totalCount: 0, page: 1, pageSize: 20, items: [] }))
-  }))
+  await page.route('**/api/v1/platform/overview', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(emptyOverview) }))
 
   await page.goto('/')
   await waitForHydration(page)
@@ -515,7 +516,8 @@ test('platform admin signs in without an organization code and lands on organiza
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   expect(loginRequest).toEqual({ email: 'operator@platform.test', password: 'test-password' })
-  await expect(page).toHaveURL(/\/sys-admin\/organizations$/)
+  await expect(page).toHaveURL(/\/sys-admin$/)
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.role')))
     .toBe('PlatformAdmin')
 })
@@ -608,11 +610,11 @@ test('platform admin sees only platform areas and cannot open tenant administrat
   await signInAs(page, 'PlatformAdmin')
 
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' })
-  await expect(navigation.getByRole('link', { name: 'Organizations' })).toBeVisible()
+  await expect(navigation.getByRole('link', { name: 'System admin' })).toBeVisible()
   for (const name of ['Timesheet', 'Reports', 'Administration'])
     await expect(navigation.getByRole('link', { name })).toHaveCount(0)
   const apps = page.getByRole('region', { name: 'Available applications' })
-  await expect(apps.getByRole('link', { name: /Organizations/ })).toBeVisible()
+  await expect(apps.getByRole('link', { name: /System admin/ })).toBeVisible()
   await expect(apps.getByRole('link', { name: /Administration/ })).toHaveCount(0)
 
   await page.goto('/remote/administration')
@@ -676,4 +678,118 @@ test('platform admin creates an organization through the authenticated platform 
     body: { name: 'New Org', slug: 'new-org', adminEmail: 'owner@new.test' }
   })
   expect(publicSignupCalled).toBe(false)
+})
+
+const auditEntry = (overrides: Record<string, unknown>) => ({
+  id: crypto.randomUUID(), createdAtUtc: '2026-10-12T03:00:00Z', action: 'organization.updated',
+  tenantId: 'c99358d1-e01f-4dfd-9693-38da8883562d', organizationName: 'Acme Studio', organizationCode: 'ACME123',
+  actorEmail: 'operator@platform.test', reason: null, beforeJson: null, afterJson: null, ...overrides
+})
+
+test('platform admin overview shows organization counts, newest organizations, and recent activity', async ({ page }) => {
+  await page.route('**/api/v1/platform/overview', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({
+      organizationCount: 3, activeCount: 2, suspendedCount: 1, awaitingAdministratorCount: 1,
+      newestOrganizations: [{ tenantId: 'c99358d1-e01f-4dfd-9693-38da8883562d', organizationCode: 'ACME123',
+        name: 'Acme Studio', slug: 'acme-studio', status: 'Active', createdAtUtc: '2026-10-01T00:00:00Z', admins: [] }],
+      recentActivity: [
+        auditEntry({ reason: 'Rebrand', beforeJson: '{"Name":"Acme"}', afterJson: '{"Name":"Acme Studio"}' }),
+        auditEntry({ action: 'platform_admin.sign_in_failed', tenantId: '00000000-0000-0000-0000-000000000001',
+          organizationName: 'Aiyara Platform', organizationCode: 'AIYA001', actorEmail: null,
+          afterJson: '{"Email":"<b>x</b>@evil.test"}' })
+      ]
+    })) }))
+  await signInAs(page, 'PlatformAdmin')
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'System admin' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
+  const stats = page.locator('.sysadmin-stats')
+  await expect(stats).toContainText('Organizations3')
+  await expect(stats).toContainText('Suspended1')
+  await expect(stats).toContainText('Without an active administrator1')
+  await expect(page.getByRole('link', { name: 'Acme Studio' }).first()).toHaveAttribute('href',
+    '/sys-admin/organizations/c99358d1-e01f-4dfd-9693-38da8883562d')
+  const activity = page.getByRole('region', { name: 'Recent activity' })
+  await expect(activity).toContainText('Organization details changed')
+  await expect(activity).toContainText('Name: Acme → Acme Studio')
+  await expect(activity).toContainText('Reason: Rebrand')
+  await expect(activity).toContainText('System administrator sign-in failed')
+  await expect(activity).toContainText('Unknown account')
+  // Audit values are rendered as text, never as markup.
+  await expect(activity).toContainText('Email: <b>x</b>@evil.test')
+  await expect(activity.locator('b')).toHaveCount(0)
+})
+
+test('platform audit log sends its filters and pages through results', async ({ page }) => {
+  const requests: URL[] = []
+  await page.route('**/api/v1/platform/audit**', async route => {
+    const url = new URL(route.request().url())
+    requests.push(url)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({
+      totalCount: 30, page: Number(url.searchParams.get('page')), pageSize: 25,
+      items: [auditEntry({ action: 'organization.suspended', reason: 'Past due' })]
+    })) })
+  })
+  await signInAs(page, 'PlatformAdmin')
+  await page.goto('/sys-admin/audit?tenantId=c99358d1-e01f-4dfd-9693-38da8883562d')
+
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
+  await expect(page.getByText('30 entries')).toBeVisible()
+  expect(requests[0].searchParams.get('tenantId')).toBe('c99358d1-e01f-4dfd-9693-38da8883562d')
+  await page.getByLabel('Actor email').fill('operator@')
+  await page.getByLabel('Action').selectOption('organization.suspended')
+  await page.getByLabel('From').fill('2026-10-01')
+  await page.getByLabel('This organization only').uncheck()
+  await page.getByRole('button', { name: 'Filter', exact: true }).click()
+  await expect.poll(() => requests.length).toBe(2)
+  const filtered = requests[1].searchParams
+  expect(filtered.get('actor')).toBe('operator@')
+  expect(filtered.get('action')).toBe('organization.suspended')
+  expect(filtered.get('fromUtc')).toMatch(/^2026-09-30T|^2026-10-01T/)
+  expect(filtered.get('tenantId')).toBeNull()
+  expect(filtered.get('page')).toBe('1')
+  await page.getByRole('button', { name: 'Next' }).click()
+  await expect.poll(() => requests.length).toBe(3)
+  expect(requests[2].searchParams.get('page')).toBe('2')
+  expect(requests[2].searchParams.get('actor')).toBe('operator@')
+})
+
+test('organization detail shows members, administrators, and its own history', async ({ page }) => {
+  const tenant = 'c99358d1-e01f-4dfd-9693-38da8883562d'
+  let auditTenant: string | null = null
+  await page.route(`**/api/v1/platform/organizations/${tenant}`, route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({
+      tenantId: tenant, organizationCode: 'ACME123', name: 'Acme Studio', slug: 'acme-studio',
+      status: 'Suspended', createdAtUtc: '2026-10-01T00:00:00Z', activeMemberCount: 7, pendingMemberCount: 2,
+      admins: [{ email: 'admin@acme.test', status: 'Active' }]
+    })) }))
+  await page.route('**/api/v1/platform/audit**', route => {
+    auditTenant = new URL(route.request().url()).searchParams.get('tenantId')
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({
+      totalCount: 1, page: 1, pageSize: 10, items: [auditEntry({ action: 'organization.suspended', reason: 'Past due' })]
+    })) })
+  })
+  await signInAs(page, 'PlatformAdmin')
+  await page.goto(`/sys-admin/organizations/${tenant}`)
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Acme Studio' })).toBeVisible()
+  await expect(page.locator('.sysadmin-stats')).toContainText('Active members7')
+  await expect(page.locator('.sysadmin-stats')).toContainText('Pending activation2')
+  await expect(page.getByText('ACME123')).toBeVisible()
+  await expect(page.getByText('admin@acme.test')).toBeVisible()
+  const history = page.getByRole('region', { name: 'History' })
+  await expect(history).toContainText('Organization suspended')
+  await expect(history).toContainText('Reason: Past due')
+  expect(auditTenant).toBe(tenant)
+  await expect(page.getByRole('link', { name: 'Full history' })).toHaveAttribute('href',
+    `/sys-admin/audit?tenantId=${tenant}`)
+})
+
+test('console pages stay restricted for non platform admins', async ({ page }) => {
+  await signInAs(page, 'TenantAdmin')
+  for (const path of ['/sys-admin', '/sys-admin/audit', '/sys-admin/organizations/c99358d1-e01f-4dfd-9693-38da8883562d']) {
+    await page.goto(path)
+    await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'System administration' })).toHaveCount(0)
+  }
 })

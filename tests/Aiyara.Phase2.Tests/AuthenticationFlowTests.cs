@@ -303,6 +303,44 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task Platform_admin_sign_ins_are_audited_on_success_and_failure_but_tenant_logins_are_not()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+            .EnsureAsync("operator@platform.test", default);
+        await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
+            PlatformAdminBootstrap.PlatformTenantId, "operator@platform.test"), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Last().Code, "Correct-Password-123!"), default);
+        await ActivateTenantAdminAsync(fixture, "Acme", "acme", "admin@acme.test");
+        var operatorId = (await fixture.Db.Accounts.SingleAsync(x => x.Email == "operator@platform.test")).Id;
+
+        await fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(
+            "operator@platform.test", "Correct-Password-123!"), default);
+        await fixture.Auth.SignInAsync(new SignInRequest("operator@platform.test", "Correct-Password-123!"), default);
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginPlatformAdminAsync(
+            new PlatformAdminLoginRequest("operator@platform.test", "Wrong-Password-123!"), default));
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginPlatformAdminAsync(
+            new PlatformAdminLoginRequest("not an email <script>", "x"), default));
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginPlatformAdminAsync(
+            new PlatformAdminLoginRequest("admin@acme.test", "Correct-Password-123!"), default));
+        await fixture.Auth.SignInAsync(new SignInRequest("admin@acme.test", "Correct-Password-123!"), default);
+
+        var audits = await fixture.Db.PlatformOrganizationAudits.IgnoreQueryFilters()
+            .OrderBy(x => x.CreatedAtUtc).ToListAsync();
+        Assert.All(audits, x => Assert.Equal(PlatformAdminBootstrap.PlatformTenantId, x.TenantId));
+        Assert.Equal([AuthenticationService.PlatformSignInAction, AuthenticationService.PlatformSignInAction,
+            AuthenticationService.PlatformSignInFailedAction, AuthenticationService.PlatformSignInFailedAction,
+            AuthenticationService.PlatformSignInFailedAction], audits.Select(x => x.Action));
+        Assert.Equal(operatorId, audits[0].ActorAccountId);
+        Assert.Equal(operatorId, audits[2].ActorAccountId);
+        Assert.Equal(Guid.Empty, audits[3].ActorAccountId);
+        Assert.Contains("\"Email\":null", audits[3].AfterJson);
+        Assert.Contains("admin@acme.test", audits[4].AfterJson);
+        Assert.DoesNotContain(audits, x => x.AfterJson!.Contains("Password"));
+    }
+
+    [Fact]
     public async Task Platform_admin_bootstrap_rejects_an_email_that_belongs_to_a_customer_organization()
     {
         await using var fixture = await Fixture.CreateAsync();

@@ -23,7 +23,7 @@ const error = ref('')
 const pending = ref(false)
 
 watchEffect(() => {
-  if (token.value && role.value === 'PlatformAdmin') navigateTo('/sys-admin/organizations')
+  if (token.value && role.value === 'PlatformAdmin') navigateTo('/sys-admin')
 })
 
 async function signIn() {

@@ -22,6 +22,8 @@ builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(
 builder.AddDatabaseHealthCheck<WebApplicationBuilder, IdentityDbContext>("identity-db");
 builder.Services.AddScoped<OnboardingService>();
 builder.Services.AddScoped<PlatformOrganizationService>();
+builder.Services.AddScoped<PlatformConsoleService>();
+builder.Services.AddScoped<Aiyara.Identities.Api.Controllers.PlatformActorResolver>();
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<PlatformAdminBootstrap>();
 builder.Services.AddSingleton(ProfilePhotoStorage.CreateClient(builder.Configuration));

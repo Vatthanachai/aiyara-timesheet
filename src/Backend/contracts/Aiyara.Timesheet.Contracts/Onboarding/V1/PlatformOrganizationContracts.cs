@@ -33,3 +33,51 @@ public sealed record PlatformOrganizationUpdateResult(
     string Name,
     string Slug,
     string Status);
+
+public sealed record PlatformOrganizationDetail(
+    Guid TenantId,
+    string OrganizationCode,
+    string Name,
+    string Slug,
+    string Status,
+    DateTime CreatedAtUtc,
+    int ActiveMemberCount,
+    int PendingMemberCount,
+    IReadOnlyList<PlatformOrganizationAdminSummary> Admins);
+
+/// <summary>One administrative action. Before/After hold the changed fields as JSON and never
+/// contain credentials, codes, or keys.</summary>
+public sealed record PlatformAuditEntry(
+    Guid Id,
+    DateTime CreatedAtUtc,
+    string Action,
+    Guid TenantId,
+    string? OrganizationName,
+    string? OrganizationCode,
+    string? ActorEmail,
+    string? Reason,
+    string? BeforeJson,
+    string? AfterJson);
+
+public sealed record PlatformAuditListResponse(
+    int TotalCount,
+    int Page,
+    int PageSize,
+    IReadOnlyList<PlatformAuditEntry> Items);
+
+public sealed record PlatformAuditQuery(
+    Guid? TenantId,
+    string? Actor,
+    string? Action,
+    DateTime? FromUtc,
+    DateTime? ToUtc,
+    int Page = 1,
+    int PageSize = 25);
+
+public sealed record PlatformOverviewResponse(
+    int OrganizationCount,
+    int ActiveCount,
+    int SuspendedCount,
+    int AwaitingAdministratorCount,
+    IReadOnlyList<PlatformOrganizationSummary> NewestOrganizations,
+    IReadOnlyList<PlatformAuditEntry> RecentActivity);

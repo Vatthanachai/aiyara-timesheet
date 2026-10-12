@@ -10,6 +10,12 @@
   - A3: Gateway `platform` rate-limit policy (120 requests per minute per IP) on `platform-admin-api`.
   - A4: `POST /api/v1/auth/login` binds `OrganizationLoginRequest` and never accepts `tenantId`. The phase 2–5 smoke scripts log in by organization code; phase 2 asserts that a tenant-ID login is rejected.
   - Decision 1 (F10) is enforced in tenant creation, both invitation paths, invitation acceptance, and Platform Admin bootstrap.
+- **Phase B** — implemented on `feature/platform-audit-and-overview`:
+  - B1: `GET /api/v1/platform/audit` (filters: organization, actor email, action, UTC date range; newest first; paged) and the `/sys-admin/audit` page. Entries show the action, actor, organization, changed fields, and reason. Values render as text. The audit log is reachable from an organization's detail page, pre-filtered to that organization.
+  - B2: `GET /api/v1/platform/overview` and the `/sys-admin` landing page: organization totals by status, organizations without an active administrator, the newest organizations, and recent activity. Sys-admin sign-in, the Shell's "System admin" link, and the home card now land here.
+  - B3: `GET /api/v1/platform/organizations/{tenantId}` and `/sys-admin/organizations/{tenantId}`: code, URL name, status, created date, active/pending member counts, administrators, and the organization's history. Only counts and administrators are exposed, per decision 3.
+  - B4: `platform_admin.signed_in` is recorded for every new Platform Admin session on any sign-in route; `platform_admin.sign_in_failed` is recorded for rejected `/sys-admin/login` attempts, storing the email only when well-formed.
+  - The Platform Admin guard moved into `PlatformActorResolver` and `PlatformControllerBase`, shared by `PlatformOrganizationsController` and the new `PlatformConsoleController`.
 
 ## Permission Audit
 

@@ -81,9 +81,11 @@ if ($LASTEXITCODE -ne 0) { throw 'report-worker /health failed.' }
 foreach ($probe in @(
         @{ Name = 'anonymous'; Header = @() },
         @{ Name = 'forged token'; Header = @('-H', 'Authorization: Bearer v4.public.forged') })) {
-    $status = & docker compose @compose exec -T gateway-api curl --silent --output /dev/null `
-        --write-out '%{http_code}' @($probe.Header) http://localhost:8080/api/v1/platform/organizations
-    if ($status -ne '401') { throw "Platform route with $($probe.Name) returned $status, expected 401." }
+    foreach ($path in @('organizations', 'overview', 'audit')) {
+        $status = & docker compose @compose exec -T gateway-api curl --silent --output /dev/null `
+            --write-out '%{http_code}' @($probe.Header) "http://localhost:8080/api/v1/platform/$path"
+        if ($status -ne '401') { throw "Platform /$path with $($probe.Name) returned $status, expected 401." }
+    }
 }
 Write-Host 'Platform routes reject non-admin callers'
 

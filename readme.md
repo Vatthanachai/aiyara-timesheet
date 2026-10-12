@@ -156,7 +156,12 @@ with `POST /api/v1/platform/organizations`
 (`{"name":"...","slug":"...","adminEmail":"..."}`, Platform Admin Bearer token);
 the creation is audited and returns no onboarding key. Public self-signup keeps
 using `POST /api/v1/tenants`. A Platform Admin account cannot join a customer
-organization, and the bootstrap email must not already belong to one. `PUT /api/v1/auth/tenants/{tenantId}/password-policy` requires
+organization, and the bootstrap email must not already belong to one. The
+SysAdmin console (`/sys-admin`) reads `GET /api/v1/platform/overview`,
+`GET /api/v1/platform/organizations/{tenantId}`, and
+`GET /api/v1/platform/audit` (filters `tenantId`, `actor`, `action`, `fromUtc`,
+`toUtc`, `page`, `pageSize`). The audit log records every organization change
+and every Platform Admin sign-in, including failed attempts. `PUT /api/v1/auth/tenants/{tenantId}/password-policy` requires
 an active Tenant Admin Bearer token. A stricter policy forces a password change
 before protected APIs accept new access tokens. A restricted login token can
 call `POST /api/v1/auth/password/change` with
