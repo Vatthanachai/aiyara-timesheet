@@ -1,6 +1,6 @@
 # Platform Organization Management Plan
 
-> Approved 7 October 2026. Implementation branch: `feature/sysadmin-organization-lifecycle`.
+> Approved 7 October 2026. Implementation branch `feature/sysadmin-organization-lifecycle`, merged to `develop` as `75bbc61`; implemented in full, no open gap remains.
 
 ## Implementation Progress
 
@@ -22,12 +22,14 @@ Give Platform Admins a secure way to manage tenant organizations across the plat
 - Record actor, target tenant, timestamp, reason where supplied, and before/after values for administrative changes.
 - Keep Platform Admin authorization and tenant targeting on the server. A client-provided tenant ID is only a target identifier and never establishes tenant scope.
 
-## Current Gap
+## Gap Closed (12 October 2026)
 
-- `Tenant` has no lifecycle status.
-- `PlatformOrganizationEndpoints` exposes only organization listing. Creation uses the existing onboarding route; activation resend uses the existing auth route.
-- The SysAdmin page has no edit, administrator-management, or suspend/reactivate controls.
-- Login and refresh must be checked against a tenant's lifecycle state. Existing sessions must stop working promptly after suspension.
+This section originally listed the pre-implementation gap; every item is now closed on `develop`:
+
+- `Tenant` now has `TenantStatus` (`Active`/`Suspended`) with a safe `Active` default for pre-existing tenants (`Aiyara.Identities.Models/Tenancy/Tenant.cs`).
+- The former `PlatformOrganizationEndpoints` listing-only surface is now `PlatformOrganizationsController`: list, update name/slug, suspend/reactivate (`PUT .../status`), invite administrator, and resend administrator activation.
+- The SysAdmin page (`src/Frontend/app/app/pages/sys-admin/organizations.vue`) has edit, administrator-management, and suspend/reactivate controls, covered by a dedicated Playwright test (`session.spec.ts`: "platform admin can manage organization details, administrators, and lifecycle").
+- `AuthenticationService` checks `tenant.Status != TenantStatus.Active` before activation, login, refresh, password reset, and policy changes, so a suspended tenant's login/refresh/activation calls fail immediately rather than only on next token validation.
 
 ## Delivery Plan
 
