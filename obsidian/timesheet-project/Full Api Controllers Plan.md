@@ -1,6 +1,6 @@
 # Full API Controllers Plan
 
-> Agreed 7 October 2026. Implementation branch: `feature/full-api-controllers`.
+> Agreed 7 October 2026. Implementation branch: `feature/full-api-controllers`, merged to `develop`.
 
 ## Progress
 
@@ -10,7 +10,7 @@
 - WeatherForecast templates removed. Phase 1–4 smoke scripts and Phase 3/4 HTTP tests updated for envelopes.
 - Validation: solution build passed; all 41 .NET tests passed; production builds passed for Shell and all four remotes; `git diff --check` passed. Docker Compose configuration passed. The Phase 5 stack was rebuilt and deployed; all application containers report healthy, `http://localhost:3000/` and gateway health return 200. The separate `aiyara-maildev` stack remains healthy at `http://localhost:8080`; its API token returns 200 and the requested SMTP account authenticated successfully on port 1025. Notifications API is configured to use that SMTP endpoint through `host.docker.internal`.
 - The local deployment settings are in the ignored `.env`; no MailDev credentials were added to tracked files. The requested Vue Font Awesome wrapper is installed in the Shell package and its production build passed.
-- Remaining before merge: review OpenAPI response metadata and final diff, then record the primary validation summary. Do not merge until these pass.
+- Follow-up on `fix/openapi-response-metadata`, 12 October 2026: the merge went in before the noted OpenAPI response metadata review happened. Every business controller action across Gateway, Identity, Timesheet, Report, and Notification (internal routes included) now carries `[ProducesResponseType]` for its real `ServiceOkResponse<T>`/`ServiceFileResponse` success shape and the specific `ServiceErrorResponse` status codes its code path can produce; `BaseController` carries the global 500 shape so every derived action inherits it. Solution build passed (32 projects, 0 errors, 71 warnings — unchanged from baseline) and all 51 tests passed. This closes the item; nothing is open on this plan.
 
 ## Scope
 
