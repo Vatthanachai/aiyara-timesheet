@@ -1,6 +1,6 @@
 param(
     [string]$GatewayUrl = 'http://127.0.0.1:8081',
-    [string]$MailDevUrl = 'http://127.0.0.1:1081',
+    [string]$MailDevUrl = 'http://127.0.0.1:8080',
     [string]$BootstrapEmail = ''
 )
 
@@ -17,10 +17,23 @@ function Expect-Status($response, [int]$status, [string]$step) {
     }
 }
 
+function Assert-MailDevShape($messages) {
+    # A different local service can already own the MailDev host port (the
+    # repo's own `maildev` Compose profile conflicts with an externally run
+    # MailDev-compatible instance on the same default ports; see the
+    # developer runbook). That wrong service usually still answers HTTP 200,
+    # so without this check the loop below just retries until it times out
+    # with a misleading "email was not delivered" - this fails fast instead.
+    if ($messages.Count -gt 0 -and -not ($messages[0].PSObject.Properties.Name -contains 'subject')) {
+        throw "MailDevUrl '$MailDevUrl' did not return MailDev's email list API (unexpected response shape). A different local service may own this host port - pass the correct -MailDevUrl, or stop whatever else is bound to it."
+    }
+}
+
 function Get-Code([string]$email, [string]$subject) {
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         $mailResponse = Invoke-RestMethod -Uri "$MailDevUrl/email"
         $messages = @($mailResponse)
+        if ($attempt -eq 0) { Assert-MailDevShape $messages }
         $message = $messages | Where-Object {
             ($_.subject -eq $subject) -and ($_.to[0].address -eq $email)
         } | Select-Object -Last 1

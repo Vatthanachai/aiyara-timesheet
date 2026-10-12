@@ -121,7 +121,12 @@ the complete sequence.
 5. If MailDev is unavailable, confirm an SMTP service is listening at the
    configured `SMTP_HOST` and `SMTP_PORT`, and that the test script's
    `-MailDevUrl` matches its web port. Avoid starting the optional MailDev
-   profile when another instance owns those host ports.
+   profile when another instance owns those host ports (`docker ps` shows
+   what is actually bound). If `tests/phase2/3/4/Smoke.ps1` throws
+   "did not return MailDev's email list API", something else (commonly an
+   unrelated local tool) answered on the configured port instead of MailDev —
+   pass the correct `-MailDevUrl`, or stop the conflicting service, rather
+   than re-running the same command.
 6. If a messaging or gRPC contract changes, update the source in
    `src/Backend/contracts/Aiyara.Timesheet.Contracts` and its consuming
    producer/consumer tests before rebuilding.

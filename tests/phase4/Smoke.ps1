@@ -27,10 +27,24 @@ function Expect($response, [int]$status, [string]$step) {
     }
 }
 
+function Assert-MailDevShape($messages) {
+    # A different local service can already own the MailDev host port (the
+    # repo's own `maildev` Compose profile conflicts with an externally run
+    # MailDev-compatible instance on the same default ports; see the
+    # developer runbook). That wrong service usually still answers HTTP 200,
+    # so without this check the loop below just retries until it times out
+    # with a misleading "email was not delivered" - this fails fast instead.
+    if ($messages.Count -gt 0 -and -not ($messages[0].PSObject.Properties.Name -contains 'subject')) {
+        throw "MailDevUrl '$MailDevUrl' did not return MailDev's email list API (unexpected response shape). A different local service may own this host port - pass the correct -MailDevUrl, or stop whatever else is bound to it."
+    }
+}
+
 function ActivationCode([string]$email) {
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         $mailResponse = Invoke-WebRequest -Uri "$MailDevUrl/email" -UseBasicParsing
-        $messages = @($mailResponse.Content | ConvertFrom-Json)
+        try { $messages = @($mailResponse.Content | ConvertFrom-Json) }
+        catch { throw "MailDevUrl '$MailDevUrl' did not return valid JSON (a different local service may own this host port): $($_.Exception.Message)" }
+        if ($attempt -eq 0) { Assert-MailDevShape $messages }
         $message = $messages | Where-Object {
             $_.subject -eq 'Activate your Aiyara Timesheet account' -and
             $_.to[0].address -eq $email
@@ -121,7 +135,9 @@ if ([Convert]::ToBase64String($downloadSigned) -ne [Convert]::ToBase64String($si
 $readyEmail = $false
 for ($attempt = 0; $attempt -lt 30; $attempt++) {
     $mailResponse = Invoke-WebRequest -Uri "$MailDevUrl/email" -UseBasicParsing
-    $messages = @($mailResponse.Content | ConvertFrom-Json)
+    try { $messages = @($mailResponse.Content | ConvertFrom-Json) }
+    catch { throw "MailDevUrl '$MailDevUrl' did not return valid JSON (a different local service may own this host port): $($_.Exception.Message)" }
+    if ($attempt -eq 0) { Assert-MailDevShape $messages }
     if ($messages | Where-Object {
         $_.subject -like '*report ready*' -and $_.to[0].address -eq $adminEmail
     }) { $readyEmail = $true; break }

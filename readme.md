@@ -170,10 +170,15 @@ password, token, activation, session, policy and cross-tenant revocation tests.
 With Compose and MailDev running, `pwsh -File tests/phase2/Smoke.ps1` exercises
 registration, invited-member activation, email delivery, login, refresh-token
 replay, logout, reset, and forced policy migration through Gateway. Its MailDev
-URL defaults to `http://127.0.0.1:1081` to avoid the common local 8080 conflict;
-pass `-MailDevUrl http://127.0.0.1:8080` for the default Compose profile.
-Pass `-BootstrapEmail address@example.test` to verify the optional Platform
-Admin bootstrap message without displaying its one-time password.
+URL (and phase3/phase4's) defaults to `http://127.0.0.1:8080`, matching the
+Compose `maildev` profile's own default web port; pass `-MailDevUrl` with the
+actual port if a different local MailDev-compatible instance owns it (see
+Troubleshooting). All three phase scripts fail immediately with a named-port
+diagnostic, instead of the generic "email was not delivered", when the
+configured MailDev URL answers but the response isn't shaped like MailDev's
+email list API. Pass `-BootstrapEmail address@example.test` to verify the
+optional Platform Admin bootstrap message without displaying its one-time
+password.
 
 ## Phase 3 timesheet core
 
