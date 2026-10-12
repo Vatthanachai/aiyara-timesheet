@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
 
 type Profile = {
   id: string
@@ -15,7 +16,7 @@ const token = ref('')
 const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
-const locale = ref<'th' | 'en'>('th')
+const locale = ref<Locale>('th')
 const profile = reactive({ firstName: '', lastName: '', photoUrl: '' as string | null, jobTitle: '' })
 const email = ref('')
 const photoSource = ref('')
@@ -32,7 +33,7 @@ const fullName = computed(() => [profile.firstName, profile.lastName].filter(Boo
 const initials = computed(() => [profile.firstName, profile.lastName]
   .filter(Boolean).map(name => name.trim()[0]?.toUpperCase()).join('') || 'A')
 const avatarSource = computed(() => selectedPreview.value || photoSource.value)
-const copy = computed(() => locale.value === 'th' ? {
+const copy = useLocaleText(locale, { th: {
   title: 'ตั้งค่าโปรไฟล์', subtitle: 'จัดการข้อมูลส่วนตัวและรูปภาพที่ใช้ในระบบ',
   signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell เพื่อแก้ไขโปรไฟล์',
   photoTitle: 'รูปโปรไฟล์', photoHelp: 'ใช้ภาพ JPEG, PNG หรือ WebP ขนาดไม่เกิน 5 MB',
@@ -47,7 +48,7 @@ const copy = computed(() => locale.value === 'th' ? {
   dragHint: 'หรือลากรูปภาพมาวางที่นี่',
   firstNamePlaceholder: 'ระบุชื่อของคุณ', lastNamePlaceholder: 'ระบุนามสกุลของคุณ',
   jobTitlePlaceholder: 'เช่น ผู้จัดการโครงการ'
-} : {
+}, en: {
   title: 'Profile settings', subtitle: 'Manage your personal details and the photo used across Aiyara.',
   signIn: 'Please sign in through Aiyara Shell to edit your profile.',
   photoTitle: 'Profile photo', photoHelp: 'JPEG, PNG, or WebP. Up to 5 MB.',
@@ -62,7 +63,7 @@ const copy = computed(() => locale.value === 'th' ? {
   dragHint: 'or drag an image here',
   firstNamePlaceholder: 'Enter your first name', lastNamePlaceholder: 'Enter your last name',
   jobTitlePlaceholder: 'For example, Project manager'
-})
+} })
 
 async function authenticatedFetch(path: string, options: RequestInit = {}) {
   return withRemoteRefresh(async accessToken => {
@@ -111,7 +112,7 @@ function onMessage(event: MessageEvent) {
   const sessionChanged = token.value !== nextToken
   token.value = nextToken
   gateway.value = event.data.gatewayUrl || gateway.value
-  locale.value = event.data.locale === 'en' ? 'en' : 'th'
+  locale.value = readSessionLocale(event.data)
   if (sessionChanged && token.value) void load()
   if (!token.value) {
     email.value = ''

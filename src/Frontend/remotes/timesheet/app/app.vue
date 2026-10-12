@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
 
 type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null }
 type Task = { id: string; name: string; status: string; projectId: string | null; categoryId: string | null }
@@ -11,7 +12,7 @@ const token = ref('')
 const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
-const locale = ref<'th' | 'en'>('th')
+const locale = ref<Locale>('th')
 const month = ref(new Date().toISOString().slice(0, 7))
 const entries = ref<Entry[]>([])
 const tasks = ref<Task[]>([])
@@ -56,31 +57,37 @@ const durationPreview = computed(() => {
   const duration = endHour * 60 + endMinute - (startHour * 60 + startMinute)
   return duration > 0 ? `${(duration / 60).toFixed(2)} ${text.value.duration}` : ''
 })
-const text = computed(() => locale.value === 'th' ? {
-  title: 'บันทึกเวลาทำงาน', month: 'เดือน', task: 'งาน', date: 'วันที่', start: 'เริ่ม', end: 'สิ้นสุด', duration: 'ชั่วโมง', detail: 'รายละเอียด', notes: 'หมายเหตุ', project: 'โครงการ', category: 'หมวดหมู่', save: 'บันทึก', cancel: 'ยกเลิก', edit: 'แก้ไข', remove: 'ลบ', add: 'เพิ่มรายการ', tasks: 'งานส่วนตัว', leaves: 'วันลา', kind: 'ประเภท', readOnly: 'เดือนที่ผ่านมาอ่านได้อย่างเดียว', noEntries: 'ยังไม่มีรายการ', status: 'สถานะ', drop: 'ลากงานมาที่แบบฟอร์มเพื่อเริ่มบันทึก', chooseDay: 'เลือกวัน', use: 'ใช้', todo: 'ต้องทำ', doing: 'กำลังทำ', done: 'เสร็จ', annual: 'พักร้อน', sick: 'ลาป่วย', other: 'อื่น ๆ', holidays: 'วันหยุด', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell'
-} : {
-  title: 'Time entries', month: 'Month', task: 'Task', date: 'Date', start: 'Start', end: 'End', duration: 'Hours', detail: 'Detail', notes: 'Notes', project: 'Project', category: 'Category', save: 'Save', cancel: 'Cancel', edit: 'Edit', remove: 'Delete', add: 'Add entry', tasks: 'Personal tasks', leaves: 'Leave', kind: 'Kind', readOnly: 'Past months are read only', noEntries: 'No entries yet', status: 'Status', drop: 'Drag a task here to start an entry', chooseDay: 'Choose a day', use: 'Use', todo: 'To do', doing: 'Doing', done: 'Done', annual: 'Annual', sick: 'Sick', other: 'Other', holidays: 'Holidays', signIn: 'Please sign in through Aiyara Shell'
-})
-const labels = computed(() => locale.value === 'th' ? {
+const text = useLocaleText(locale, { th: {
+  title: 'บันทึกเวลาทำงาน', month: 'เดือน', task: 'งาน', date: 'วันที่', start: 'เริ่ม', end: 'สิ้นสุด', duration: 'ชั่วโมง', detail: 'รายละเอียด', notes: 'หมายเหตุ', project: 'โครงการ', category: 'หมวดหมู่', save: 'บันทึก', cancel: 'ยกเลิก', edit: 'แก้ไข', remove: 'ลบ', add: 'เพิ่มรายการ', tasks: 'งานส่วนตัว', leaves: 'วันลา', kind: 'ประเภท', readOnly: 'เดือนที่ผ่านมาอ่านได้อย่างเดียว', noEntries: 'ยังไม่มีรายการ', status: 'สถานะ', drop: 'ลากงานมาที่แบบฟอร์มเพื่อเริ่มบันทึก', chooseDay: 'เลือกวัน', use: 'ใช้', todo: 'ต้องทำ', doing: 'กำลังทำ', done: 'เสร็จ', annual: 'พักร้อน', sick: 'ลาป่วย', other: 'อื่น ๆ', holidays: 'วันหยุด', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
+  subtitle: 'บันทึกและติดตามเวลาทำงานของคุณในที่เดียว', saved: 'บันทึกแล้ว', confirmDeleteEntry: 'ลบรายการนี้?',
+  startFromSaved: 'เริ่มจากงานที่บันทึกไว้', taskHint: 'เพิ่มงานที่ทำบ่อยไว้ใช้ซ้ำได้',
+  planTimeOff: 'วางแผนวันหยุด', noLeavePlanned: 'ยังไม่มีวันลาในเดือนนี้'
+}, en: {
+  title: 'Time entries', month: 'Month', task: 'Task', date: 'Date', start: 'Start', end: 'End', duration: 'Hours', detail: 'Detail', notes: 'Notes', project: 'Project', category: 'Category', save: 'Save', cancel: 'Cancel', edit: 'Edit', remove: 'Delete', add: 'Add entry', tasks: 'Personal tasks', leaves: 'Leave', kind: 'Kind', readOnly: 'Past months are read only', noEntries: 'No entries yet', status: 'Status', drop: 'Drag a task here to start an entry', chooseDay: 'Choose a day', use: 'Use', todo: 'To do', doing: 'Doing', done: 'Done', annual: 'Annual', sick: 'Sick', other: 'Other', holidays: 'Holidays', signIn: 'Please sign in through Aiyara Shell',
+  subtitle: 'Log and review your work time in one place.', saved: 'Saved', confirmDeleteEntry: 'Delete this entry?',
+  startFromSaved: 'Start from a saved task', taskHint: 'Save tasks here to reuse them.',
+  planTimeOff: 'Plan time off', noLeavePlanned: 'No leave planned this month.'
+} })
+const labels = useLocaleText(locale, { th: {
   hoursLogged: 'ชั่วโมงที่บันทึก', daysTracked: 'วันที่มีรายการ', leaveDays: 'วันลา',
   previousMonth: 'เดือนก่อนหน้า', nextMonth: 'เดือนถัดไป', selectedDate: 'วันที่เลือก',
   estimate: 'รวมเวลารายการนี้', entryList: 'รายการเวลาทำงาน', allMonth: 'สรุปของเดือน',
   taskPlaceholder: 'เช่น ประชุมทีม ออกแบบหน้าจอ', detailPlaceholder: 'เพิ่มรายละเอียดที่ช่วยให้กลับมาทบทวนได้',
   notesPlaceholder: 'บันทึกข้อมูลเพิ่มเติม (ไม่บังคับ)', emptyTitle: 'ยังไม่มีเวลาที่บันทึก',
   emptyHint: 'เริ่มเพิ่มรายการแรกของเดือนนี้ได้จากแบบฟอร์มด้านบน'
-} : {
+}, en: {
   hoursLogged: 'Hours logged', daysTracked: 'Days with entries', leaveDays: 'Leave days',
   previousMonth: 'Previous month', nextMonth: 'Next month', selectedDate: 'Selected date',
   estimate: 'Entry total', entryList: 'Time entries', allMonth: 'Month summary',
   taskPlaceholder: 'e.g. Team meeting, design review', detailPlaceholder: 'Add a detail that will help later',
   notesPlaceholder: 'Extra notes (optional)', emptyTitle: 'No time logged yet',
   emptyHint: 'Add your first entry for this month using the form above'
-})
+} })
 function onSessionMessage(event: MessageEvent) {
   if (event.source !== window.parent || event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.session') return
   token.value = event.data.token || ''
   gateway.value = event.data.gatewayUrl || gateway.value
-  locale.value = event.data.locale === 'en' ? 'en' : 'th'
+  locale.value = readSessionLocale(event.data)
   if (token.value) load()
 }
 onMounted(() => {
@@ -153,12 +160,12 @@ async function saveEntry() {
     await api(`/entries${editingId.value ? `/${editingId.value}` : ''}`, { method: editingId.value ? 'PUT' : 'POST',
       body: { ...form, startTime: `${form.startTime}:00`, endTime: `${form.endTime}:00`,
         projectId: form.projectId || null, categoryId: form.categoryId || null, personalTaskId: form.personalTaskId || null } })
-    notice.value = locale.value === 'th' ? 'บันทึกแล้ว' : 'Saved'
+    notice.value = text.value.saved
     resetForm(savedDate); await load()
   } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function removeEntry(id: string) {
-  if (!canEdit.value || !confirm(locale.value === 'th' ? 'ลบรายการนี้?' : 'Delete this entry?')) return
+  if (!canEdit.value || !confirm(text.value.confirmDeleteEntry)) return
   try { await api(`/entries/${id}`, { method: 'DELETE' }); await load() }
   catch (cause) { error.value = safeError(cause, locale.value) }
 }
@@ -201,7 +208,7 @@ async function updateLeave(leave: Leave) {
     <p v-if="!token" class="sign-in-card">{{ text.signIn }}</p>
     <template v-else>
       <header class="page-heading">
-        <div><span class="eyebrow">AIYARA · WORKSPACE</span><h1>{{ text.title }}</h1><p>{{ locale === 'th' ? 'บันทึกและติดตามเวลาทำงานของคุณในที่เดียว' : 'Log and review your work time in one place.' }}</p></div>
+        <div><span class="eyebrow">AIYARA · WORKSPACE</span><h1>{{ text.title }}</h1><p>{{ text.subtitle }}</p></div>
         <div class="month-control" :aria-label="text.month">
           <button class="icon-button" type="button" :aria-label="labels.previousMonth" @click="moveMonth(-1)">‹</button>
           <label class="month-picker"><span>{{ text.month }}</span><input v-model="month" type="month" /></label>
@@ -249,9 +256,9 @@ async function updateLeave(leave: Leave) {
         </div>
 
         <aside class="panel task-panel">
-          <div class="panel-heading"><div><span class="eyebrow">{{ text.tasks }}</span><h2>{{ locale === 'th' ? 'เริ่มจากงานที่บันทึกไว้' : 'Start from a saved task' }}</h2></div><span class="count-badge">{{ tasks.length }}</span></div>
+          <div class="panel-heading"><div><span class="eyebrow">{{ text.tasks }}</span><h2>{{ text.startFromSaved }}</h2></div><span class="count-badge">{{ tasks.length }}</span></div>
           <form class="add-task-form" @submit.prevent="addTask"><input v-model="taskName" :aria-label="text.task" maxlength="200" :placeholder="labels.taskPlaceholder" /><button class="icon-button add-task-button" type="submit" :aria-label="text.add">＋</button></form>
-          <ul class="task-list"><li v-for="task in tasks" :key="task.id" draggable="true" @dragstart="dragTask($event, { name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })"><span class="task-grip" aria-hidden="true">⠿</span><input v-model="task.name" :aria-label="text.task" maxlength="200" /><button class="use-task-button" type="button" @click="prefill({ name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })">{{ text.use }}</button><details class="task-more"><summary :aria-label="text.status">···</summary><div class="task-menu"><label>{{ text.status }}<select :value="task.status" @change="setStatus(task, ($event.target as HTMLSelectElement).value)"><option value="todo">{{ text.todo }}</option><option value="doing">{{ text.doing }}</option><option value="done">{{ text.done }}</option></select></label><button type="button" @click="renameTask(task)">{{ text.save }}</button><button type="button" @click="removeTask(task.id)">{{ text.remove }}</button></div></details></li><li v-if="!tasks.length" class="empty-state">{{ locale === 'th' ? 'เพิ่มงานที่ทำบ่อยไว้ใช้ซ้ำได้' : 'Save tasks here to reuse them.' }}</li></ul>
+          <ul class="task-list"><li v-for="task in tasks" :key="task.id" draggable="true" @dragstart="dragTask($event, { name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })"><span class="task-grip" aria-hidden="true">⠿</span><input v-model="task.name" :aria-label="text.task" maxlength="200" /><button class="use-task-button" type="button" @click="prefill({ name: task.name, projectId: task.projectId, categoryId: task.categoryId, personalTaskId: task.id })">{{ text.use }}</button><details class="task-more"><summary :aria-label="text.status">···</summary><div class="task-menu"><label>{{ text.status }}<select :value="task.status" @change="setStatus(task, ($event.target as HTMLSelectElement).value)"><option value="todo">{{ text.todo }}</option><option value="doing">{{ text.doing }}</option><option value="done">{{ text.done }}</option></select></label><button type="button" @click="renameTask(task)">{{ text.save }}</button><button type="button" @click="removeTask(task.id)">{{ text.remove }}</button></div></details></li><li v-if="!tasks.length" class="empty-state">{{ text.taskHint }}</li></ul>
           <div v-if="catalog.projects.length" class="quick-picks"><h3>{{ text.project }}</h3><button v-for="project in catalog.projects" :key="project.id" type="button" draggable="true" @dragstart="dragTask($event, { name: project.name, projectId: project.id })" @click="prefill({ name: project.name, projectId: project.id })">{{ project.name }}</button></div>
           <div v-if="catalog.categories.length" class="quick-picks"><h3>{{ text.category }}</h3><button v-for="category in catalog.categories" :key="category.id" type="button" draggable="true" @dragstart="dragTask($event, { name: category.name, categoryId: category.id })" @click="prefill({ name: category.name, categoryId: category.id })">{{ category.name }}</button></div>
         </aside>
@@ -266,9 +273,9 @@ async function updateLeave(leave: Leave) {
       </section>
 
       <div class="support-grid">
-        <section class="panel support-panel"><div class="panel-heading"><div><span class="eyebrow">{{ text.leaves }}</span><h2>{{ locale === 'th' ? 'วางแผนวันหยุด' : 'Plan time off' }}</h2></div></div>
+        <section class="panel support-panel"><div class="panel-heading"><div><span class="eyebrow">{{ text.leaves }}</span><h2>{{ text.planTimeOff }}</h2></div></div>
           <form v-if="canEdit" class="inline-form" @submit.prevent="addLeave"><label>{{ text.date }}<input v-model="leaveDate" type="date" :aria-label="text.date" :min="monthStart" :max="monthEnd" /></label><label>{{ text.kind }}<select v-model="leaveKind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select></label><button class="primary-button" type="submit">{{ text.add }}</button></form>
-          <ul class="simple-list"><li v-for="leave in leaves" :key="leave.id"><template v-if="canEdit"><input v-model="leave.date" type="date" :aria-label="text.date" :min="monthStart" :max="monthEnd" /><select v-model="leave.kind" :aria-label="text.kind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select><button class="quiet-button" type="button" @click="updateLeave(leave)">{{ text.save }}</button><button class="danger-button" type="button" @click="removeLeave(leave.id)">{{ text.remove }}</button></template><template v-else><time :datetime="leave.date">{{ leave.date }}</time><span>{{ leave.kind }}</span></template></li><li v-if="!leaves.length" class="empty-state">{{ locale === 'th' ? 'ยังไม่มีวันลาในเดือนนี้' : 'No leave planned this month.' }}</li></ul>
+          <ul class="simple-list"><li v-for="leave in leaves" :key="leave.id"><template v-if="canEdit"><input v-model="leave.date" type="date" :aria-label="text.date" :min="monthStart" :max="monthEnd" /><select v-model="leave.kind" :aria-label="text.kind"><option value="annual">{{ text.annual }}</option><option value="sick">{{ text.sick }}</option><option value="other">{{ text.other }}</option></select><button class="quiet-button" type="button" @click="updateLeave(leave)">{{ text.save }}</button><button class="danger-button" type="button" @click="removeLeave(leave.id)">{{ text.remove }}</button></template><template v-else><time :datetime="leave.date">{{ leave.date }}</time><span>{{ leave.kind }}</span></template></li><li v-if="!leaves.length" class="empty-state">{{ text.noLeavePlanned }}</li></ul>
           <div v-if="catalog.holidays.some(x => x.date.startsWith(month))" class="holiday-list"><h3>{{ text.holidays }}</h3><p v-for="holiday in catalog.holidays.filter(x => x.date.startsWith(month))" :key="holiday.id"><time :datetime="holiday.date">{{ holiday.date }}</time><span>{{ holiday.name }}</span></p></div>
         </section>
       </div>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
 type Catalog = { projects: { id: string; name: string }[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[] }
 const token = ref('')
 const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
-const locale = ref<'th' | 'en'>('th')
+const locale = ref<Locale>('th')
 const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [] })
 const projectName = ref('')
 const categoryName = ref('')
@@ -20,12 +21,14 @@ const isLocking = ref(false)
 const policy = reactive({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
 const tenantId = ref('')
 const lockMonth = ref(new Date().toISOString().slice(0, 7))
-const copy = computed(() => locale.value === 'th' ? {
+const copy = useLocaleText(locale, { th: {
   title: 'จัดการองค์กร', subtitle: 'จัดระเบียบโครงการ หมวดหมู่ วันหยุด และข้อกำหนดการใช้งานในที่เดียว', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
+  eyebrow: 'WORKSPACE SETTINGS',
   projects: 'โครงการ', projectName: 'ชื่อโครงการ', categories: 'หมวดหมู่',
   categoryName: 'ชื่อหมวดหมู่', holidays: 'วันหยุด', holidayName: 'ชื่อวันหยุด',
   date: 'วันที่', add: 'เพิ่มรายการ', save: 'บันทึก', delete: 'ลบ', policy: 'นโยบายรหัสผ่าน',
   tenantId: 'รหัสองค์กร', minimumLength: 'ความยาวขั้นต่ำ', expiryDays: 'อายุรหัสผ่าน (วัน)',
+  lengthUnit: 'ตัวอักษร', expiryUnit: 'วัน',
   uppercase: 'ตัวพิมพ์ใหญ่', lowercase: 'ตัวพิมพ์เล็ก', digit: 'ตัวเลข', symbol: 'สัญลักษณ์',
   lockMonth: 'ปิดรอบเดือน', lock: 'ปิดรอบเดือน', loadedError: 'โหลดข้อมูลไม่สำเร็จ',
   saveError: 'บันทึกไม่สำเร็จ (ต้องเป็นผู้ดูแล)', deleteError: 'ลบไม่สำเร็จ',
@@ -37,12 +40,14 @@ const copy = computed(() => locale.value === 'th' ? {
   countProjects: 'โครงการทั้งหมด', countCategories: 'หมวดหมู่ทั้งหมด', countHolidays: 'วันหยุดที่กำหนด',
   profile: 'องค์กรปัจจุบัน', passwordRequirements: 'ข้อกำหนดรหัสผ่าน', passwordLength: 'จำนวนตัวอักษร',
   savePolicy: 'บันทึกนโยบาย', retry: 'ลองโหลดอีกครั้ง'
-} : {
+}, en: {
   title: 'Administration', subtitle: 'Manage projects, categories, holidays and access requirements in one place.', signIn: 'Please sign in through Aiyara Shell',
+  eyebrow: 'WORKSPACE SETTINGS',
   projects: 'Projects', projectName: 'Project name', categories: 'Categories',
   categoryName: 'Category name', holidays: 'Holidays', holidayName: 'Holiday name',
   date: 'Date', add: 'Add item', save: 'Save', delete: 'Delete', policy: 'Password policy',
   tenantId: 'Tenant ID', minimumLength: 'Minimum length', expiryDays: 'Expiry days',
+  lengthUnit: 'characters', expiryUnit: 'days',
   uppercase: 'Uppercase', lowercase: 'Lowercase', digit: 'Digit', symbol: 'Symbol',
   lockMonth: 'Close timesheet month', lock: 'Close month', loadedError: 'Could not load settings',
   saveError: 'Save failed (admin role required)', deleteError: 'Delete failed',
@@ -54,13 +59,13 @@ const copy = computed(() => locale.value === 'th' ? {
   countProjects: 'Projects', countCategories: 'Categories', countHolidays: 'Scheduled holidays',
   profile: 'Current organization', passwordRequirements: 'Password requirements', passwordLength: 'Character count',
   savePolicy: 'Save policy', retry: 'Try loading again'
-})
+} })
 onMounted(() => {
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.session') return
     token.value = event.data.token || ''
     gateway.value = event.data.gatewayUrl || gateway.value
-    locale.value = event.data.locale === 'en' ? 'en' : 'th'
+    locale.value = readSessionLocale(event.data)
     tenantId.value = event.data.tenantId || ''
     if (token.value) load()
   })
@@ -122,7 +127,7 @@ async function lock() {
 <template>
   <main class="admin-page">
     <header class="page-heading">
-      <div><p class="eyebrow">{{ locale === 'th' ? 'WORKSPACE SETTINGS' : 'WORKSPACE SETTINGS' }}</p><h1>{{ copy.title }}</h1><p class="subtitle">{{ copy.subtitle }}</p></div>
+      <div><p class="eyebrow">{{ copy.eyebrow }}</p><h1>{{ copy.title }}</h1><p class="subtitle">{{ copy.subtitle }}</p></div>
       <div v-if="token && tenantId" class="tenant-pill"><span class="tenant-dot"></span><span>{{ copy.profile }}</span><strong>{{ tenantId }}</strong></div>
     </header>
     <div v-if="!token" class="empty-state"><span class="empty-icon">⌑</span><h2>{{ copy.signIn }}</h2></div>
@@ -141,7 +146,7 @@ async function lock() {
         <section class="panel panel-wide"><div class="panel-heading"><span class="panel-icon orange">▣</span><div><h2>{{ copy.holidays }}</h2><p>{{ copy.holidayHint }}</p></div></div><form class="add-form holiday-form" @submit.prevent="add('holidays')"><label><span>{{ copy.date }}</span><input v-model="holidayDate" required type="date" :aria-label="copy.date" /></label><label class="holiday-name"><span>{{ copy.holidayName }}</span><input v-model="holidayName" required maxlength="200" :placeholder="copy.holidayName" /></label><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.holidays.length" class="item-list"><li v-for="item in catalog.holidays" :key="item.id" class="item-row holiday-row"><input v-model="item.date" type="date" :aria-label="copy.date" /><input v-model="item.name" :aria-label="copy.holidayName" /><div class="row-actions"><button class="button button-subtle" @click="update('holidays', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('holidays', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
       </div>
       <div class="settings-grid">
-        <section class="panel policy-panel"><div class="panel-heading"><span class="panel-icon green">⌑</span><div><h2>{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="8" max="128" required /><span>{{ locale === 'th' ? 'ตัวอักษร' : 'characters' }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" required /><span>{{ locale === 'th' ? 'วัน' : 'days' }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
+        <section class="panel policy-panel"><div class="panel-heading"><span class="panel-icon green">⌑</span><div><h2>{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="8" max="128" required /><span>{{ copy.lengthUnit }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" required /><span>{{ copy.expiryUnit }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
         <section class="panel close-panel"><span class="panel-icon orange">◷</span><h2>{{ copy.lockMonth }}</h2><p>{{ copy.lockHint }}</p><form class="close-form" @submit.prevent="lock"><label :aria-label="copy.lockMonth"><input v-model="lockMonth" type="month" required /></label><button class="button button-warning" :disabled="isLocking">{{ isLocking ? copy.loading : copy.lock }}</button></form></section>
       </div>
     </template>
