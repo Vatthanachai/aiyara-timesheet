@@ -16,7 +16,7 @@
 - New accounts, password resets, and the bootstrap Platform Admin use a generated temporary password delivered by email. It is valid for 24 hours and one use; issuing a replacement invalidates the old one.
 - Activation and reset temporary passwords are stored only as SHA-256 challenge hashes. The user supplies a new policy-compliant password when redeeming one. Identity stores the resulting Argon2id PHC string; Notification stores only the delivery outcome, recipient, and template. MailDev is a local-only inbox.
 - The bootstrap Platform Admin account follows the same activation and forced-password-change flow as other accounts. Bootstrap credentials must be supplied through runtime secrets, never committed.
-- Platform Admin manages the platform, Tenant Admin manages only its tenant, and Employee manages only their own profile/timesheet data.
+- Platform Admin manages the platform, Tenant Admin manages only its tenant, and Employee manages only their own profile/timesheet data. Timesheet and Report grant tenant-admin rights (catalog, month lock, every member's reports) only to `TenantAdmin`; a `PlatformAdmin` token is scoped to the platform tenant and is treated like any non-admin there. The Shell shows Platform Admins only Profile and Organizations, shows Administration only to Tenant Admins, and answers a direct `/remote/<id>` visit by a role without access with "Access restricted" instead of loading the remote.
 - New Identity entity IDs use UUIDv8 from `Aiyara.Timesheet.Component.Abstractions`; the generator receives cryptographically random region and shard IDs in the inclusive range 1–9. The fixed Platform Admin tenant ID is a reserved bootstrap ID, not a generated ID.
 
 ## Password Handling

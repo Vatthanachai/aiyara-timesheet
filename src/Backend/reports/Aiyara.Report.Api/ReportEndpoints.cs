@@ -19,7 +19,9 @@ public sealed record RetentionRequest(int Years);
 public sealed record ReportActor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {
     public const string ContextKey = "ValidatedReportActor";
-    public bool IsAdmin => Role is "TenantAdmin" or "PlatformAdmin";
+    // Tenant data is managed only by that tenant's admins; Platform Admins manage
+    // organizations through Identity's platform routes, never tenant settings.
+    public bool IsAdmin => Role is "TenantAdmin";
     public static bool TryRead(HttpContext context, out ReportActor actor)
     {
         actor = context.Items[ContextKey] as ReportActor ?? default!;

@@ -2,11 +2,12 @@
 import { useLocaleText } from '../../../../shared/i18n'
 const route = useRoute()
 const config = useRuntimeConfig()
-const { navigation } = useRemoteNavigation()
+const { navigation, canOpen } = useRemoteNavigation()
 
 const remote = computed(() => navigation.find(item => item.id === route.params.remote))
+const allowed = computed(() => Boolean(remote.value && canOpen(remote.value)))
 const remoteUrl = computed(() => {
-  if (!remote.value) {
+  if (!remote.value || !allowed.value) {
     return undefined
   }
 
@@ -15,8 +16,8 @@ const remoteUrl = computed(() => {
 const { token, tenantId, renew, restore } = useSession()
 const { locale } = useLocale()
 const text = useLocaleText(locale, {
-  th: { signIn: 'กรุณาเข้าสู่ระบบ', goHome: 'กลับหน้าแรก' },
-  en: { signIn: 'Please sign in', goHome: 'Go home' }
+  th: { signIn: 'กรุณาเข้าสู่ระบบ', goHome: 'กลับหน้าแรก', accessRestrictedTitle: 'ไม่มีสิทธิ์เข้าถึง', accessRestrictedBody: 'บัญชีของคุณไม่มีสิทธิ์ใช้งานส่วนนี้' },
+  en: { signIn: 'Please sign in', goHome: 'Go home', accessRestrictedTitle: 'Access restricted', accessRestrictedBody: 'Your account does not have access to this area.' }
 })
 const frame = ref<HTMLIFrameElement | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
@@ -67,7 +68,12 @@ if (!remote.value) {
 </script>
 
 <template>
-  <section v-if="remote && token" class="remote-workspace">
+  <section v-if="remote && token && !allowed" class="remote-delegation" role="alert">
+    <h1>{{ text.accessRestrictedTitle }}</h1>
+    <p>{{ text.accessRestrictedBody }}</p>
+    <NuxtLink to="/">{{ text.goHome }}</NuxtLink>
+  </section>
+  <section v-else-if="remote && token" class="remote-workspace">
     <h1>{{ remote.label[locale] }}</h1>
     <iframe v-if="remoteUrl" ref="frame" :src="remoteUrl" :title="remote.label[locale]" @load="sendSession" />
   </section>

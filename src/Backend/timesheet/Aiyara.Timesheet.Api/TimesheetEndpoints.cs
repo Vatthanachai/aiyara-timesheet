@@ -17,7 +17,9 @@ public sealed record LeaveRequest(DateOnly Date, string Kind, string? Notes);
 public sealed record Actor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {
     public const string ContextKey = "TimesheetValidatedActor";
-    public bool IsAdmin => Role is "TenantAdmin" or "PlatformAdmin";
+    // Tenant data is managed only by that tenant's admins; Platform Admins manage
+    // organizations through Identity's platform routes, never tenant settings.
+    public bool IsAdmin => Role is "TenantAdmin";
 
     public static bool TryRead(HttpContext ctx, out Actor actor)
     {
