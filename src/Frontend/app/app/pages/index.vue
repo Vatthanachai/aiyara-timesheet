@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { safeError } from '../../../shared/api-response'
+import { fieldErrors, safeError } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
 import type { SignInOrganization } from '../composables/useSession'
 const { visibleNavigation } = useRemoteNavigation()
@@ -25,13 +25,18 @@ const email = ref('')
 const password = ref('')
 const organizations = ref<SignInOrganization[]>([])
 const error = ref('')
+const validation = ref<Record<string, string[]>>({})
 const pending = ref(false)
 
 async function submit(action: () => Promise<unknown>) {
   pending.value = true
   error.value = ''
+  validation.value = {}
   try { await action() }
-  catch (cause) { error.value = safeError(cause, locale.value) }
+  catch (cause) {
+    error.value = safeError(cause, locale.value)
+    validation.value = fieldErrors(cause, locale.value)
+  }
   finally { pending.value = false }
 }
 
@@ -55,6 +60,7 @@ function backToSignIn() {
   organizations.value = []
   password.value = ''
   error.value = ''
+  validation.value = {}
 }
 </script>
 
@@ -78,8 +84,14 @@ function backToSignIn() {
 
   <form v-else-if="!token" class="login-card" @submit.prevent="signInByEmail">
     <h2>{{ text.signIn }}</h2>
-    <label>{{ text.email }}<input v-model="email" required type="email" autocomplete="username" /></label>
-    <label>{{ text.password }}<input v-model="password" required type="password" autocomplete="current-password" /></label>
+    <label>{{ text.email }}<input v-model="email" required type="email" autocomplete="username"
+      :aria-invalid="validation.email?.length ? 'true' : undefined"
+      :aria-describedby="validation.email?.length ? 'sign-in-email-error' : undefined" /></label>
+    <small v-if="validation.email?.length" id="sign-in-email-error">{{ validation.email[0] }}</small>
+    <label>{{ text.password }}<input v-model="password" required type="password" autocomplete="current-password"
+      :aria-invalid="validation.password?.length ? 'true' : undefined"
+      :aria-describedby="validation.password?.length ? 'sign-in-password-error' : undefined" /></label>
+    <small v-if="validation.password?.length" id="sign-in-password-error">{{ validation.password[0] }}</small>
     <p v-if="error" role="alert">{{ error }}</p>
     <button class="button" type="submit" :disabled="pending">{{ text.signIn }}</button>
     <NuxtLink to="/signup">{{ text.signUp }}</NuxtLink>
