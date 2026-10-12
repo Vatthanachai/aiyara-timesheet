@@ -8,7 +8,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
-    <ProjectReference Include="..\..\src\Backend\identities\Aiyara.Identities.Servives\Aiyara.Identities.Services.csproj" />
+    <ProjectReference Include="..\..\src\Backend\identities\Aiyara.Identities.Services\Aiyara.Identities.Services.csproj" />
     <ProjectReference Include="..\..\src\Backend\contracts\Aiyara.Timesheet.Contracts\Aiyara.Timesheet.Contracts.csproj" />
   </ItemGroup>
 </Project>

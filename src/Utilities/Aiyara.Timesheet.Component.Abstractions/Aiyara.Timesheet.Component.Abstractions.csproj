@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Aiyara.Timesheet.Componenet.Data\Aiyara.Timesheet.Component.Data.csproj" />
+    <ProjectReference Include="..\Aiyara.Timesheet.Component.Data\Aiyara.Timesheet.Component.Data.csproj" />
   </ItemGroup>
 
 </Project>

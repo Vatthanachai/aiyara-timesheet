@@ -13,8 +13,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.ServiceDefault\Aiyara.Timesheet.ServiceDefault.csproj" />
     <ProjectReference Include="..\Aiyara.Identities.Databases\Aiyara.Identities.Databases.csproj" />
-    <ProjectReference Include="..\Aiyara.Identities.Servives\Aiyara.Identities.Services.csproj" />
-    <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.Componenet.Abstractions\Aiyara.Timesheet.Component.Abstractions.csproj" />
+    <ProjectReference Include="..\Aiyara.Identities.Services\Aiyara.Identities.Services.csproj" />
+    <ProjectReference Include="..\..\..\Utilities\Aiyara.Timesheet.Component.Abstractions\Aiyara.Timesheet.Component.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>
