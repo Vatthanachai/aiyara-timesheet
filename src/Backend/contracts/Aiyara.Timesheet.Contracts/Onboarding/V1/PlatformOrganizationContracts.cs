@@ -27,6 +27,22 @@ public sealed record InvitePlatformOrganizationAdminRequest(string Email);
 
 public sealed record RequestPlatformAdministratorActivationRequest(string Email);
 
+/// <summary>Demotes or removes one tenant administrator, identified by email.</summary>
+public sealed record ChangePlatformOrganizationAdminRequest(string Email, string? Reason);
+
+/// <summary>One Platform Admin. Status is Active, PendingActivation, or Deactivated.</summary>
+public sealed record PlatformAdminRosterEntry(
+    string Email,
+    string FirstName,
+    string LastName,
+    string Status,
+    DateTime CreatedAtUtc,
+    bool IsCurrentUser);
+
+public sealed record InvitePlatformAdminRequest(string Email);
+
+public sealed record SetPlatformAdminStatusRequest(string Email, bool Active, string? Reason);
+
 public sealed record PlatformOrganizationUpdateResult(
     Guid TenantId,
     string OrganizationCode,

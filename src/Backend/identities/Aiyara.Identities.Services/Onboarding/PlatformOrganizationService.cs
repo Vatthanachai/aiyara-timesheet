@@ -260,7 +260,82 @@ public sealed class PlatformOrganizationService(IdentityDbContext db, TenantScop
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task EnsurePlatformAdminAsync(Guid actorAccountId, long sessionVersion,
+    public Task DemoteAdministratorAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
+        ChangePlatformOrganizationAdminRequest request, CancellationToken cancellationToken) =>
+        ChangeAdministratorAsync(tenantId, actorAccountId, actorSessionVersion, request,
+            "administrator.demoted", membership => membership.Role = TenantRole.Employee, cancellationToken);
+
+    public Task RemoveAdministratorAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
+        ChangePlatformOrganizationAdminRequest request, CancellationToken cancellationToken) =>
+        ChangeAdministratorAsync(tenantId, actorAccountId, actorSessionVersion, request,
+            "administrator.removed", membership => membership.Status = MembershipStatus.Deactivated,
+            cancellationToken);
+
+    /// <summary>Demotes or removes one tenant administrator. An organization keeps at least one
+    /// active administrator; the changed account's sessions end everywhere, because its session
+    /// version is account-wide.</summary>
+    private async Task ChangeAdministratorAsync(Guid tenantId, Guid actorAccountId,
+        long actorSessionVersion, ChangePlatformOrganizationAdminRequest request, string action,
+        Action<Membership> change, CancellationToken cancellationToken)
+    {
+        await EnsurePlatformAdminAsync(actorAccountId, actorSessionVersion, cancellationToken);
+        var email = NormalizeEmail(request.Email);
+        var reason = NormalizeReason(request.Reason);
+        await FindManageableTenantAsync(tenantId, cancellationToken);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        tenantScope.TenantId = tenantId;
+        var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
+        var membership = account is null ? null : await db.Memberships.SingleOrDefaultAsync(x =>
+            x.AccountId == account.Id && x.Role == TenantRole.TenantAdmin &&
+            x.Status != MembershipStatus.Deactivated, cancellationToken);
+        if (account is null || membership is null)
+            throw new PlatformOrganizationException(PlatformOrganizationFailure.NotFound);
+        if (membership.Status == MembershipStatus.Active && !await db.Memberships.AnyAsync(x =>
+                x.Id != membership.Id && x.Role == TenantRole.TenantAdmin &&
+                x.Status == MembershipStatus.Active, cancellationToken))
+            throw new PlatformOrganizationException(PlatformOrganizationFailure.LastAdministrator);
+
+        var before = JsonSerializer.Serialize(new
+        {
+            Email = email, Role = membership.Role.ToString(), Status = membership.Status.ToString()
+        });
+        change(membership);
+        AddAudit(tenantId, actorAccountId, action, reason, before, JsonSerializer.Serialize(new
+        {
+            Email = email, Role = membership.Role.ToString(), Status = membership.Status.ToString()
+        }));
+        await EndSessionsAsync(account, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>Bumps the account's session version, revokes its refresh sessions, and publishes
+    /// the new version for every tenant it belongs to. Saves pending changes; callers commit.</summary>
+    internal async Task EndSessionsAsync(Account account, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        account.SessionVersion++;
+        await db.RefreshSessions.IgnoreQueryFilters()
+            .Where(x => x.AccountId == account.Id && x.RevokedAtUtc == null)
+            .ExecuteUpdateAsync(x => x.SetProperty(s => s.RevokedAtUtc, now), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        var tenantIds = await db.Memberships.IgnoreQueryFilters()
+            .Where(x => x.AccountId == account.Id).Select(x => x.TenantId).ToListAsync(cancellationToken);
+        foreach (var memberTenantId in tenantIds)
+            await revocations.PublishAccountAsync(memberTenantId, account.Id, account.SessionVersion,
+                cancellationToken);
+    }
+
+    internal static string NormalizeEmail(string? requestedEmail)
+    {
+        var email = requestedEmail?.Trim().ToLowerInvariant();
+        if (email is null || email.Length > 320 || !MailAddress.TryCreate(email, out var parsed) ||
+            parsed.Address != email)
+            throw new PlatformOrganizationException(PlatformOrganizationFailure.InvalidInput);
+        return email;
+    }
+
+    internal async Task EnsurePlatformAdminAsync(Guid actorAccountId, long sessionVersion,
         CancellationToken cancellationToken)
     {
         tenantScope.TenantId = PlatformAdminBootstrap.PlatformTenantId;
@@ -286,7 +361,7 @@ public sealed class PlatformOrganizationService(IdentityDbContext db, TenantScop
         return tenant ?? throw new PlatformOrganizationException(PlatformOrganizationFailure.NotFound);
     }
 
-    private void AddAudit(Guid tenantId, Guid actorAccountId, string action, string? reason,
+    internal void AddAudit(Guid tenantId, Guid actorAccountId, string action, string? reason,
         string? before, string? after, DateTime? createdAtUtc = null) =>
         db.PlatformOrganizationAudits.Add(new PlatformOrganizationAudit
         {
@@ -295,7 +370,7 @@ public sealed class PlatformOrganizationService(IdentityDbContext db, TenantScop
             CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow
         });
 
-    private static string? NormalizeReason(string? reason)
+    internal static string? NormalizeReason(string? reason)
     {
         var value = reason?.Trim();
         if (value?.Length > 500)
@@ -315,7 +390,8 @@ public sealed class PlatformOrganizationService(IdentityDbContext db, TenantScop
 
 public enum PlatformOrganizationFailure
 {
-    Unauthorized, NotFound, InvalidInput, Conflict, ProtectedTenant, Suspended, Unavailable
+    Unauthorized, NotFound, InvalidInput, Conflict, ProtectedTenant, Suspended, Unavailable,
+    LastAdministrator, SelfChange
 }
 
 public sealed class PlatformOrganizationException(PlatformOrganizationFailure failure)

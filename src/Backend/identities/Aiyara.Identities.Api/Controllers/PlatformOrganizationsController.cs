@@ -177,4 +177,45 @@ public sealed class PlatformOrganizationsController(PlatformActorResolver actors
             return Error(StatusCodes.Status503ServiceUnavailable, "ACTIVATION_DELIVERY_UNAVAILABLE");
         }
     }
+
+    [HttpPost("{tenantId:guid}/administrators/demote")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public Task<IActionResult> DemoteAdministrator(Guid tenantId,
+        [FromBody] ChangePlatformOrganizationAdminRequest request, CancellationToken cancellationToken) =>
+        ChangeAdministrator(actor => organizations.DemoteAdministratorAsync(tenantId, actor.AccountId,
+            actor.SessionVersion, request, cancellationToken), cancellationToken);
+
+    [HttpPost("{tenantId:guid}/administrators/remove")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public Task<IActionResult> RemoveAdministrator(Guid tenantId,
+        [FromBody] ChangePlatformOrganizationAdminRequest request, CancellationToken cancellationToken) =>
+        ChangeAdministrator(actor => organizations.RemoveAdministratorAsync(tenantId, actor.AccountId,
+            actor.SessionVersion, request, cancellationToken), cancellationToken);
+
+    private async Task<IActionResult> ChangeAdministrator(Func<PlatformActor, Task> change,
+        CancellationToken cancellationToken)
+    {
+        var actor = await PlatformActorAsync(cancellationToken);
+        if (actor is null) return UnauthorizedResponse();
+        try
+        {
+            await change(actor);
+            return ReturnResponseWithHttpStatus(new ServiceOkResponse<object>(new { }));
+        }
+        catch (PlatformOrganizationException exception) { return Error(exception); }
+        catch (AuthenticationException exception) when (exception.Failure == AuthenticationFailure.Unavailable)
+        {
+            return Error(StatusCodes.Status503ServiceUnavailable, "SESSION_REVOCATION_UNAVAILABLE");
+        }
+    }
 }

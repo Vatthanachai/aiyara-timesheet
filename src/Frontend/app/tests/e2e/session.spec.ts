@@ -877,9 +877,104 @@ test('organization detail shows members, administrators, and its own history', a
     `/sys-admin/audit?tenantId=${tenant}`)
 })
 
+test('platform admin roster invites, deactivates, and reactivates admins but never offers self-deactivation', async ({ page }) => {
+  const roster = [
+    { email: 'platform@aiyara.test', firstName: 'Ploy', lastName: 'Root', status: 'Active', createdAtUtc: '2026-10-01T00:00:00Z', isCurrentUser: true },
+    { email: 'second@aiyara.test', firstName: '', lastName: '', status: 'Active', createdAtUtc: '2026-10-05T00:00:00Z', isCurrentUser: false },
+    { email: 'gone@aiyara.test', firstName: 'Former', lastName: 'Admin', status: 'Deactivated', createdAtUtc: '2026-10-02T00:00:00Z', isCurrentUser: false }
+  ]
+  const requests: { method: string; path: string; body: unknown }[] = []
+  await page.route('**/api/v1/platform/admins**', async route => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+    if (request.method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk(roster)) })
+    const body = request.postDataJSON()
+    requests.push({ method: request.method(), path, body })
+    if (body.email === 'owner@acme.test') return route.fulfill({ status: 409, contentType: 'application/json',
+      body: JSON.stringify({ statusCode: 409, statusMessage: 'The request could not be completed.', errorCode: 'CONFLICT' }) })
+    return route.fulfill({ status: request.method() === 'POST' ? 202 : 200, contentType: 'application/json', body: JSON.stringify(apiOk({})) })
+  })
+  page.on('dialog', dialog => dialog.accept())
+  await signInAs(page, 'PlatformAdmin')
+  await page.goto('/sys-admin/admins')
+
+  await expect(page.getByRole('navigation', { name: 'System administration' }).getByRole('link', { name: 'Platform admins' }))
+    .toHaveClass(/is-active/)
+  const rows = page.getByRole('region', { name: 'Roster' }).getByRole('listitem')
+  await expect(rows).toHaveCount(3)
+  await expect(rows.nth(0)).toContainText('Ploy Root')
+  await expect(rows.nth(0)).toContainText('You')
+  await expect(rows.nth(0).getByRole('button')).toHaveCount(0)
+  await expect(rows.nth(1)).toContainText('second@aiyara.test')
+  await expect(rows.nth(2)).toContainText('Deactivated')
+
+  await page.getByLabel('Reason (optional) — second@aiyara.test').fill('Left the team')
+  await rows.nth(1).getByRole('button', { name: 'Deactivate' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('Deactivated.')
+  await rows.nth(2).getByRole('button', { name: 'Reactivate' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('Reactivated.')
+
+  const invite = page.getByRole('region', { name: 'Invite a platform admin' })
+  await invite.getByLabel('Email').fill('owner@acme.test')
+  await invite.getByRole('button', { name: 'Send invitation' }).click()
+  await expect(page.getByRole('alert')).toHaveText('This email is already a platform admin or belongs to a customer organization.')
+  await invite.getByLabel('Email').fill('new@aiyara.test')
+  await invite.getByRole('button', { name: 'Send invitation' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('Invitation sent.')
+
+  expect(requests).toEqual([
+    { method: 'PUT', path: '/api/v1/platform/admins/status', body: { email: 'second@aiyara.test', active: false, reason: 'Left the team' } },
+    { method: 'PUT', path: '/api/v1/platform/admins/status', body: { email: 'gone@aiyara.test', active: true, reason: null } },
+    { method: 'POST', path: '/api/v1/platform/admins', body: { email: 'owner@acme.test' } },
+    { method: 'POST', path: '/api/v1/platform/admins', body: { email: 'new@aiyara.test' } }
+  ])
+})
+
+test('organization detail demotes or removes an administrator and explains the last-administrator rule', async ({ page }) => {
+  const tenant = 'c99358d1-e01f-4dfd-9693-38da8883562d'
+  const changes: { kind: string; body: unknown }[] = []
+  await page.route(`**/api/v1/platform/organizations/${tenant}`, route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({
+      tenantId: tenant, organizationCode: 'ACME123', name: 'Acme Studio', slug: 'acme-studio',
+      status: 'Active', createdAtUtc: '2026-10-01T00:00:00Z', activeMemberCount: 3, pendingMemberCount: 0,
+      admins: [{ email: 'owner@acme.test', status: 'Active' }, { email: 'second@acme.test', status: 'Active' },
+        { email: 'former@acme.test', status: 'Deactivated' }]
+    })) }))
+  await page.route(`**/api/v1/platform/organizations/${tenant}/administrators/*`, route => {
+    const kind = new URL(route.request().url()).pathname.split('/').at(-1)!
+    const body = route.request().postDataJSON()
+    changes.push({ kind, body })
+    return body.email === 'owner@acme.test'
+      ? route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({
+          statusCode: 409, statusMessage: 'The request could not be completed.', errorCode: 'LAST_ADMINISTRATOR' }) })
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({})) })
+  })
+  await page.route('**/api/v1/platform/audit**', route => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(apiOk({ totalCount: 0, page: 1, pageSize: 10, items: [] })) }))
+  page.on('dialog', dialog => dialog.accept())
+  await signInAs(page, 'PlatformAdmin')
+  await page.goto(`/sys-admin/organizations/${tenant}`)
+
+  const admins = page.locator('.sysadmin-card').filter({ hasText: 'Administrators' }).getByRole('listitem')
+  await expect(admins).toHaveCount(3)
+  await expect(admins.nth(2)).toContainText('Removed')
+  await expect(admins.nth(2).getByRole('button')).toHaveCount(0)
+
+  await page.getByLabel('Reason (optional) — second@acme.test').fill('Now an employee')
+  await admins.nth(1).getByRole('button', { name: 'Make employee' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('Administrator demoted.')
+  await admins.nth(0).getByRole('button', { name: 'Remove from organization' }).click()
+  await expect(page.getByRole('alert')).toHaveText('An organization needs at least one active administrator. Invite a new one first.')
+
+  expect(changes).toEqual([
+    { kind: 'demote', body: { email: 'second@acme.test', reason: 'Now an employee' } },
+    { kind: 'remove', body: { email: 'owner@acme.test', reason: null } }
+  ])
+})
+
 test('console pages stay restricted for non platform admins', async ({ page }) => {
   await signInAs(page, 'TenantAdmin')
-  for (const path of ['/sys-admin', '/sys-admin/audit', '/sys-admin/organizations/c99358d1-e01f-4dfd-9693-38da8883562d']) {
+  for (const path of ['/sys-admin', '/sys-admin/audit', '/sys-admin/admins', '/sys-admin/organizations/c99358d1-e01f-4dfd-9693-38da8883562d']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'System administration' })).toHaveCount(0)

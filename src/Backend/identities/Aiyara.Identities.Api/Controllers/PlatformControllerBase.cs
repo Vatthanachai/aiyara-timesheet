@@ -57,6 +57,8 @@ public abstract class PlatformControllerBase(PlatformActorResolver actors) : Bas
         PlatformOrganizationFailure.ProtectedTenant => Error(StatusCodes.Status409Conflict, "PROTECTED_TENANT"),
         PlatformOrganizationFailure.Suspended => Error(StatusCodes.Status409Conflict, "ORGANIZATION_SUSPENDED"),
         PlatformOrganizationFailure.Unavailable => Error(StatusCodes.Status503ServiceUnavailable, "ACTIVATION_DELIVERY_UNAVAILABLE"),
+        PlatformOrganizationFailure.LastAdministrator => Error(StatusCodes.Status409Conflict, "LAST_ADMINISTRATOR"),
+        PlatformOrganizationFailure.SelfChange => Error(StatusCodes.Status409Conflict, "CANNOT_CHANGE_SELF"),
         _ => Error(StatusCodes.Status400BadRequest, "VALIDATION_FAILED")
     };
 

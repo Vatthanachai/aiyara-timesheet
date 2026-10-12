@@ -55,6 +55,15 @@ button { cursor: pointer; }
 .sysadmin-pill { border-radius: 999px; font-size: .78rem; font-weight: 700; padding: .2rem .55rem; }
 .sysadmin-pill.is-ok { background: #e8f6ef; color: #17663b; }
 .sysadmin-pill.is-warn { background: #fff4dc; color: #795400; }
+.sysadmin-pill.is-off { background: #eef0f3; color: #4a5260; }
+.sysadmin-person { display: grid; gap: .1rem; min-width: 0; overflow-wrap: anywhere; }
+.sysadmin-person small { color: var(--color-muted); }
+.sysadmin-row-actions { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; }
+.sysadmin-row-actions button { cursor: pointer; font: inherit; }
+.sysadmin-reason { border: 1px solid var(--color-border); border-radius: .45rem; flex: 1 1 12rem; font: inherit; min-width: 0; padding: .5rem .6rem; }
+.sysadmin-inline-form { display: grid; gap: .6rem; margin-top: 1rem; }
+.sysadmin-inline-form label { display: grid; gap: .3rem; font-size: .9rem; }
+.sysadmin-inline-form input { border: 1px solid var(--color-border); border-radius: .45rem; font: inherit; min-width: 0; padding: .55rem .65rem; }
 .sysadmin-facts { display: grid; gap: .45rem 1rem; grid-template-columns: max-content 1fr; margin: .75rem 0 0; }
 .sysadmin-facts dt { color: var(--color-muted); }
 .sysadmin-facts dd { margin: 0; }
