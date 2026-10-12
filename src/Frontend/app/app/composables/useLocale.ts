@@ -1,6 +1,6 @@
 export type SupportedLocale = 'th' | 'en'
 
-const defaultLocale: SupportedLocale = 'th'
+const defaultLocale: SupportedLocale = 'en'
 
 export function useLocale() {
   const locale = useState<SupportedLocale>('locale', () => defaultLocale)

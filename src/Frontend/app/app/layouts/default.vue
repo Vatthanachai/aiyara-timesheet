@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
+import { useLocaleText } from '../../../shared/i18n'
 type ProfileSummary = {
   email: string
   firstName: string
@@ -11,6 +12,10 @@ const { navigation } = useRemoteNavigation()
 const { locale, setLocale } = useLocale()
 const { token, role, logout, restore, renew } = useSession()
 const config = useRuntimeConfig()
+const text = useLocaleText(locale, {
+  th: { profile: 'โปรไฟล์', organizations: 'จัดการองค์กร', profileSettings: 'ตั้งค่าโปรไฟล์', signOut: 'ออกจากระบบ' },
+  en: { profile: 'Profile', organizations: 'Organizations', profileSettings: 'Profile settings', signOut: 'Sign out' }
+})
 const profile = ref<ProfileSummary | null>(null)
 const profileMenu = ref<HTMLDetailsElement | null>(null)
 let avatarObjectUrl = ''
@@ -19,7 +24,7 @@ const profileName = computed(() => {
   const fullName = [profile.value?.firstName, profile.value?.lastName]
     .filter((part) => part?.trim())
     .join(' ')
-  return fullName || profile.value?.email || (locale.value === 'th' ? 'โปรไฟล์' : 'Profile')
+  return fullName || profile.value?.email || text.value.profile
 })
 
 const profileInitials = computed(() => {
@@ -111,10 +116,10 @@ onUnmounted(() => {
       <NuxtLink class="brand" to="/">Aiyara Timesheet</NuxtLink>
       <nav aria-label="Primary navigation" class="navigation">
         <NuxtLink v-for="item in navigation.filter((item) => item.id !== 'identity')" :key="item.id" :to="item.path">
-          {{ locale === 'th' ? item.label : item.labelEn }}
+          {{ item.label[locale] }}
         </NuxtLink>
         <NuxtLink v-if="token && role === 'PlatformAdmin'" to="/sys-admin/organizations">
-          {{ locale === 'th' ? 'จัดการองค์กร' : 'Organizations' }}
+          {{ text.organizations }}
         </NuxtLink>
       </nav>
       <div class="header-actions">
@@ -128,10 +133,10 @@ onUnmounted(() => {
           </summary>
           <div class="profile-dropdown">
             <NuxtLink to="/remote/identity" @click="closeProfileMenu">
-              {{ locale === 'th' ? 'ตั้งค่าโปรไฟล์' : 'Profile settings' }}
+              {{ text.profileSettings }}
             </NuxtLink>
             <button type="button" class="sign-out-button" @click="signOut">
-              {{ locale === 'th' ? 'ออกจากระบบ' : 'Sign out' }}
+              {{ text.signOut }}
             </button>
           </div>
         </details>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLocaleText } from '../../../../shared/i18n'
 const route = useRoute()
 const config = useRuntimeConfig()
 const { navigation } = useRemoteNavigation()
@@ -13,6 +14,10 @@ const remoteUrl = computed(() => {
 })
 const { token, tenantId, renew, restore } = useSession()
 const { locale } = useLocale()
+const text = useLocaleText(locale, {
+  th: { signIn: 'กรุณาเข้าสู่ระบบ', goHome: 'กลับหน้าแรก' },
+  en: { signIn: 'Please sign in', goHome: 'Go home' }
+})
 const frame = ref<HTMLIFrameElement | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 function onRemoteMessage(event: MessageEvent) {
@@ -63,8 +68,8 @@ if (!remote.value) {
 
 <template>
   <section v-if="remote && token" class="remote-workspace">
-    <h1>{{ locale === 'th' ? remote.label : remote.labelEn }}</h1>
-    <iframe v-if="remoteUrl" ref="frame" :src="remoteUrl" :title="locale === 'th' ? remote.label : remote.labelEn" @load="sendSession" />
+    <h1>{{ remote.label[locale] }}</h1>
+    <iframe v-if="remoteUrl" ref="frame" :src="remoteUrl" :title="remote.label[locale]" @load="sendSession" />
   </section>
-  <section v-else class="remote-delegation"><h1>{{ locale === 'th' ? 'กรุณาเข้าสู่ระบบ' : 'Please sign in' }}</h1><NuxtLink to="/">{{ locale === 'th' ? 'กลับหน้าแรก' : 'Go home' }}</NuxtLink></section>
+  <section v-else class="remote-delegation"><h1>{{ text.signIn }}</h1><NuxtLink to="/">{{ text.goHome }}</NuxtLink></section>
 </template>

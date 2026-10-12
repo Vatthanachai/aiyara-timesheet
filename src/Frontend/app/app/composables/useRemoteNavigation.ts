@@ -2,45 +2,35 @@ export type RemoteId = 'identity' | 'timesheet' | 'reporting' | 'administration'
 
 export interface RemoteNavigationItem {
   id: RemoteId
-  label: string
-  labelEn: string
+  label: { th: string; en: string }
   path: `/remote/${RemoteId}`
-  description: string
-  descriptionEn: string
+  description: { th: string; en: string }
 }
 
 const navigation: readonly RemoteNavigationItem[] = [
   {
     id: 'identity',
-    label: 'โปรไฟล์',
-    labelEn: 'Profile',
+    label: { th: 'โปรไฟล์', en: 'Profile' },
     path: '/remote/identity',
-    description: 'จัดการข้อมูลส่วนตัว',
-    descriptionEn: 'Manage your profile.'
+    description: { th: 'จัดการข้อมูลส่วนตัว', en: 'Manage your profile.' }
   },
   {
     id: 'timesheet',
-    label: 'บันทึกเวลา',
-    labelEn: 'Timesheet',
+    label: { th: 'บันทึกเวลา', en: 'Timesheet' },
     path: '/remote/timesheet',
-    description: 'บันทึกเวลาทำงานและจัดการงานส่วนตัว',
-    descriptionEn: 'Record time and manage personal tasks.'
+    description: { th: 'บันทึกเวลาทำงานและจัดการงานส่วนตัว', en: 'Record time and manage personal tasks.' }
   },
   {
     id: 'reporting',
-    label: 'รายงาน',
-    labelEn: 'Reports',
+    label: { th: 'รายงาน', en: 'Reports' },
     path: '/remote/reporting',
-    description: 'ดูรายงานและเอกสารที่ลงนาม',
-    descriptionEn: 'View reports and signed documents.'
+    description: { th: 'ดูรายงานและเอกสารที่ลงนาม', en: 'View reports and signed documents.' }
   },
   {
     id: 'administration',
-    label: 'ตั้งค่า',
-    labelEn: 'Administration',
+    label: { th: 'ตั้งค่า', en: 'Administration' },
     path: '/remote/administration',
-    description: 'จัดการข้อมูลองค์กรและนโยบาย',
-    descriptionEn: 'Manage tenant settings and policies.'
+    description: { th: 'จัดการข้อมูลองค์กรและนโยบาย', en: 'Manage tenant settings and policies.' }
   }
 ]
 
