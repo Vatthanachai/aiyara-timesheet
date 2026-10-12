@@ -246,9 +246,17 @@ names; the signed PDF versions and generated source snapshots are audited and
 purged under tenant retention policy. Successful employee reports trigger a
 report-ready email through Notifications, which records delivery outcomes.
 Persistent schedule rows are dispatched by Quartz jobs in tenant-local time.
-The Thai/English Reports remote supports
-employee history/download and admin definitions, schedules, retention, and
-signed uploads.
+The Thai/English Reports remote requests reports by calendar period (Monday
+weeks, calendar months and years in the tenant time zone, or a free range for
+Performance), lets Tenant Admins report on the whole organization or one
+member, and refreshes progress while reports are generating. History shows the
+person, a reason for blocked or failed runs, completion time, and the latest
+signed version. Admins manage formats, schedules, and retention.
+`GET /api/v1/reports/runs` is paged and filterable (`status`, `definitionId`,
+`page`, `pageSize`) and returns `statusReason` (`SOURCE_MONTH_NOT_LOCKED` with
+`blockedMonth`, or `GENERATION_FAILED`) instead of raw failure text.
+`GET /api/v1/identity/members` lists the caller's organization members for
+Tenant Admins only.
 
 Run `dotnet test tests/Aiyara.Phase4.Tests/Aiyara.Phase4.Tests.csproj` for
 calendar, tenant-isolation, snapshot, document-renderer, authenticated HTTP

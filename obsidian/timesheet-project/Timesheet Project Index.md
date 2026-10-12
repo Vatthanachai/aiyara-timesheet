@@ -18,6 +18,7 @@
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
 - [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (draft, awaiting decisions).
+- [[Reporting Workspace Plan]] — reporting remote gaps and the R1–R3 delivery plan.
 
 ## Repository Facts
 

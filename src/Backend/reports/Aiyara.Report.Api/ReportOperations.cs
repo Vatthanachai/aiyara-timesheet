@@ -12,7 +12,8 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
     IReportObjectStorage storage)
 {
     public async Task<ServiceResponse> Definitions(ReportActor actor, CancellationToken ct) =>
-        Ok(await db.ReportDefinitions.OrderBy(x => x.Kind).ThenBy(x => x.Format).ToListAsync(ct));
+        Ok(await db.ReportDefinitions.Where(x => x.IsEnabled)
+            .OrderBy(x => x.Kind).ThenBy(x => x.Format).ThenBy(x => x.Name).ToListAsync(ct));
 
     public async Task<ServiceResponse> Dashboard(ReportActor actor, CancellationToken ct)
     {
@@ -20,9 +21,13 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         var counts = await query.GroupBy(x => x.Status).Select(group => new
             { Status = group.Key, Count = group.Count() }).ToListAsync(ct);
         int Count(ReportRunStatus status) => counts.FirstOrDefault(x => x.Status == status)?.Count ?? 0;
+        // Blocked runs stay Queued while the Worker waits for their source month to be locked.
+        var blocked = await query.CountAsync(x => x.Status == ReportRunStatus.Queued &&
+            x.FailureReason != null && x.FailureReason.StartsWith("Source month "), ct);
         return Ok(new { Total = counts.Sum(x => x.Count),
             Ready = Count(ReportRunStatus.Succeeded),
-            Queued = Count(ReportRunStatus.Queued) + Count(ReportRunStatus.Running),
+            Queued = Count(ReportRunStatus.Queued) + Count(ReportRunStatus.Running) - blocked,
+            Blocked = blocked,
             Failed = Count(ReportRunStatus.Failed),
             Recent = await query.OrderByDescending(x => x.CreatedAtUtc).Take(5)
                 .Select(x => new { x.Id, x.Status, x.CreatedAtUtc }).ToListAsync(ct) });
@@ -64,16 +69,34 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         return NoContent();
     }
 
-    public async Task<ServiceResponse> Runs(ReportActor actor, int? take, CancellationToken ct)
+    public async Task<ServiceResponse> Runs(ReportActor actor, RunQuery request, CancellationToken ct)
     {
-        var runs = await VisibleRuns(actor).OrderByDescending(x => x.CreatedAtUtc)
-            .Take(Math.Clamp(take ?? 50, 1, 100))
+        if (request.Status is { } requested && !Enum.IsDefined(requested)) return Error(400, "VALIDATION_FAILED");
+        var query = VisibleRuns(actor);
+        if (request.Status is { } status) query = query.Where(x => x.Status == status);
+        if (request.DefinitionId is { } definitionId) query = query.Where(x => x.ReportDefinitionId == definitionId);
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var totalCount = await query.CountAsync(ct);
+        var page = Math.Clamp(request.Page, 1, Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize)));
+        var rows = await query.OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Join(db.ReportDefinitions, run => run.ReportDefinitionId, definition => definition.Id,
                 (run, definition) => new { run.Id, run.SubjectUserId, run.Status,
                     run.PeriodStartUtc, run.PeriodEndUtc, run.AttemptCount, run.CreatedAtUtc,
-                    definition.Kind, definition.Format, definition.Name })
+                    run.CompletedAtUtc, run.FailureReason, DefinitionId = definition.Id,
+                    definition.Kind, definition.Format, definition.Name,
+                    SignedVersion = db.ReportObjects.Where(x => x.ReportRunId == run.Id && x.IsExternallySigned)
+                        .Max(x => (int?)x.Version) })
             .ToListAsync(ct);
-        return Ok(runs);
+        var items = rows.Select(row =>
+        {
+            var (reason, blockedMonth) = ReportRunReasons.Describe(row.Status, row.FailureReason);
+            return new { row.Id, row.DefinitionId, row.SubjectUserId, row.Status,
+                StatusReason = reason, BlockedMonth = blockedMonth, row.PeriodStartUtc, row.PeriodEndUtc,
+                row.AttemptCount, row.CreatedAtUtc, row.CompletedAtUtc, row.SignedVersion,
+                row.Kind, row.Format, row.Name };
+        }).ToList();
+        return Ok(new { TotalCount = totalCount, Page = page, PageSize = pageSize, Items = items });
     }
 
     public async Task<ServiceResponse> CreateRun(ReportActor actor, RunRequest body, CancellationToken ct)
@@ -154,7 +177,7 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
     }
 
     public async Task<ServiceResponse> Schedules(ReportActor actor, CancellationToken ct) =>
-        Ok(await db.ReportSchedules.Join(db.ReportDefinitions,
+        Ok(await db.ReportSchedules.Where(x => x.IsEnabled).Join(db.ReportDefinitions.Where(x => x.IsEnabled),
             schedule => schedule.ReportDefinitionId, definition => definition.Id,
             (schedule, definition) => new { schedule.Id, schedule.ReportDefinitionId,
                 schedule.TimeZoneId, schedule.LocalTime, schedule.NextFireAtUtc,
