@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { unwrapResponse, type ApiEnvelope } from '../../../../shared/api-response'
+import { useLocaleText } from '../../../../shared/i18n'
 type OrganizationAdmin = { email: string; status: 'Active' | 'PendingActivation' }
 type Organization = {
   tenantId: string
@@ -18,6 +19,76 @@ type OrganizationResponse = {
 }
 
 const { locale } = useLocale()
+const text = useLocaleText(locale, {
+  th: {
+    eyebrow: 'ผู้ดูแลระบบ', title: 'จัดการองค์กร',
+    subtitle: 'ค้นหาองค์กร ตรวจสอบสถานะผู้ดูแล และจัดการการเริ่มต้นใช้งาน',
+    accessRestrictedTitle: 'ไม่มีสิทธิ์เข้าถึง',
+    accessRestrictedBody: 'หน้านี้สำหรับผู้ดูแลระบบเท่านั้น กรุณาเข้าสู่ระบบด้วยบัญชี sys-admin',
+    backToSignIn: 'กลับหน้าเข้าสู่ระบบ', searchLabel: 'ค้นหาองค์กร',
+    searchPlaceholder: 'ค้นหาชื่อ รหัสองค์กร หรืออีเมล admin', search: 'ค้นหา',
+    closeForm: 'ปิดแบบฟอร์ม', addOrganization: 'เพิ่มองค์กร',
+    resultCount: 'พบ {n} องค์กร', createTitle: 'สร้างองค์กรใหม่',
+    organizationName: 'ชื่อองค์กร', organizationUrlName: 'ชื่อ URL องค์กร',
+    organizationAdminEmail: 'อีเมลผู้ดูแลองค์กร', creating: 'กำลังสร้าง…',
+    createAndSend: 'สร้างองค์กรและส่งอีเมลเปิดใช้งาน', loadingOrgs: 'กำลังโหลดองค์กร…',
+    noOrgsTitle: 'ยังไม่พบองค์กร', noOrgsBody: 'ลองเปลี่ยนคำค้นหา หรือสร้างองค์กรใหม่',
+    statusActive: 'ใช้งาน', statusSuspended: 'ระงับ', save: 'บันทึก', cancel: 'ยกเลิก',
+    editOrganization: 'แก้ไของค์กร', reasonForChange: 'เหตุผลการเปลี่ยนแปลง',
+    suspendOrganization: 'ระงับองค์กร', reactivateOrganization: 'เปิดใช้งานองค์กร',
+    created: 'สร้างเมื่อ', adminActive: 'เปิดใช้งานแล้ว', adminPending: 'รอเปิดใช้งาน',
+    sending: 'กำลังส่ง…', resendCode: 'ส่งรหัสใหม่', noAdminFound: 'ไม่พบผู้ดูแลองค์กร',
+    inviteAnother: 'เชิญผู้ดูแลเพิ่มเติม', sendInvitation: 'ส่งคำเชิญ', pagination: 'แบ่งหน้า',
+    previous: 'ก่อนหน้า', next: 'ถัดไป',
+    confirmSuspend: 'ระงับองค์กรนี้หรือไม่? ผู้ใช้ในองค์กรจะเข้าใช้งานไม่ได้',
+    confirmReactivate: 'เปิดใช้งานองค์กรนี้อีกครั้งหรือไม่?',
+    loadError: 'โหลดรายการองค์กรไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+    orgSaved: 'บันทึกข้อมูลองค์กรแล้ว',
+    orgSaveError: 'บันทึกไม่สำเร็จ กรุณาตรวจสอบชื่อ URL และลองอีกครั้ง',
+    statusUpdated: 'เปลี่ยนสถานะองค์กรแล้ว', statusUpdateError: 'เปลี่ยนสถานะไม่สำเร็จ กรุณาลองอีกครั้ง',
+    inviteSent: 'ส่งคำเชิญผู้ดูแลองค์กรแล้ว',
+    inviteError: 'ส่งคำเชิญไม่สำเร็จ กรุณาตรวจสอบอีเมลและสถานะองค์กร',
+    createdTemplate: 'สร้างองค์กรแล้ว รหัสองค์กร {code} ระบบกำลังส่งอีเมลเปิดใช้งานให้ admin',
+    createSlugConflict: 'ชื่อ URL องค์กรนี้ถูกใช้แล้ว',
+    createError: 'สร้างองค์กรไม่สำเร็จ กรุณาตรวจสอบข้อมูล',
+    resendAccepted: 'ระบบรับคำขอแล้ว หากบัญชียังรอเปิดใช้งานจะส่งรหัสใหม่ให้',
+    resendError: 'ส่งคำขอไม่สำเร็จ กรุณาลองอีกครั้งภายหลัง'
+  },
+  en: {
+    eyebrow: 'SYSTEM ADMINISTRATION', title: 'Organizations',
+    subtitle: 'Find organizations, review administrator activation, and manage onboarding.',
+    accessRestrictedTitle: 'Access restricted',
+    accessRestrictedBody: 'This page is limited to system administrators. Sign in with a sys-admin account.',
+    backToSignIn: 'Back to sign in', searchLabel: 'Search organizations',
+    searchPlaceholder: 'Search name, organization code, or admin email', search: 'Search',
+    closeForm: 'Close form', addOrganization: 'Add organization',
+    resultCount: '{n} organizations', createTitle: 'Create organization',
+    organizationName: 'Organization name', organizationUrlName: 'Organization URL name',
+    organizationAdminEmail: 'Organization administrator email', creating: 'Creating…',
+    createAndSend: 'Create organization and send activation email', loadingOrgs: 'Loading organizations…',
+    noOrgsTitle: 'No organizations found', noOrgsBody: 'Try another search or create a new organization.',
+    statusActive: 'Active', statusSuspended: 'Suspended', save: 'Save', cancel: 'Cancel',
+    editOrganization: 'Edit organization', reasonForChange: 'Reason for change',
+    suspendOrganization: 'Suspend organization', reactivateOrganization: 'Reactivate organization',
+    created: 'Created', adminActive: 'Active', adminPending: 'Pending activation',
+    sending: 'Sending…', resendCode: 'Resend code', noAdminFound: 'No organization administrator found',
+    inviteAnother: 'Invite another administrator', sendInvitation: 'Send invitation', pagination: 'Pagination',
+    previous: 'Previous', next: 'Next',
+    confirmSuspend: 'Suspend this organization? Its users will lose access.',
+    confirmReactivate: 'Reactivate this organization?',
+    loadError: 'Could not load organizations. Please try again.',
+    orgSaved: 'Organization details saved.',
+    orgSaveError: 'Could not save. Check the organization URL and try again.',
+    statusUpdated: 'Organization status updated.', statusUpdateError: 'Could not update status. Please try again.',
+    inviteSent: 'Administrator invitation sent.',
+    inviteError: 'Could not send invitation. Check the email and organization status.',
+    createdTemplate: 'Organization created. Code: {code}. An activation email is being sent to the administrator.',
+    createSlugConflict: 'That organization URL is already in use.',
+    createError: 'Could not create the organization. Check the details and try again.',
+    resendAccepted: 'Request accepted. If the account is pending activation, a new code will be sent.',
+    resendError: 'Request failed. Please try again later.'
+  }
+})
 const { token, role, renew, restore } = useSession()
 const config = useRuntimeConfig()
 const organizations = ref<Organization[]>([])
@@ -60,9 +131,7 @@ async function loadOrganizations() {
     organizations.value = response.items
     totalCount.value = response.totalCount
   } catch {
-    loadError.value = locale.value === 'th'
-      ? 'โหลดรายการองค์กรไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
-      : 'Could not load organizations. Please try again.'
+    loadError.value = text.value.loadError
   } finally {
     loading.value = false
   }
@@ -97,18 +166,16 @@ async function updateOrganization(organization: Organization) {
         method: 'PUT', body: { name: editName.value.trim(), slug: editSlug.value.trim().toLowerCase(), reason: organizationReasons[key] || null }
       }))
     editingId.value = ''
-    managementMessages[key] = locale.value === 'th' ? 'บันทึกข้อมูลองค์กรแล้ว' : 'Organization details saved.'
+    managementMessages[key] = text.value.orgSaved
     await loadOrganizations()
   } catch {
-    managementMessages[key] = locale.value === 'th' ? 'บันทึกไม่สำเร็จ กรุณาตรวจสอบชื่อ URL และลองอีกครั้ง' : 'Could not save. Check the organization URL and try again.'
+    managementMessages[key] = text.value.orgSaveError
   } finally { managementPending.value = '' }
 }
 
 async function setOrganizationStatus(organization: Organization) {
   const key = organization.tenantId
-  const action = organization.status === 'Active'
-    ? (locale.value === 'th' ? 'ระงับองค์กรนี้หรือไม่? ผู้ใช้ในองค์กรจะเข้าใช้งานไม่ได้' : 'Suspend this organization? Its users will lose access.')
-    : (locale.value === 'th' ? 'เปิดใช้งานองค์กรนี้อีกครั้งหรือไม่?' : 'Reactivate this organization?')
+  const action = organization.status === 'Active' ? text.value.confirmSuspend : text.value.confirmReactivate
   if (!window.confirm(action)) return
   managementPending.value = key
   managementMessages[key] = ''
@@ -117,10 +184,10 @@ async function setOrganizationStatus(organization: Organization) {
       `${config.public.gatewayUrl}/api/v1/platform/organizations/${key}/status`, {
         method: 'PUT', body: { suspended: organization.status === 'Active', reason: organizationReasons[key] || null }
       }))
-    managementMessages[key] = locale.value === 'th' ? 'เปลี่ยนสถานะองค์กรแล้ว' : 'Organization status updated.'
+    managementMessages[key] = text.value.statusUpdated
     await loadOrganizations()
   } catch {
-    managementMessages[key] = locale.value === 'th' ? 'เปลี่ยนสถานะไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not update status. Please try again.'
+    managementMessages[key] = text.value.statusUpdateError
   } finally { managementPending.value = '' }
 }
 
@@ -134,10 +201,10 @@ async function inviteAdministrator(organization: Organization) {
         method: 'POST', body: { email: inviteEmails[key]?.trim() }
       }))
     inviteEmails[key] = ''
-    managementMessages[key] = locale.value === 'th' ? 'ส่งคำเชิญผู้ดูแลองค์กรแล้ว' : 'Administrator invitation sent.'
+    managementMessages[key] = text.value.inviteSent
     await loadOrganizations()
   } catch {
-    managementMessages[key] = locale.value === 'th' ? 'ส่งคำเชิญไม่สำเร็จ กรุณาตรวจสอบอีเมลและสถานะองค์กร' : 'Could not send invitation. Check the email and organization status.'
+    managementMessages[key] = text.value.inviteError
   } finally { managementPending.value = '' }
 }
 
@@ -160,9 +227,7 @@ async function createOrganization() {
           adminEmail: adminEmail.value.trim()
         }
       }))
-    createSuccess.value = locale.value === 'th'
-      ? `สร้างองค์กรแล้ว รหัสองค์กร ${created.organizationCode} ระบบกำลังส่งอีเมลเปิดใช้งานให้ admin`
-      : `Organization created. Code: ${created.organizationCode}. An activation email is being sent to the administrator.`
+    createSuccess.value = text.value.createdTemplate.replace('{code}', created.organizationCode)
     organizationName.value = ''
     organizationSlug.value = ''
     adminEmail.value = ''
@@ -174,9 +239,7 @@ async function createOrganization() {
   } catch (cause: unknown) {
     const status = (cause as { statusCode?: number; status?: number })?.statusCode
       ?? (cause as { status?: number })?.status
-    createError.value = status === 409
-      ? (locale.value === 'th' ? 'ชื่อ URL องค์กรนี้ถูกใช้แล้ว' : 'That organization URL is already in use.')
-      : (locale.value === 'th' ? 'สร้างองค์กรไม่สำเร็จ กรุณาตรวจสอบข้อมูล' : 'Could not create the organization. Check the details and try again.')
+    createError.value = status === 409 ? text.value.createSlugConflict : text.value.createError
   } finally {
     createPending.value = false
   }
@@ -192,17 +255,9 @@ async function resendActivation(organization: Organization, admin: OrganizationA
       method: 'POST',
       body: { email: admin.email }
     }))
-    resendMessages.value = {
-      ...resendMessages.value,
-      [key]: locale.value === 'th'
-        ? 'ระบบรับคำขอแล้ว หากบัญชียังรอเปิดใช้งานจะส่งรหัสใหม่ให้'
-        : 'Request accepted. If the account is pending activation, a new code will be sent.'
-    }
+    resendMessages.value = { ...resendMessages.value, [key]: text.value.resendAccepted }
   } catch {
-    resendMessages.value = {
-      ...resendMessages.value,
-      [key]: locale.value === 'th' ? 'ส่งคำขอไม่สำเร็จ กรุณาลองอีกครั้งภายหลัง' : 'Request failed. Please try again later.'
-    }
+    resendMessages.value = { ...resendMessages.value, [key]: text.value.resendError }
   } finally {
     resending.value = ''
   }
@@ -219,73 +274,64 @@ onMounted(async () => {
 
 <template>
   <section class="hero">
-    <p class="eyebrow">{{ locale === 'th' ? 'ผู้ดูแลระบบ' : 'SYSTEM ADMINISTRATION' }}</p>
-    <h1>{{ locale === 'th' ? 'จัดการองค์กร' : 'Organizations' }}</h1>
-    <p>{{ locale === 'th'
-      ? 'ค้นหาองค์กร ตรวจสอบสถานะผู้ดูแล และจัดการการเริ่มต้นใช้งาน'
-      : 'Find organizations, review administrator activation, and manage onboarding.' }}</p>
+    <p class="eyebrow">{{ text.eyebrow }}</p>
+    <h1>{{ text.title }}</h1>
+    <p>{{ text.subtitle }}</p>
   </section>
 
   <section v-if="!isPlatformAdmin" class="management-card" role="alert">
-    <h2>{{ locale === 'th' ? 'ไม่มีสิทธิ์เข้าถึง' : 'Access restricted' }}</h2>
-    <p>{{ locale === 'th'
-      ? 'หน้านี้สำหรับผู้ดูแลระบบเท่านั้น กรุณาเข้าสู่ระบบด้วยบัญชี sys-admin'
-      : 'This page is limited to system administrators. Sign in with a sys-admin account.' }}</p>
-    <NuxtLink class="button" to="/">{{ locale === 'th' ? 'กลับหน้าเข้าสู่ระบบ' : 'Back to sign in' }}</NuxtLink>
+    <h2>{{ text.accessRestrictedTitle }}</h2>
+    <p>{{ text.accessRestrictedBody }}</p>
+    <NuxtLink class="button" to="/">{{ text.backToSignIn }}</NuxtLink>
   </section>
 
   <template v-else>
     <section class="management-toolbar">
       <form class="search-form" role="search" @submit.prevent="applySearch">
         <label class="visually-hidden" for="organization-search">
-          {{ locale === 'th' ? 'ค้นหาองค์กร' : 'Search organizations' }}
+          {{ text.searchLabel }}
         </label>
-        <input id="organization-search" v-model="searchInput"
-          :placeholder="locale === 'th' ? 'ค้นหาชื่อ รหัสองค์กร หรืออีเมล admin' : 'Search name, organization code, or admin email'" />
+        <input id="organization-search" v-model="searchInput" :placeholder="text.searchPlaceholder" />
         <button class="button button-secondary" type="submit">
-          {{ locale === 'th' ? 'ค้นหา' : 'Search' }}
+          {{ text.search }}
         </button>
       </form>
       <button class="button" type="button" @click="showCreate = !showCreate">
-        {{ showCreate
-          ? (locale === 'th' ? 'ปิดแบบฟอร์ม' : 'Close form')
-          : (locale === 'th' ? 'เพิ่มองค์กร' : 'Add organization') }}
+        {{ showCreate ? text.closeForm : text.addOrganization }}
       </button>
     </section>
 
-    <p class="result-count">{{ locale === 'th' ? `พบ ${totalCount} องค์กร` : `${totalCount} organizations` }}</p>
+    <p class="result-count">{{ text.resultCount.replace('{n}', String(totalCount)) }}</p>
     <p v-if="createSuccess" class="notice" role="status">{{ createSuccess }}</p>
 
     <form v-if="showCreate" class="management-card create-form" @submit.prevent="createOrganization">
-      <h2>{{ locale === 'th' ? 'สร้างองค์กรใหม่' : 'Create organization' }}</h2>
+      <h2>{{ text.createTitle }}</h2>
       <label>
-        {{ locale === 'th' ? 'ชื่อองค์กร' : 'Organization name' }}
+        {{ text.organizationName }}
         <input v-model="organizationName" required maxlength="200" />
       </label>
       <label>
-        {{ locale === 'th' ? 'ชื่อ URL องค์กร' : 'Organization URL name' }}
+        {{ text.organizationUrlName }}
         <input v-model="organizationSlug" required minlength="3" maxlength="80"
           pattern="[a-z0-9][a-z0-9-]{2,79}" autocapitalize="none" placeholder="acme-studio" />
       </label>
       <label>
-        {{ locale === 'th' ? 'อีเมลผู้ดูแลองค์กร' : 'Organization administrator email' }}
+        {{ text.organizationAdminEmail }}
         <input v-model="adminEmail" required type="email" autocomplete="email" />
       </label>
       <p v-if="createError" role="alert">{{ createError }}</p>
       <button class="button" type="submit" :disabled="createPending">
-        {{ createPending
-          ? (locale === 'th' ? 'กำลังสร้าง…' : 'Creating…')
-          : (locale === 'th' ? 'สร้างองค์กรและส่งอีเมลเปิดใช้งาน' : 'Create organization and send activation email') }}
+        {{ createPending ? text.creating : text.createAndSend }}
       </button>
     </form>
 
     <p v-if="loadError" role="alert" class="notice notice-error">{{ loadError }}</p>
     <p v-else-if="loading" class="notice" role="status">
-      {{ locale === 'th' ? 'กำลังโหลดองค์กร…' : 'Loading organizations…' }}
+      {{ text.loadingOrgs }}
     </p>
     <div v-else-if="organizations.length === 0" class="management-card empty-state">
-      <h2>{{ locale === 'th' ? 'ยังไม่พบองค์กร' : 'No organizations found' }}</h2>
-      <p>{{ locale === 'th' ? 'ลองเปลี่ยนคำค้นหา หรือสร้างองค์กรใหม่' : 'Try another search or create a new organization.' }}</p>
+      <h2>{{ text.noOrgsTitle }}</h2>
+      <p>{{ text.noOrgsBody }}</p>
     </div>
     <section v-else class="organization-list" aria-label="Organizations">
       <article v-for="organization in organizations" :key="organization.tenantId" class="organization-card">
@@ -296,64 +342,60 @@ onMounted(async () => {
           </div>
           <div class="organization-badges">
             <span class="status-pill" :class="organization.status === 'Active' ? 'status-active' : 'status-pending'">
-              {{ organization.status === 'Active' ? (locale === 'th' ? 'ใช้งาน' : 'Active') : (locale === 'th' ? 'ระงับ' : 'Suspended') }}
+              {{ organization.status === 'Active' ? text.statusActive : text.statusSuspended }}
             </span>
             <span class="organization-code">{{ organization.organizationCode }}</span>
           </div>
         </header>
         <form v-if="editingId === organization.tenantId" class="organization-edit" @submit.prevent="updateOrganization(organization)">
-          <label>{{ locale === 'th' ? 'ชื่อองค์กร' : 'Organization name' }}<input v-model="editName" required maxlength="200" /></label>
-          <label>{{ locale === 'th' ? 'ชื่อ URL องค์กร' : 'Organization URL name' }}<input v-model="editSlug" required minlength="3" maxlength="80" pattern="[a-z0-9][a-z0-9-]{2,79}" /></label>
-          <button class="button" type="submit" :disabled="managementPending === organization.tenantId">{{ locale === 'th' ? 'บันทึก' : 'Save' }}</button>
-          <button class="button button-secondary" type="button" @click="editingId = ''">{{ locale === 'th' ? 'ยกเลิก' : 'Cancel' }}</button>
+          <label>{{ text.organizationName }}<input v-model="editName" required maxlength="200" /></label>
+          <label>{{ text.organizationUrlName }}<input v-model="editSlug" required minlength="3" maxlength="80" pattern="[a-z0-9][a-z0-9-]{2,79}" /></label>
+          <button class="button" type="submit" :disabled="managementPending === organization.tenantId">{{ text.save }}</button>
+          <button class="button button-secondary" type="button" @click="editingId = ''">{{ text.cancel }}</button>
         </form>
         <div class="organization-actions">
-          <button v-if="editingId !== organization.tenantId" class="text-button" type="button" @click="beginEdit(organization)">{{ locale === 'th' ? 'แก้ไของค์กร' : 'Edit organization' }}</button>
-          <label class="reason-field">{{ locale === 'th' ? 'เหตุผลการเปลี่ยนแปลง' : 'Reason for change' }}<input v-model="organizationReasons[organization.tenantId]" maxlength="500" /></label>
+          <button v-if="editingId !== organization.tenantId" class="text-button" type="button" @click="beginEdit(organization)">{{ text.editOrganization }}</button>
+          <label class="reason-field">{{ text.reasonForChange }}<input v-model="organizationReasons[organization.tenantId]" maxlength="500" /></label>
           <button class="button button-secondary" type="button" :disabled="managementPending === organization.tenantId" @click="setOrganizationStatus(organization)">
-            {{ organization.status === 'Active' ? (locale === 'th' ? 'ระงับองค์กร' : 'Suspend organization') : (locale === 'th' ? 'เปิดใช้งานองค์กร' : 'Reactivate organization') }}
+            {{ organization.status === 'Active' ? text.suspendOrganization : text.reactivateOrganization }}
           </button>
         </div>
         <p class="created-date">
-          {{ locale === 'th' ? 'สร้างเมื่อ' : 'Created' }}
+          {{ text.created }}
           {{ new Intl.DateTimeFormat(locale === 'th' ? 'th-TH' : 'en', { dateStyle: 'medium' }).format(new Date(organization.createdAtUtc)) }}
         </p>
         <div v-if="organization.admins.length" class="admin-list">
           <div v-for="admin in organization.admins" :key="admin.email" class="admin-row">
             <span>{{ admin.email }}</span>
             <span class="status-pill" :class="admin.status === 'Active' ? 'status-active' : 'status-pending'">
-              {{ admin.status === 'Active'
-                ? (locale === 'th' ? 'เปิดใช้งานแล้ว' : 'Active')
-                : (locale === 'th' ? 'รอเปิดใช้งาน' : 'Pending activation') }}
+              {{ admin.status === 'Active' ? text.adminActive : text.adminPending }}
             </span>
             <button v-if="admin.status === 'PendingActivation'" class="text-button" type="button"
               :disabled="resending === `${organization.tenantId}:${admin.email}`"
               @click="resendActivation(organization, admin)">
-              {{ resending === `${organization.tenantId}:${admin.email}`
-                ? (locale === 'th' ? 'กำลังส่ง…' : 'Sending…')
-                : (locale === 'th' ? 'ส่งรหัสใหม่' : 'Resend code') }}
+              {{ resending === `${organization.tenantId}:${admin.email}` ? text.sending : text.resendCode }}
             </button>
             <small v-if="resendMessages[`${organization.tenantId}:${admin.email}`]">
               {{ resendMessages[`${organization.tenantId}:${admin.email}`] }}
             </small>
           </div>
         </div>
-        <p v-else class="empty-admin">{{ locale === 'th' ? 'ไม่พบผู้ดูแลองค์กร' : 'No organization administrator found' }}</p>
+        <p v-else class="empty-admin">{{ text.noAdminFound }}</p>
         <form class="invite-form" @submit.prevent="inviteAdministrator(organization)">
-          <label>{{ locale === 'th' ? 'เชิญผู้ดูแลเพิ่มเติม' : 'Invite another administrator' }}<input v-model="inviteEmails[organization.tenantId]" type="email" required autocomplete="email" /></label>
-          <button class="button button-secondary" type="submit" :disabled="managementPending === organization.tenantId">{{ locale === 'th' ? 'ส่งคำเชิญ' : 'Send invitation' }}</button>
+          <label>{{ text.inviteAnother }}<input v-model="inviteEmails[organization.tenantId]" type="email" required autocomplete="email" /></label>
+          <button class="button button-secondary" type="submit" :disabled="managementPending === organization.tenantId">{{ text.sendInvitation }}</button>
         </form>
         <p v-if="managementMessages[organization.tenantId]" class="notice" role="status">{{ managementMessages[organization.tenantId] }}</p>
       </article>
     </section>
 
-    <nav v-if="pageCount > 1" class="pagination" :aria-label="locale === 'th' ? 'แบ่งหน้า' : 'Pagination'">
+    <nav v-if="pageCount > 1" class="pagination" :aria-label="text.pagination">
       <button class="button button-secondary" type="button" :disabled="page <= 1" @click="page--; loadOrganizations()">
-        {{ locale === 'th' ? 'ก่อนหน้า' : 'Previous' }}
+        {{ text.previous }}
       </button>
       <span>{{ page }} / {{ pageCount }}</span>
       <button class="button button-secondary" type="button" :disabled="page >= pageCount" @click="page++; loadOrganizations()">
-        {{ locale === 'th' ? 'ถัดไป' : 'Next' }}
+        {{ text.next }}
       </button>
     </nav>
   </template>

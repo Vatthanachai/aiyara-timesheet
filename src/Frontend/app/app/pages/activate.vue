@@ -1,5 +1,26 @@
 <script setup lang="ts">
+import { useLocaleText } from '../../../shared/i18n'
 const { locale } = useLocale()
+const text = useLocaleText(locale, {
+  th: {
+    title: 'เปิดใช้งานบัญชี', subtitle: 'ใช้รหัสชั่วคราวจากอีเมลเพื่อตั้งรหัสผ่านสำหรับบัญชีของคุณ',
+    activatedTitle: 'เปิดใช้งานสำเร็จ', activatedBody: 'เข้าสู่ระบบด้วยรหัสองค์กร อีเมล และรหัสผ่านใหม่ของคุณ',
+    goToSignIn: 'ไปหน้าเข้าสู่ระบบ', code: 'รหัสเปิดใช้งานจากอีเมล', newPassword: 'ตั้งรหัสผ่านใหม่',
+    confirmPassword: 'ยืนยันรหัสผ่านใหม่', passwordHint: 'รหัสผ่านต้องเป็นไปตามข้อกำหนดขององค์กร',
+    activating: 'กำลังเปิดใช้งาน…', activateAccount: 'เปิดใช้งานบัญชี', backToSignIn: 'กลับไปเข้าสู่ระบบ',
+    passwordMismatch: 'รหัสผ่านใหม่ไม่ตรงกัน',
+    activateError: 'เปิดใช้งานไม่สำเร็จ กรุณาตรวจสอบรหัสและข้อกำหนดรหัสผ่านขององค์กร'
+  },
+  en: {
+    title: 'Activate your account', subtitle: 'Use the one-time code from your email to set your account password.',
+    activatedTitle: 'Account activated', activatedBody: 'Sign in with your organization code, email, and new password.',
+    goToSignIn: 'Go to sign in', code: 'Activation code from email', newPassword: 'New password',
+    confirmPassword: 'Confirm new password', passwordHint: 'Your password must meet your organization’s requirements.',
+    activating: 'Activating…', activateAccount: 'Activate account', backToSignIn: 'Back to sign in',
+    passwordMismatch: 'The passwords do not match.',
+    activateError: 'Activation failed. Check the code and your organization’s password requirements.'
+  }
+})
 const config = useRuntimeConfig()
 const code = ref('')
 const password = ref('')
@@ -11,9 +32,7 @@ const pending = ref(false)
 async function activate() {
   error.value = ''
   if (password.value !== confirmPassword.value) {
-    error.value = locale.value === 'th'
-      ? 'รหัสผ่านใหม่ไม่ตรงกัน'
-      : 'The passwords do not match.'
+    error.value = text.value.passwordMismatch
     return
   }
 
@@ -28,9 +47,7 @@ async function activate() {
     password.value = ''
     confirmPassword.value = ''
   } catch {
-    error.value = locale.value === 'th'
-      ? 'เปิดใช้งานไม่สำเร็จ กรุณาตรวจสอบรหัสและข้อกำหนดรหัสผ่านขององค์กร'
-      : 'Activation failed. Check the code and your organization’s password requirements.'
+    error.value = text.value.activateError
   } finally {
     pending.value = false
   }
@@ -40,42 +57,34 @@ async function activate() {
 <template>
   <section class="hero">
     <p class="eyebrow">Aiyara Timesheet</p>
-    <h1>{{ locale === 'th' ? 'เปิดใช้งานบัญชี' : 'Activate your account' }}</h1>
-    <p>{{ locale === 'th'
-      ? 'ใช้รหัสชั่วคราวจากอีเมลเพื่อตั้งรหัสผ่านสำหรับบัญชีของคุณ'
-      : 'Use the one-time code from your email to set your account password.' }}</p>
+    <h1>{{ text.title }}</h1>
+    <p>{{ text.subtitle }}</p>
   </section>
 
   <section v-if="activated" class="login-card" role="status">
-    <h2>{{ locale === 'th' ? 'เปิดใช้งานสำเร็จ' : 'Account activated' }}</h2>
-    <p>{{ locale === 'th'
-      ? 'เข้าสู่ระบบด้วยรหัสองค์กร อีเมล และรหัสผ่านใหม่ของคุณ'
-      : 'Sign in with your organization code, email, and new password.' }}</p>
-    <NuxtLink class="button" to="/">{{ locale === 'th' ? 'ไปหน้าเข้าสู่ระบบ' : 'Go to sign in' }}</NuxtLink>
+    <h2>{{ text.activatedTitle }}</h2>
+    <p>{{ text.activatedBody }}</p>
+    <NuxtLink class="button" to="/">{{ text.goToSignIn }}</NuxtLink>
   </section>
 
   <form v-else class="login-card" @submit.prevent="activate">
     <label>
-      {{ locale === 'th' ? 'รหัสเปิดใช้งานจากอีเมล' : 'Activation code from email' }}
+      {{ text.code }}
       <input v-model="code" required autocomplete="one-time-code" />
     </label>
     <label>
-      {{ locale === 'th' ? 'ตั้งรหัสผ่านใหม่' : 'New password' }}
+      {{ text.newPassword }}
       <input v-model="password" required type="password" autocomplete="new-password" />
     </label>
     <label>
-      {{ locale === 'th' ? 'ยืนยันรหัสผ่านใหม่' : 'Confirm new password' }}
+      {{ text.confirmPassword }}
       <input v-model="confirmPassword" required type="password" autocomplete="new-password" />
     </label>
-    <p>{{ locale === 'th'
-      ? 'รหัสผ่านต้องเป็นไปตามข้อกำหนดขององค์กร'
-      : 'Your password must meet your organization’s requirements.' }}</p>
+    <p>{{ text.passwordHint }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <button class="button" type="submit" :disabled="pending">
-      {{ pending
-        ? (locale === 'th' ? 'กำลังเปิดใช้งาน…' : 'Activating…')
-        : (locale === 'th' ? 'เปิดใช้งานบัญชี' : 'Activate account') }}
+      {{ pending ? text.activating : text.activateAccount }}
     </button>
-    <NuxtLink to="/">{{ locale === 'th' ? 'กลับไปเข้าสู่ระบบ' : 'Back to sign in' }}</NuxtLink>
+    <NuxtLink to="/">{{ text.backToSignIn }}</NuxtLink>
   </form>
 </template>

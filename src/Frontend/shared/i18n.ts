@@ -1,4 +1,4 @@
-import { computed, type ComputedRef, type Ref } from 'vue'
+import { computed, type ComputedRef } from 'vue'
 import type { Locale } from './api-response'
 
 /**
@@ -26,7 +26,7 @@ export function readSessionLocale(data: unknown): Locale {
  * one place.
  */
 export function useLocaleText<T extends Record<string, string>>(
-  locale: Ref<Locale>,
+  locale: { readonly value: Locale },
   dictionaries: { th: T; en: T }
 ): ComputedRef<T> {
   return computed(() => (locale.value === 'th' ? dictionaries.th : dictionaries.en))
