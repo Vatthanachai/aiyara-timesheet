@@ -676,6 +676,66 @@ test('tenant admin can open tenant administration', async ({ page }) => {
   await expect(page.locator('iframe')).toHaveCount(1)
 })
 
+test('administration asks the Shell for its session and keeps unsaved edits when the session is resent', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  let catalogCalls = 0
+  let policyCalls = 0
+  await page.addInitScript(() => {
+    if (window !== window.top) return
+    const seen: string[] = []
+    Object.assign(window, { remoteMessages: seen })
+    window.addEventListener('message', event => { if (typeof event.data?.type === 'string') seen.push(event.data.type) })
+  })
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const ok = (result: unknown) => route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    if (url.pathname.endsWith('/auth/sign-in')) return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (url.pathname.endsWith('/timesheets/catalog')) {
+      catalogCalls++
+      return ok({ projects: [{ id: 'p1', name: 'Apollo' }], categories: [], holidays: [] })
+    }
+    if (url.pathname.endsWith(`/identity/tenants/${tenantId}/password-policy`)) {
+      policyCalls++
+      return ok({ minimumLength: 14, expiryDays: 90, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: false })
+    }
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+
+  const frame = page.frameLocator('iframe')
+  await expect(frame.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => (window as unknown as { remoteMessages: string[] }).remoteMessages))
+    .toContain('aiyara.ready')
+  const minimumLength = frame.getByRole('spinbutton', { name: 'Minimum length' })
+  await expect(minimumLength).toHaveValue('14')
+  await expect.poll(() => catalogCalls).toBe(1)
+
+  // The Shell resends the session on every locale change and every minute; that must not reload the
+  // page and overwrite what the administrator is typing.
+  await minimumLength.fill('20')
+  await page.getByRole('button', { name: 'TH' }).click()
+  await expect(frame.getByRole('heading', { name: 'จัดการองค์กร', level: 1 })).toBeVisible()
+  await expect(frame.getByRole('spinbutton', { name: 'ความยาวขั้นต่ำ' })).toHaveValue('20')
+  expect(catalogCalls).toBe(1)
+  expect(policyCalls).toBe(1)
+})
+
 test('platform admin creates an organization through the authenticated platform route', async ({ page }) => {
   let createRequest: { authorization: string; body: unknown } | undefined
   let publicSignupCalled = false
