@@ -195,6 +195,90 @@ public sealed class AuthenticationFlowTests
         Assert.StartsWith("v4.public.", login.AccessToken);
     }
 
+    [Fact]
+    public async Task Sign_in_without_organization_code_issues_a_session_for_a_single_organization()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await ActivateTenantAdminAsync(fixture, "Acme", "acme", "admin@acme.test");
+
+        var signIn = await fixture.Auth.SignInAsync(new SignInRequest(
+            "Admin@Acme.test", "Correct-Password-123!"), default);
+
+        Assert.NotNull(signIn.Session);
+        Assert.Equal(tenant.TenantId, signIn.Session.TenantId);
+        Assert.Empty(signIn.Organizations);
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.SignInAsync(
+            new SignInRequest("admin@acme.test", "Wrong-Password-123!"), default));
+        await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.SignInAsync(
+            new SignInRequest("nobody@acme.test", "Correct-Password-123!"), default));
+    }
+
+    [Fact]
+    public async Task Sign_in_lists_active_organizations_when_the_account_belongs_to_several()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var acme = await ActivateTenantAdminAsync(fixture, "Acme", "acme", "admin@acme.test");
+        var beta = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Beta", "beta", "owner@beta.test"), default);
+        var suspended = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Zulu", "zulu", "owner@zulu.test"), default);
+        var account = await fixture.Db.Accounts.SingleAsync(x => x.Email == "admin@acme.test");
+        foreach (var tenantId in new[] { beta.TenantId, suspended.TenantId })
+            fixture.Db.Memberships.Add(new Membership
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, AccountId = account.Id,
+                Role = TenantRole.Employee, Status = MembershipStatus.Active,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        (await fixture.Db.Tenants.IgnoreQueryFilters().SingleAsync(x => x.Id == suspended.TenantId))
+            .Status = TenantStatus.Suspended;
+        await fixture.Db.SaveChangesAsync();
+
+        var signIn = await fixture.Auth.SignInAsync(new SignInRequest(
+            "admin@acme.test", "Correct-Password-123!"), default);
+
+        Assert.Null(signIn.Session);
+        Assert.Equal([new SignInOrganization(acme.OrganizationCode, "Acme"),
+            new SignInOrganization(beta.OrganizationCode, "Beta")], signIn.Organizations);
+        var login = await fixture.Auth.LoginAsync(new LoginRequest
+        {
+            OrganizationCode = beta.OrganizationCode, Email = "admin@acme.test",
+            Password = "Correct-Password-123!"
+        }, default);
+        Assert.Equal(beta.TenantId, login.TenantId);
+        Assert.Equal(nameof(TenantRole.Employee), login.Role);
+    }
+
+    [Fact]
+    public async Task Platform_admin_login_needs_no_organization_code_and_rejects_other_tenants()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+            .EnsureAsync("operator@platform.test", default);
+        await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
+            PlatformAdminBootstrap.PlatformTenantId, "operator@platform.test"), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Last().Code, "Correct-Password-123!"), default);
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Acme", "acme", "admin@acme.test"), default);
+        await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
+            tenant.TenantId, "admin@acme.test"), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Last().Code, "Correct-Password-123!"), default);
+
+        var login = await fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(
+            "Operator@Platform.test", "Correct-Password-123!"), default);
+
+        Assert.Equal(PlatformAdminBootstrap.PlatformTenantId, login.TenantId);
+        Assert.Equal(nameof(TenantRole.PlatformAdmin), login.Role);
+        await Assert.ThrowsAsync<AuthenticationException>(() =>
+            fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(
+                "admin@acme.test", "Correct-Password-123!"), default));
+        await Assert.ThrowsAsync<AuthenticationException>(() =>
+            fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(
+                "operator@platform.test", "Wrong-Password-123!"), default));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -322,6 +406,18 @@ public sealed class AuthenticationFlowTests
             account.Email, "Very-Strong-New-Password-789!"), default);
         Assert.False(changed.MustChangePassword);
         Assert.False((await fixture.Db.Memberships.SingleAsync()).MustChangePassword);
+    }
+
+    private static async Task<CreateTenantResponse> ActivateTenantAdminAsync(Fixture fixture,
+        string name, string slug, string email)
+    {
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest(name, slug, email), default);
+        await fixture.Auth.RequestActivationAsync(new RequestCredentialEmail(
+            tenant.TenantId, email), default);
+        await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+            fixture.Notifications.Messages.Last().Code, "Correct-Password-123!"), default);
+        return tenant;
     }
 
     private sealed class FakeNotifications : ICredentialNotificationSender

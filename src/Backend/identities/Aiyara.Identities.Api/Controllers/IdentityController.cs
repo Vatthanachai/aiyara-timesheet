@@ -90,6 +90,27 @@ public sealed class IdentityController(
         Auth(async () => { var result = await authentication.LoginAsync(request, ct);
             Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
 
+    [HttpPost("auth/sign-in")]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ServiceOkResponse<SignInResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
+    public Task<IActionResult> SignIn([FromBody] SignInRequest request, CancellationToken ct) =>
+        Auth(async () => { var result = await authentication.SignInAsync(request, ct);
+            Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
+
+    [HttpPost("auth/platform-admin/login")]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ServiceOkResponse<AuthenticationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
+    public Task<IActionResult> LoginPlatformAdmin([FromBody] PlatformAdminLoginRequest request,
+        CancellationToken ct) =>
+        Auth(async () => { var result = await authentication.LoginPlatformAdminAsync(request, ct);
+            Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
+
     [HttpPost("auth/refresh")]
     [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(ServiceOkResponse<AuthenticationResponse>), StatusCodes.Status200OK)]

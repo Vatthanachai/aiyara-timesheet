@@ -18,6 +18,13 @@ public sealed record LoginRequest
         Password = password;
     }
 }
+public sealed record PlatformAdminLoginRequest(string Email, string Password);
+public sealed record SignInRequest(string Email, string Password);
+public sealed record SignInOrganization(string OrganizationCode, string Name);
+/// <summary>Either <see cref="Session"/> is issued (one organization) or the caller must
+/// pick one of <see cref="Organizations"/> and log in with its organization code.</summary>
+public sealed record SignInResponse(AuthenticationResponse? Session,
+    IReadOnlyList<SignInOrganization> Organizations);
 public sealed record RefreshRequest(string RefreshToken);
 public sealed record LogoutRequest(string RefreshToken);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
