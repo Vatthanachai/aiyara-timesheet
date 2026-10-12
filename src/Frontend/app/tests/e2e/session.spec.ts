@@ -261,10 +261,13 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
 })
 
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {
+  // Shaped like Identity's real ServiceErrorResponse for AuthenticationFailure.InvalidCredentials
+  // (IdentityController.Auth's catch maps it to errorCode "INVALIDCREDENTIALS"), not a generic
+  // problem+json body, so this exercises the same safeError() branch the real API triggers.
   await page.route('**/api/v1/auth/login', route => route.fulfill({
     status: 401,
-    contentType: 'application/problem+json',
-    body: JSON.stringify({ title: 'Unauthorized', status: 401 })
+    contentType: 'application/json',
+    body: JSON.stringify({ statusCode: 401, statusMessage: 'The request could not be completed.', errorCode: 'INVALIDCREDENTIALS' })
   }))
 
   await page.goto('/')
@@ -274,7 +277,7 @@ test('failed sign in displays an error and does not persist credentials', async 
   await page.getByLabel('Password').fill('wrong-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
 
-  await expect(page.getByRole('alert')).toHaveText('Session expired. Please sign in again.')
+  await expect(page.getByRole('alert')).toHaveText('Incorrect email or password.')
   await expect(page.getByRole('region', { name: 'Available applications' })).toHaveCount(0)
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.access'))).toBeNull()
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.refresh'))).toBeNull()
