@@ -140,7 +140,7 @@ $revoked = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
 if ($revoked.StatusCode -ne 401) { throw 'Logout did not invalidate cached access token.' }
 
 Expect-Status (Send-Json '/api/v1/auth/password/forgot' @{
-    organizationCode = $tenant.organizationCode; email = $adminEmail
+    tenantId = $tenant.tenantId; email = $adminEmail
 }) 202 'forgot password'
 $resetCode = Get-Code $adminEmail 'Reset your Aiyara Timesheet password'
 Expect-Status (Send-Json '/api/v1/auth/password/reset' @{
