@@ -1,12 +1,13 @@
 # Project Status
 
-> Updated 7 October 2026. Phases 0–5 are implemented and validated on `develop`. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
+> Updated 12 October 2026. Phases 0–5 are implemented and validated on `develop`. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
 
-## Current Feature Branch
+## Recent Merges To `develop`
 
-- `feature/sysadmin-organization-lifecycle` implements the approved Platform Admin organization lifecycle plan: editable organization name/slug, administrator invitations and activation resend, suspend/reactivate, lifecycle enforcement, and audit records. See [[Platform Organization Management Plan]].
-- The organization code remains immutable. Suspension retains tenant records and blocks login, refresh, and Gateway access validation.
-- Validation on this branch: full solution build succeeded with zero warnings/errors; Phase 1–4 tests passed 51/51; focused SysAdmin Playwright E2E, Nuxt production build, Compose config, and EF model/migration consistency checks passed.
+- `fix/openapi-response-metadata` (12 October 2026): every business controller action across Gateway, Identity, Timesheet, Report, and Notification now declares `[ProducesResponseType]` for its real success/error envelope shapes, closing the item the [[Full Api Controllers Plan]] merge had left open. `dotnet build` passed (32 projects, 0 errors, 71 warnings — the pre-existing warning count, unchanged); `dotnet test` passed 51/51; `git diff --check` and `docker compose config --quiet` passed.
+- `feature/sysadmin-organization-lifecycle` (merged as `75bbc61`): the approved Platform Admin organization lifecycle plan — editable organization name/slug, administrator invitations and activation resend, suspend/reactivate, lifecycle enforcement, and audit records. See [[Platform Organization Management Plan]]. The organization code remains immutable; suspension retains tenant records and blocks login, refresh, and Gateway access validation. Validation on this branch: full solution build succeeded; Phase 1–4 tests passed 51/51; focused SysAdmin Playwright E2E, Nuxt production build, Compose config, and EF model/migration consistency checks passed.
+
+Note: the solution build currently reports 71 pre-existing warnings (see Phase 0 validation below); "zero warnings" claims in earlier validation entries on this page predate a warning-count regression that was never isolated to a specific change and has not been re-chased since.
 
 ## Phase 0 Platform Baseline
 
