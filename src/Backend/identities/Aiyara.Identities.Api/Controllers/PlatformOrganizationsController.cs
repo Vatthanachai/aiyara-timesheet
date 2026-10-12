@@ -31,6 +31,27 @@ public sealed class PlatformOrganizationsController(IdentityDbContext db, Tenant
         return ReturnResponseWithHttpStatus(new ServiceOkResponse<PlatformOrganizationListResponse>(result));
     }
 
+    [HttpPost]
+    [ProducesResponseType(typeof(ServiceOkResponse<PlatformOrganizationUpdateResult>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Create([FromBody] CreatePlatformOrganizationRequest request,
+        CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var actor = await PlatformActorAsync(cancellationToken);
+        if (actor is null) return UnauthorizedResponse();
+        try
+        {
+            var result = await organizations.CreateAsync(actor.AccountId, actor.SessionVersion,
+                request, cancellationToken);
+            return ReturnResponseWithHttpStatus(
+                new ServiceOkResponse<PlatformOrganizationUpdateResult>(result, StatusCodes.Status201Created));
+        }
+        catch (PlatformOrganizationException exception) { return Error(exception); }
+    }
+
     [HttpPut("{tenantId:guid}")]
     [ProducesResponseType(typeof(ServiceOkResponse<PlatformOrganizationUpdateResult>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]

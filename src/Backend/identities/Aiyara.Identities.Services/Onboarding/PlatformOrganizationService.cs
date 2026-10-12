@@ -70,6 +70,48 @@ public sealed class PlatformOrganizationService(IdentityDbContext db, TenantScop
         return new PlatformOrganizationListResponse(totalCount, page, pageSize, items);
     }
 
+    public async Task<PlatformOrganizationUpdateResult> CreateAsync(Guid actorAccountId,
+        long actorSessionVersion, CreatePlatformOrganizationRequest request,
+        CancellationToken cancellationToken)
+    {
+        await EnsurePlatformAdminAsync(actorAccountId, actorSessionVersion, cancellationToken);
+        var onboarding = new OnboardingService(db, tenantScope);
+        Tenant? created = null;
+        try
+        {
+            await onboarding.CreateTenantAsync(
+                new CreateTenantRequest(request.Name, request.Slug, request.AdminEmail),
+                issueOnboardingKey: false, beforeCommit: tenant =>
+                {
+                    created = tenant;
+                    AddAudit(tenant.Id, actorAccountId, "organization.created", null, null,
+                        JsonSerializer.Serialize(new
+                        {
+                            tenant.Name, tenant.Slug, tenant.OrganizationCode,
+                            AdminEmail = request.AdminEmail?.Trim().ToLowerInvariant()
+                        }), tenant.CreatedAtUtc);
+                }, cancellationToken);
+        }
+        catch (OnboardingException exception)
+        {
+            throw new PlatformOrganizationException(exception.Failure == OnboardingFailure.Conflict
+                ? PlatformOrganizationFailure.Conflict : PlatformOrganizationFailure.InvalidInput);
+        }
+
+        if (authentication is not null)
+        {
+            try
+            {
+                await authentication.RequestActivationAsync(new RequestCredentialEmail(created!.Id,
+                    request.AdminEmail.Trim()), cancellationToken);
+            }
+            // The organization exists either way; the admin can be re-sent activation later.
+            catch (AuthenticationException exception) when (exception.Failure is
+                AuthenticationFailure.Unavailable or AuthenticationFailure.RateLimited) { }
+        }
+        return ToUpdateResult(created!);
+    }
+
     public async Task<PlatformOrganizationUpdateResult> UpdateAsync(Guid tenantId,
         Guid actorAccountId, long actorSessionVersion,
         UpdatePlatformOrganizationRequest request, CancellationToken cancellationToken)
@@ -160,6 +202,8 @@ public sealed class PlatformOrganizationService(IdentityDbContext db, TenantScop
         tenantScope.TenantId = tenantId;
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
+        if (account?.IsPlatformAdmin == true)
+            throw new PlatformOrganizationException(PlatformOrganizationFailure.Conflict);
         if (account is not null && await db.Memberships.AnyAsync(x =>
             x.AccountId == account.Id, cancellationToken))
             throw new PlatformOrganizationException(PlatformOrganizationFailure.Conflict);

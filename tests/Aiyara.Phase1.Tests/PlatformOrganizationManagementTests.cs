@@ -119,6 +119,81 @@ public sealed class PlatformOrganizationManagementTests
         Assert.Equal(PlatformOrganizationFailure.ProtectedTenant, exception.Failure);
     }
 
+    [Fact]
+    public async Task Platform_admin_creates_an_audited_organization_without_an_onboarding_key()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var created = await fixture.Service.CreateAsync(fixture.PlatformAdminId, 0,
+            new CreatePlatformOrganizationRequest("Acme Studio", "acme-studio", "Owner@Acme.test"), default);
+
+        Assert.Equal("Acme Studio", created.Name);
+        Assert.Equal("acme-studio", created.Slug);
+        Assert.Equal("Active", created.Status);
+        Assert.Matches("^[A-Z0-9]{4}[0-9]{3}$", created.OrganizationCode);
+        var audit = await fixture.Db.PlatformOrganizationAudits.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("organization.created", audit.Action);
+        Assert.Equal(created.TenantId, audit.TenantId);
+        Assert.Equal(fixture.PlatformAdminId, audit.ActorAccountId);
+        Assert.Contains("owner@acme.test", audit.AfterJson);
+        Assert.Empty(await fixture.Db.OnboardingCapabilities.IgnoreQueryFilters().ToListAsync());
+        var membership = await fixture.Db.Memberships.IgnoreQueryFilters()
+            .SingleAsync(x => x.TenantId == created.TenantId);
+        Assert.Equal(TenantRole.TenantAdmin, membership.Role);
+        Assert.Equal(MembershipStatus.PendingActivation, membership.Status);
+    }
+
+    [Fact]
+    public async Task Organization_creation_rejects_non_platform_actor_and_duplicate_slug()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Taken", "taken-slug", "admin@taken.test"), default);
+
+        var outsider = await Assert.ThrowsAsync<PlatformOrganizationException>(() =>
+            fixture.Service.CreateAsync(Guid.NewGuid(), 0,
+                new CreatePlatformOrganizationRequest("Acme", "acme", "a@acme.test"), default));
+        var duplicate = await Assert.ThrowsAsync<PlatformOrganizationException>(() =>
+            fixture.Service.CreateAsync(fixture.PlatformAdminId, 0,
+                new CreatePlatformOrganizationRequest("Acme", "taken-slug", "a@acme.test"), default));
+
+        Assert.Equal(PlatformOrganizationFailure.Unauthorized, outsider.Failure);
+        Assert.Equal(PlatformOrganizationFailure.Conflict, duplicate.Failure);
+        Assert.Empty(await fixture.Db.PlatformOrganizationAudits.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Platform_admin_accounts_cannot_join_customer_organizations()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Acme", "acme", "admin@acme.test"), default);
+
+        var asNewTenantAdmin = await Assert.ThrowsAsync<PlatformOrganizationException>(() =>
+            fixture.Service.CreateAsync(fixture.PlatformAdminId, 0,
+                new CreatePlatformOrganizationRequest("Beta", "beta", "platform@aiyara.test"), default));
+        var asSignup = await Assert.ThrowsAsync<OnboardingException>(() =>
+            fixture.Onboarding.CreateTenantAsync(
+                new CreateTenantRequest("Gamma", "gamma", "platform@aiyara.test"), default));
+        var asInvitedAdmin = await Assert.ThrowsAsync<PlatformOrganizationException>(() =>
+            fixture.Service.InviteAdministratorAsync(tenant.TenantId, fixture.PlatformAdminId, 0,
+                new InvitePlatformOrganizationAdminRequest("platform@aiyara.test"), default));
+        var membership = await fixture.Db.Memberships.IgnoreQueryFilters()
+            .SingleAsync(x => x.TenantId == tenant.TenantId);
+        var tenantAdminId = membership.AccountId;
+        membership.Status = MembershipStatus.Active;
+        await fixture.Db.SaveChangesAsync();
+        var asInvitedMember = await Assert.ThrowsAsync<OnboardingException>(() =>
+            fixture.Onboarding.IssueInvitationAsync(tenant.TenantId, tenantAdminId,
+                new IssueInvitationRequest("platform@aiyara.test", "Employee"), default));
+
+        Assert.Equal(PlatformOrganizationFailure.Conflict, asNewTenantAdmin.Failure);
+        Assert.Equal(OnboardingFailure.Conflict, asSignup.Failure);
+        Assert.Equal(PlatformOrganizationFailure.Conflict, asInvitedAdmin.Failure);
+        Assert.Equal(OnboardingFailure.Conflict, asInvitedMember.Failure);
+        Assert.Equal(2, await fixture.Db.Tenants.IgnoreQueryFilters().CountAsync());
+    }
+
     internal sealed class FakeRevocations : ISessionRevocationPublisher
     {
         public List<Guid> Published { get; } = [];

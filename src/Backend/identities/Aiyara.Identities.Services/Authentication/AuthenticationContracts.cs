@@ -18,6 +18,9 @@ public sealed record LoginRequest
         Password = password;
     }
 }
+/// <summary>Public login body. Tenants are selected only by organization code; the internal
+/// tenant ID is never accepted from callers.</summary>
+public sealed record OrganizationLoginRequest(string? OrganizationCode, string Email, string Password);
 public sealed record PlatformAdminLoginRequest(string Email, string Password);
 public sealed record SignInRequest(string Email, string Password);
 public sealed record SignInOrganization(string OrganizationCode, string Name);

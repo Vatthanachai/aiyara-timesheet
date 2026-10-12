@@ -86,8 +86,12 @@ public sealed class IdentityController(
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
-    public Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct) =>
-        Auth(async () => { var result = await authentication.LoginAsync(request, ct);
+    public Task<IActionResult> Login([FromBody] OrganizationLoginRequest request, CancellationToken ct) =>
+        Auth(async () => { var result = await authentication.LoginAsync(new LoginRequest
+            {
+                OrganizationCode = request.OrganizationCode, Email = request.Email,
+                Password = request.Password
+            }, ct);
             Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
 
     [HttpPost("auth/sign-in")]

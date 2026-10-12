@@ -66,7 +66,7 @@ Expect (Request Post '/api/v1/auth/activate' @{
     code = (ActivationCode $adminEmail); password = $password
 }) 204 'admin activation' | Out-Null
 $adminSession = Expect (Request Post '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $adminEmail; password = $password
+    organizationCode = $tenant.organizationCode; email = $adminEmail; password = $password
 }) 200 'admin login'
 $admin = @{ Authorization = "Bearer $($adminSession.accessToken)" }
 
@@ -101,7 +101,7 @@ Expect (Request Post '/api/v1/auth/activate' @{
     code = (ActivationCode $employeeEmail); password = $password
 }) 204 'employee activation' | Out-Null
 $employeeSession = Expect (Request Post '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $employeeEmail; password = $password
+    organizationCode = $tenant.organizationCode; email = $employeeEmail; password = $password
 }) 200 'employee login'
 $employee = @{ Authorization = "Bearer $($employeeSession.accessToken)" }
 Expect (Request Post '/api/v1/timesheets/projects' @{ name = 'Denied' } $employee) 403 'employee catalog permission' | Out-Null
