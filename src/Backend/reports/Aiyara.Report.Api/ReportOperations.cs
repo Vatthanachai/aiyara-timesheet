@@ -37,12 +37,47 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         DefinitionRequest body, CancellationToken ct)
     {
         if (!ValidDefinition(body)) return Error(400, "VALIDATION_FAILED");
+        // One definition per kind and format (a unique index). A disabled one is enabled again
+        // rather than duplicated.
+        var existing = await db.ReportDefinitions.SingleOrDefaultAsync(x =>
+            x.Kind == body.Kind && x.Format == body.Format, ct);
+        if (existing is { IsEnabled: true }) return Error(409, "DEFINITION_EXISTS");
+        if (existing is not null)
+        {
+            existing.IsEnabled = true;
+            existing.Name = body.Name.Trim();
+            Audit(actor, "definition.reenabled", null, new { existing.Id, existing.Name });
+            await db.SaveChangesAsync(ct);
+            return Ok(existing);
+        }
         var definition = new ReportDefinition { TenantId = actor.TenantId, Kind = body.Kind,
             Format = body.Format, Name = body.Name.Trim(), CreatedAtUtc = DateTime.UtcNow };
         db.ReportDefinitions.Add(definition);
         Audit(actor, "definition.created", null, new { definition.Id, definition.Kind, definition.Format });
-        await db.SaveChangesAsync(ct);
+        // The Worker creates a tenant's default Monthly/PDF definition when a month is locked, so a
+        // concurrent insert can still hit the unique index after the check above.
+        if (!await TrySaveUniqueAsync(definition.Kind, definition.Format, definition.Id, ct))
+            return Error(409, "DEFINITION_EXISTS");
         return Created(definition, $"/api/v1/definitions/{definition.Id}");
+    }
+
+    /// <summary>Saves, turning a unique-index race on (tenant, kind, format) into false instead of
+    /// a 500. Any other failure is rethrown.</summary>
+    private async Task<bool> TrySaveUniqueAsync(ReportKind kind, ReportFormat format, Guid id,
+        CancellationToken ct)
+    {
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            if (await db.ReportDefinitions.AnyAsync(x => x.Kind == kind && x.Format == format && x.Id != id, ct))
+                return false;
+            throw;
+        }
     }
 
     public async Task<ServiceResponse> UpdateDefinition(ReportActor actor, Guid id,
@@ -51,11 +86,15 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         var definition = await db.ReportDefinitions.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (definition is null) return Error(404, "NOT_FOUND");
         if (!ValidDefinition(body)) return Error(400, "VALIDATION_FAILED");
+        if (await db.ReportDefinitions.AnyAsync(x => x.Id != id && x.Kind == body.Kind &&
+                x.Format == body.Format, ct))
+            return Error(409, "DEFINITION_EXISTS");
         var before = new { definition.Name, definition.Kind, definition.Format };
         definition.Name = body.Name.Trim(); definition.Kind = body.Kind; definition.Format = body.Format;
         Audit(actor, "definition.updated", null, new { before,
             after = new { definition.Name, definition.Kind, definition.Format } });
-        await db.SaveChangesAsync(ct);
+        if (!await TrySaveUniqueAsync(definition.Kind, definition.Format, definition.Id, ct))
+            return Error(409, "DEFINITION_EXISTS");
         return Ok(definition);
     }
 

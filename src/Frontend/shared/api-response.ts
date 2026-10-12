@@ -30,6 +30,8 @@ export function safeError(error: unknown, locale: Locale): string {
     return thai ? 'บัญชีนี้ต้องเข้าสู่ระบบที่หน้าผู้ดูแลระบบ' : 'This account signs in on the system administrator page.'
   if (code === 'MFAINVALID')
     return thai ? 'รหัสยืนยันไม่ถูกต้องหรือถูกใช้ไปแล้ว' : 'That code is not valid or has already been used.'
+  if (code === 'DEFINITION_EXISTS')
+    return thai ? 'มีรูปแบบรายงานประเภทและไฟล์นี้อยู่แล้ว' : 'A report format of this kind and file type already exists.'
   if (status === 401) return thai ? 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง' : 'Session expired. Please sign in again.'
   if (status === 403) return thai ? 'คุณไม่มีสิทธิ์ทำรายการนี้' : 'You do not have permission for this action.'
   if (status === 404) return thai ? 'ไม่พบข้อมูลที่ต้องการ' : 'The requested item was not found.'
