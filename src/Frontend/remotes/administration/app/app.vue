@@ -62,13 +62,18 @@ const copy = useLocaleText(locale, { th: {
 } })
 onMounted(() => {
   window.addEventListener('message', (event: MessageEvent) => {
-    if (event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.session') return
+    if (event.source !== window.parent || event.origin !== config.public.shellOrigin ||
+      event.data?.type !== 'aiyara.session') return
+    // Later messages only renew the token or locale; reloading would overwrite unsaved edits.
+    const firstSession = !token.value
     token.value = event.data.token || ''
     gateway.value = event.data.gatewayUrl || gateway.value
     locale.value = readSessionLocale(event.data)
     tenantId.value = event.data.tenantId || ''
-    if (token.value) load()
+    if (token.value && firstSession) load()
   })
+  // The Shell's first session message can arrive before hydration; ask for it once listening.
+  if (window.parent !== window) window.parent.postMessage({ type: 'aiyara.ready' }, config.public.shellOrigin)
 })
 async function api<T>(path: string, options: { method?: string; body?: object } = {}) {
   return unwrapResponse(await withRemoteRefresh(accessToken =>
