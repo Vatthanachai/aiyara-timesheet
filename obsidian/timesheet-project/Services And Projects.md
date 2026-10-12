@@ -31,9 +31,10 @@ empty (no `.cs` files) and referenced by no other project —
 solution and deleted on `chore/remove-empty-projects`, 12 October 2026. The
 ones that hold real code stayed: `Identities.Models` (profile/tenancy
 entities), `Report.Models` (`ReportEntities.cs`), and
-`Aiyara.Identities.Servives` (`Aiyara.Identities.Services` assembly — the
-spelling `Servives` is present only in this directory name), which holds
-`OnboardingService`, `AuthenticationService`, and `PlatformOrganizationService`.
+`Aiyara.Identities.Services` (the `Aiyara.Identities.Services` assembly;
+see Naming Notes below for the directory-name typo this used to carry),
+which holds `OnboardingService`, `AuthenticationService`, and
+`PlatformOrganizationService`.
 Business logic for Timesheet and Report sits directly in each `*.Api` project
 instead (`TimesheetOperations.cs`, `ReportOperations.cs`). Reporting stores
 schedules in the tenant-scoped Reporting database and Quartz dispatches due
@@ -50,10 +51,14 @@ lookup, and RustFS.
 
 ## Naming Notes
 
-Several existing paths use `Componenet` while assembly names use `Component`;
-the identities service directory is named `Aiyara.Identities.Servives`. These
-are current repository names and should be treated carefully if renamed,
-because solution and project references must be updated together.
+Three directory names carried typos relative to their own project/assembly
+names: `Aiyara.Timesheet.Componenet.Abstractions`, `Aiyara.Timesheet.Componenet.Data`,
+and `Aiyara.Identities.Servives` (their `.csproj` files, assemblies, and C#
+namespaces were already spelled correctly — only the folder name was wrong).
+Fixed on `fix/directory-name-typos`, 12 October 2026: `git mv` to the correct
+spelling (`Component.Abstractions`, `Component.Data`, `Identities.Services`),
+with every `ProjectReference` path and the `.slnx` updated to match. No
+namespace or assembly name changed, so no C# source file needed editing.
 
 ## Related
 
