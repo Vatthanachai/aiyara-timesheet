@@ -22,18 +22,23 @@ routes, is now an MVC controller inheriting `BaseController`; see
 
 ## Backend Module Layout
 
-The `identities`, `timesheet`, and `reports` areas each still declare
-placeholder `Handlers`, `Models`, `Services`/`Servives`, and `Utilities`
-projects from the original scaffold. All of them are empty (no `.cs` files)
-and referenced by no other project; the business logic that would have lived
-there sits directly in each `*.Api` project instead (for example
-`TimesheetOperations.cs`, `ReportOperations.cs`, and
-`Aiyara.Identities.Servives/Onboarding/OnboardingService.cs`, which is not
-empty and holds real onboarding logic). Reporting stores schedules in the
-tenant-scoped Reporting database and Quartz dispatches due work. Generated
-documents use locked Timesheet snapshots, Identity profile lookup, and
-RustFS. The spelling `Servives` is present only in the identities directory;
-its assembly/project file remains `Aiyara.Identities.Services`.
+The original scaffold declared a `Handlers`/`Models`/`Services`/`Utilities`
+project per area (`identities`, `timesheet`, `reports`). The eight that stayed
+empty (no `.cs` files) and referenced by no other project —
+`Identities.Handlers`, `Identities.Utilities`, `Report.Handlers`,
+`Report.Utilities`, `Timesheet.Handlers`, `Timesheet.Models`,
+`Timesheet.Services`, and `Timesheet.Utilities` — were removed from the
+solution and deleted on `chore/remove-empty-projects`, 12 October 2026. The
+ones that hold real code stayed: `Identities.Models` (profile/tenancy
+entities), `Report.Models` (`ReportEntities.cs`), and
+`Aiyara.Identities.Servives` (`Aiyara.Identities.Services` assembly — the
+spelling `Servives` is present only in this directory name), which holds
+`OnboardingService`, `AuthenticationService`, and `PlatformOrganizationService`.
+Business logic for Timesheet and Report sits directly in each `*.Api` project
+instead (`TimesheetOperations.cs`, `ReportOperations.cs`). Reporting stores
+schedules in the tenant-scoped Reporting database and Quartz dispatches due
+work. Generated documents use locked Timesheet snapshots, Identity profile
+lookup, and RustFS.
 
 ## Shared Utilities
 
