@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
+import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
 
 type Definition = { id: string; kind: string; format: string; name: string }
 type Run = { id: string; subjectUserId: string | null; status: string; periodStartUtc: string; periodEndUtc: string; attemptCount: number; createdAtUtc: string; kind: string; format: string; name: string }
@@ -10,7 +11,7 @@ const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const token = ref('')
 const gateway = ref('http://localhost:8081')
-const locale = ref<'th' | 'en'>('th')
+const locale = ref<Locale>('th')
 const isAdmin = ref(false)
 const timeZoneId = ref('Asia/Bangkok')
 const definitions = ref<Definition[]>([])
@@ -25,7 +26,7 @@ const definitionForm = reactive({ kind: 'Monthly', format: 'Pdf', name: '' })
 const scheduleForm = reactive({ reportDefinitionId: '', timeZoneId: 'Asia/Bangkok', localTime: '00:15' })
 const error = ref('')
 const notice = ref('')
-const copy = computed(() => locale.value === 'th' ? {
+const copy = useLocaleText(locale, { th: {
   title: 'รายงานและเอกสาร', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
   dashboard: 'ภาพรวม', total: 'รายงานทั้งหมด', ready: 'พร้อมดาวน์โหลด', queued: 'กำลังดำเนินการ', failed: 'ผิดพลาด',
   request: 'ขอรายงาน', definition: 'รูปแบบรายงาน', kind: 'ประเภทรายงาน', format: 'ไฟล์',
@@ -40,7 +41,7 @@ const copy = computed(() => locale.value === 'th' ? {
   generated: 'ส่งคำขอสร้างรายงานแล้ว', saved: 'บันทึกแล้ว', upload: 'อัปโหลด',
   loadingError: 'โหลดข้อมูลไม่สำเร็จ', actionError: 'ทำรายการไม่สำเร็จ', noRuns: 'ยังไม่มีรายงาน',
   requiresLocked: 'สร้างรายงานได้เมื่อเดือนต้นทางถูกล็อกแล้ว'
-} : {
+}, en: {
   title: 'Reports and documents', signIn: 'Please sign in through Aiyara Shell',
   dashboard: 'Summary', total: 'Total reports', ready: 'Ready to download', queued: 'In progress', failed: 'Failed',
   request: 'Request a report', definition: 'Report format', kind: 'Report type', format: 'File',
@@ -55,13 +56,13 @@ const copy = computed(() => locale.value === 'th' ? {
   generated: 'Report generation queued', saved: 'Saved', upload: 'Upload',
   loadingError: 'Could not load reports', actionError: 'Action failed', noRuns: 'No reports yet',
   requiresLocked: 'Source months must be locked before report generation'
-})
+} })
 
 onMounted(() => window.addEventListener('message', (event: MessageEvent) => {
   if (event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.session') return
   token.value = event.data.token || ''
   gateway.value = event.data.gatewayUrl || gateway.value
-  locale.value = event.data.locale === 'en' ? 'en' : 'th'
+  locale.value = readSessionLocale(event.data)
   if (token.value) load()
 }))
 
