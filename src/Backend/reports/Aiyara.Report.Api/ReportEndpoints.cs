@@ -15,6 +15,7 @@ public sealed record RunRequest(Guid DefinitionId, DateTimeOffset PeriodStartUtc
     DateTimeOffset PeriodEndUtc, Guid? SubjectUserId);
 public sealed record ScheduleRequest(Guid ReportDefinitionId, string TimeZoneId, TimeOnly LocalTime);
 public sealed record RetentionRequest(int Years);
+public sealed record RunQuery(ReportRunStatus? Status, Guid? DefinitionId, int Page = 1, int PageSize = 20);
 
 public sealed record ReportActor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {

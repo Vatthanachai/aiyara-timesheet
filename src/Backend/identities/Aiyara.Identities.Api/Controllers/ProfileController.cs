@@ -38,6 +38,32 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
         }));
     }
 
+    /// <summary>Tenant Admin directory of the caller's organization (scoped by the validated
+    /// token's tenant), used to name report subjects and pick a member to report on.</summary>
+    [HttpGet("members", Name = "ListTenantMembersV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Members(CancellationToken ct)
+    {
+        var account = await AuthenticatedAccount(ct);
+        if (account is null) return Error(401, "UNAUTHORIZED");
+        var membership = await db.Memberships.SingleAsync(x => x.AccountId == account.Id, ct);
+        if (membership.Role != TenantRole.TenantAdmin) return Error(403, "FORBIDDEN");
+        var members = await db.Memberships.AsNoTracking()
+            .Join(db.Accounts.AsNoTracking(), member => member.AccountId, person => person.Id,
+                (member, person) => new { person.Id, person.FirstName, person.LastName, person.Email,
+                    member.Role, member.Status })
+            // Members who have not set a name yet (pending invitations) sort after named ones.
+            .OrderBy(x => x.FirstName == "").ThenBy(x => x.FirstName).ThenBy(x => x.LastName)
+            .ThenBy(x => x.Email)
+            .ToListAsync(ct);
+        return ReturnResponseWithHttpStatus(new ServiceOkResponse<object>(members.Select(x => new
+        {
+            x.Id, x.FirstName, x.LastName, x.Email, Role = x.Role.ToString(), Status = x.Status.ToString()
+        }).ToList()));
+    }
+
     [HttpGet("profile/me", Name = "GetMyProfileV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]

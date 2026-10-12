@@ -109,7 +109,7 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
             request.Headers.Add("X-Internal-Service-Key", configuration["Reporting:InternalKey"]);
             using var response = await http.SendAsync(request, cancellationToken);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                throw new SourceMonthNotLockedException($"Source month {month:yyyy-MM} has not been locked.");
+                throw new SourceMonthNotLockedException(ReportRunReasons.SourceMonthNotLocked(month));
             response.EnsureSuccessStatusCode();
             if (run.SubjectUserId is null)
             {

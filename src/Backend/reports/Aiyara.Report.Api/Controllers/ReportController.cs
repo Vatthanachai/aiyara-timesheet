@@ -55,8 +55,9 @@ public sealed class ReportController(ReportOperations operations) : BaseControll
     [HttpGet("runs")]
     [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
-    public Task<IActionResult> Runs([FromQuery] int? take, CancellationToken ct) =>
-        WithActorAsync(actor => operations.Runs(actor, take, ct));
+    public Task<IActionResult> Runs([FromQuery] ReportRunStatus? status, [FromQuery] Guid? definitionId,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default) =>
+        WithActorAsync(actor => operations.Runs(actor, new RunQuery(status, definitionId, page, pageSize), ct));
 
     [HttpPost("runs")]
     [ProducesResponseType(typeof(ServiceOkResponse<ReportRun>), StatusCodes.Status202Accepted)]

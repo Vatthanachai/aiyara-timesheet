@@ -793,3 +793,156 @@ test('console pages stay restricted for non platform admins', async ({ page }) =
     await expect(page.getByRole('navigation', { name: 'System administration' })).toHaveCount(0)
   }
 })
+
+async function openReporting(page: import('@playwright/test').Page, role: 'TenantAdmin' | 'Employee') {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3103',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const state = {
+    flipQueuedToReady: false,
+    runQueries: [] as URLSearchParams[],
+    created: [] as unknown[],
+    renamed: [] as unknown[],
+    memberCalls: 0
+  }
+  const definitions = [
+    { id: 'def-month', kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet' },
+    { id: 'def-week', kind: 'Weekly', format: 'Xlsx', name: 'Weekly hours' }
+  ]
+  const run = (id: string, overrides: Record<string, unknown>) => ({
+    id, definitionId: 'def-month', subjectUserId: null, status: 'Succeeded', statusReason: null, blockedMonth: null,
+    periodStartUtc: '2026-08-31T17:00:00Z', periodEndUtc: '2026-09-30T17:00:00Z', attemptCount: 1,
+    createdAtUtc: '2026-10-01T02:00:00Z', completedAtUtc: '2026-10-01T02:01:00Z', signedVersion: null,
+    kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet', ...overrides
+  })
+  const runs = () => [
+    run('run-queued', { definitionId: 'def-week', kind: 'Weekly', format: 'Xlsx', name: 'Weekly hours',
+      status: state.flipQueuedToReady ? 'Succeeded' : 'Queued', completedAtUtc: state.flipQueuedToReady ? '2026-10-12T03:00:00Z' : null }),
+    run('run-blocked', { status: 'Queued', statusReason: 'SOURCE_MONTH_NOT_LOCKED', blockedMonth: '2026-09',
+      subjectUserId: 'member-somchai', completedAtUtc: null }),
+    run('run-failed', { status: 'Failed', statusReason: 'GENERATION_FAILED' }),
+    run('run-ready', { signedVersion: 2, subjectUserId: 'member-gone' })
+  ]
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const ok = (result: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    if (url.pathname.endsWith('/auth/sign-in')) return ok({ session: {
+      accessToken: 'reports-token', refreshToken: 'reports-refresh', mustChangePassword: false, tenantId, role,
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (url.pathname.endsWith('/identity/members')) {
+      state.memberCalls++
+      return ok([
+        { id: 'member-anong', firstName: 'Anong', lastName: 'Admin', email: 'admin@acme.test', role: 'TenantAdmin', status: 'Active' },
+        { id: 'member-somchai', firstName: 'Somchai', lastName: 'Staff', email: 'somchai@acme.test', role: 'Employee', status: 'Active' },
+        { id: 'member-new', firstName: '', lastName: '', email: 'new@acme.test', role: 'Employee', status: 'PendingActivation' }
+      ])
+    }
+    if (url.pathname.endsWith('/reports/context')) return ok({ isAdmin: role === 'TenantAdmin', timeZoneId: 'Asia/Bangkok' })
+    if (url.pathname.endsWith('/reports/definitions')) return ok(definitions)
+    if (url.pathname.match(/\/reports\/definitions\/[^/]+$/) && request.method() === 'PUT') {
+      state.renamed.push(request.postDataJSON())
+      return ok(definitions[0])
+    }
+    if (url.pathname.endsWith('/reports/dashboard')) return ok({ total: 4, ready: 1, queued: 1, blocked: 1, failed: 1 })
+    if (url.pathname.endsWith('/reports/schedules')) return ok([])
+    if (url.pathname.endsWith('/reports/retention')) return ok({ years: 7 })
+    if (url.pathname.endsWith('/reports/runs')) {
+      if (request.method() === 'POST') {
+        state.created.push(request.postDataJSON())
+        return ok({ id: 'run-new' }, 202)
+      }
+      state.runQueries.push(url.searchParams)
+      const status = url.searchParams.get('status')
+      const items = runs().filter(item => !status || item.status === status)
+      return ok({ totalCount: items.length, page: 1, pageSize: 10, items })
+    }
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('reports@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('link', { name: /Reports.*View reports/ }).click()
+  const frame = page.frameLocator('iframe')
+  await expect(frame.getByRole('heading', { name: 'Reports and documents', level: 1 })).toBeVisible()
+  return { frame, state }
+}
+
+test('reporting shows names and reasons, requests a member report by calendar period, and refreshes progress', async ({ page }) => {
+  const { frame, state } = await openReporting(page, 'TenantAdmin')
+
+  await expect(frame.locator('.summary')).toContainText('Needs attention2')
+  const history = frame.locator('table')
+  await expect(history).toContainText('Somchai Staff')
+  await expect(history).toContainText('Former member')
+  await expect(history).toContainText('Whole organization')
+  await expect(history).toContainText('Waiting for 2026-09 to be locked')
+  await expect(history).toContainText('Request it again')
+  await expect(history).toContainText('Signed v2')
+  await expect(history).toContainText('Sep 1, 2026 – Sep 30, 2026')
+  await expect(history).not.toContainText('member-')
+
+  // Monthly report: month + year pickers, a member subject, and an exact period preview.
+  const year = new Date().getFullYear()
+  await frame.locator('.request-form').getByLabel(/^Month/).selectOption('1')
+  await frame.locator('.request-form').getByLabel(/^Year/).selectOption(String(year))
+  await expect(frame.getByLabel('Report on').locator('option')).toHaveText(['Whole organization', 'Anong Admin', 'Somchai Staff'])
+  await frame.getByLabel('Report on').selectOption({ label: 'Somchai Staff' })
+  await expect(frame.locator('.preview')).toHaveText(`Period: Jan 1, ${year} – Jan 31, ${year} (Asia/Bangkok)`)
+  await frame.getByRole('button', { name: 'Generate report' }).click()
+  await expect.poll(() => state.created).toEqual([{
+    definitionId: 'def-month', subjectUserId: 'member-somchai',
+    periodStartUtc: `${year - 1}-12-31T17:00:00.000Z`, periodEndUtc: `${year}-01-31T17:00:00.000Z`
+  }])
+
+  // Weekly report: any day picks its Monday-to-Sunday week.
+  await frame.locator('.request-form select').first().selectOption('def-week')
+  await frame.getByLabel('Week containing').fill('2026-10-14')
+  await expect(frame.locator('.preview')).toHaveText('Period: Oct 12, 2026 – Oct 18, 2026 (Asia/Bangkok)')
+
+  // Filters are sent to the API.
+  await frame.locator('.filters').getByLabel('Status').selectOption('Failed')
+  await expect.poll(() => state.runQueries.at(-1)?.get('status')).toBe('Failed')
+  await expect(history.locator('tbody tr')).toHaveCount(1)
+  await frame.locator('.filters').getByLabel('Status').selectOption('')
+
+  // While a report is queued the list refreshes itself.
+  await expect(frame.getByText('Statuses refresh automatically')).toBeVisible()
+  state.flipQueuedToReady = true
+  await expect(history.locator('tbody tr').filter({ hasText: 'Weekly hours' }).getByRole('button', { name: 'Download' }))
+    .toBeVisible({ timeout: 15_000 })
+
+  // Settings: rename a format; monthly schedules explain their fixed time instead of asking for one.
+  await frame.locator('.setting-list').getByLabel('Name').first().fill('Monthly timesheet (signed)')
+  await frame.locator('.setting-list').getByRole('button', { name: 'Save' }).first().click()
+  await expect.poll(() => state.renamed).toEqual([{ kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet (signed)' }])
+  await expect(frame.getByText('Monthly reports run at 00:15 on the 1st of each month.')).toBeVisible()
+})
+
+test('employees request only their own reports and never load the member directory', async ({ page }) => {
+  const { frame, state } = await openReporting(page, 'Employee')
+
+  await expect(frame.locator('table')).toBeVisible()
+  await expect(frame.getByRole('columnheader', { name: 'Person' })).toHaveCount(0)
+  await expect(frame.getByLabel('Report on')).toHaveCount(0)
+  await expect(frame.getByRole('heading', { name: 'Report settings' })).toHaveCount(0)
+  await frame.getByRole('button', { name: 'Generate report' }).click()
+  await expect.poll(() => state.created.length).toBe(1)
+  expect((state.created[0] as { subjectUserId: unknown }).subjectUserId).toBeNull()
+  expect(state.memberCalls).toBe(0)
+
+  // Only the history table may scroll sideways on a phone; the page itself must not.
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await expect(frame.getByRole('button', { name: 'Generate report' })).toBeVisible()
+  }
+})

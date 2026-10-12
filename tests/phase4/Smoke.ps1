@@ -100,7 +100,7 @@ $run = Expect (Request Post '/api/v1/reports/runs' @{
 
 $completed = $false
 for ($attempt = 0; $attempt -lt 60; $attempt++) {
-    $runs = @(Expect (Request Get '/api/v1/reports/runs' $null $auth) 200 'report status')
+    $runs = @((Expect (Request Get '/api/v1/reports/runs' $null $auth) 200 'report status').items)
     $current = $runs | Where-Object { $_.id -eq $run.id } | Select-Object -First 1
     if ($current.status -eq 'Succeeded') { $completed = $true; break }
     if ($current.status -eq 'Failed') { throw "Report worker failed: $($current.attemptCount) attempt(s)." }
@@ -130,6 +130,19 @@ if ($signedDocument.version -ne 1) { throw 'The signed PDF version was not recor
 $downloadSigned = $client.GetByteArrayAsync("$GatewayUrl/api/v1/reports/runs/$($run.id)/download").GetAwaiter().GetResult()
 if ([Convert]::ToBase64String($downloadSigned) -ne [Convert]::ToBase64String($signedPdf)) {
     throw 'Latest report download did not return the signed PDF.'
+}
+
+# Reporting workspace views: filtered/paged history, dashboard counts, and the member directory.
+$readyRuns = Expect (Request Get "/api/v1/reports/runs?status=Succeeded&definitionId=$($definition.id)&page=1&pageSize=5" $null $auth) 200 'filtered report history'
+$listed = @($readyRuns.items) | Where-Object { $_.id -eq $run.id } | Select-Object -First 1
+if (-not $listed -or $listed.signedVersion -ne $signedDocument.version -or -not $listed.completedAtUtc -or $listed.statusReason) {
+    throw 'Filtered report history does not show the completed, signed run.'
+}
+$dashboard = Expect (Request Get '/api/v1/reports/dashboard' $null $auth) 200 'report dashboard'
+if ($null -eq $dashboard.blocked -or $dashboard.ready -lt 1) { throw 'Report dashboard is missing its ready/blocked counts.' }
+$members = @(Expect (Request Get '/api/v1/identity/members' $null $auth) 200 'member directory')
+if (-not ($members | Where-Object { $_.id -eq $profile.id -and $_.firstName -eq 'Phase' -and $_.role -eq 'TenantAdmin' })) {
+    throw 'Member directory does not list the organization administrator.'
 }
 
 $readyEmail = $false
