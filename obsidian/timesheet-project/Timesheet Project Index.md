@@ -17,6 +17,7 @@
 - [[Development Roadmap]] — dependency-ordered delivery plan and acceptance outcomes.
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
+- [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (draft, awaiting decisions).
 
 ## Repository Facts
 
