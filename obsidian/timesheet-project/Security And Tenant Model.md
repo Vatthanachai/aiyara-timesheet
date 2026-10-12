@@ -1,6 +1,6 @@
 # Security And Tenant Model
 
-> Updated 7 October 2026.
+> Updated 7 October 2026; Password Handling section refreshed 12 October 2026 against `develop`.
 
 ## Authentication And Sessions
 
@@ -21,8 +21,8 @@
 
 ## Password Handling
 
-- Replace the existing `EncryptionService` password implementation. It is not suitable for the target design: it uses PBKDF2 rather than Argon2id, does not verify using the embedded iteration value, does not compare in constant time, and uses non-cryptographic randomness when generating passwords.
-- Use Argon2id and store one PHC-format value in `password_hash`; the value contains algorithm, parameters, salt, and hash. Do not have a separate salt column and never log plaintext or temporary passwords.
+- `EncryptionService` (`Aiyara.Timesheet.Component.Abstractions.Securities`) implements this section: Argon2id via Konscious.Security.Cryptography (19 MiB memory, 2 iterations, parallelism 1), parameter-aware verification that reads the embedded `m=`/`t=`/`p=` values from the PHC string rather than assuming fixed ones, `CryptographicOperations.FixedTimeEquals` for constant-time comparison, and `RandomNumberGenerator` for temporary-password generation. This replaced the earlier PBKDF2 implementation; there is nothing further to do here.
+- Store one PHC-format value in `password_hash`; the value contains algorithm, parameters, salt, and hash. Do not have a separate salt column and never log plaintext or temporary passwords.
 - Generate temporary passwords with `RandomNumberGenerator` and validate them with the same password-policy engine.
 - An Account has one credential across tenant memberships. Reset or activation increments the Account session version for every tenant; old refresh tokens in any tenant cannot rotate, and Identity publishes a revocation version for every membership's tenant.
 - Existing password compliance cannot be recovered from an Argon2id hash. A stricter tenant policy therefore conservatively forces existing members to reset; relaxing a policy does not. A forced-change token cannot authorize tenant administration or protected API calls.
