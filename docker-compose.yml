@@ -276,6 +276,7 @@ services:
         PROJECT_DIR: remotes/reporting
     environment:
       NITRO_PORT: 3003
+      NUXT_PUBLIC_SHELL_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
     ports:
       - "${REPORTING_REMOTE_PORT:-3003}:3003"
     healthcheck:
