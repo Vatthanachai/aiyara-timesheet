@@ -36,7 +36,7 @@ function ActivationCode([string]$email) {
             $_.to[0].address -eq $email
         } | Select-Object -Last 1
         if ($message) {
-            $match = [regex]::Match($message.text, ':\s*([^\s]+)\s*$')
+            $match = [regex]::Match($message.text, '(?mi)code:\s*(\S+)')
             if ($match.Success) { return $match.Groups[1].Value }
         }
         Start-Sleep -Milliseconds 500
