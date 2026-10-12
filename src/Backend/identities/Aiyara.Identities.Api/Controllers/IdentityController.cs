@@ -106,7 +106,8 @@ public sealed class IdentityController(
 
     [HttpPost("auth/platform-admin/login")]
     [EnableRateLimiting("auth")]
-    [ProducesResponseType(typeof(ServiceOkResponse<AuthenticationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceOkResponse<PlatformAdminLoginResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
@@ -211,6 +212,7 @@ public sealed class IdentityController(
             var status = exception.Failure switch
             {
                 AuthenticationFailure.InvalidCredentials => 401,
+                AuthenticationFailure.MfaRequired or AuthenticationFailure.MfaInvalid => 401,
                 AuthenticationFailure.Conflict => 409,
                 AuthenticationFailure.RateLimited => 429,
                 AuthenticationFailure.Unavailable => 503,

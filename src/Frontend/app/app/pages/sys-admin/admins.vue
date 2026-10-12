@@ -14,6 +14,8 @@ const text = useLocaleText(locale, {
     invite: 'เชิญผู้ดูแลระบบ', inviteHint: 'ผู้ได้รับเชิญจะได้รับอีเมลเปิดใช้งานเหมือนบัญชีผู้ดูแลระบบแรก บัญชีนี้ใช้กับองค์กรลูกค้าไม่ได้',
     email: 'อีเมล', sendInvite: 'ส่งคำเชิญ', invited: 'ส่งคำเชิญแล้ว', resent: 'ส่งรหัสเปิดใช้งานใหม่แล้ว',
     deactivated: 'ปิดใช้งานแล้ว', reactivated: 'เปิดใช้งานอีกครั้งแล้ว',
+    mfaOn: 'ตั้งค่า MFA แล้ว', mfaOff: 'ยังไม่ตั้งค่า MFA', resetMfa: 'รีเซ็ต MFA', mfaReset: 'รีเซ็ต MFA แล้ว ผู้ดูแลคนนี้ต้องตั้งค่าแอปยืนยันตัวตนใหม่เมื่อเข้าสู่ระบบครั้งถัดไป',
+    confirmResetMfa: 'รีเซ็ต MFA ของ {email}? ใช้เมื่อผู้ดูแลทำแอปยืนยันตัวตนหาย เซสชันที่เปิดอยู่จะสิ้นสุด',
     loading: 'กำลังโหลด…', loadError: 'โหลดรายชื่อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
     CONFLICT: 'อีเมลนี้เป็นผู้ดูแลระบบอยู่แล้วหรือเป็นสมาชิกขององค์กรลูกค้า',
     CANNOT_CHANGE_SELF: 'คุณไม่สามารถปิดใช้งานบัญชีของตัวเองได้',
@@ -30,6 +32,8 @@ const text = useLocaleText(locale, {
     invite: 'Invite a platform admin', inviteHint: 'The invitee gets the same activation email as the first admin. The account cannot belong to a customer organization.',
     email: 'Email', sendInvite: 'Send invitation', invited: 'Invitation sent.', resent: 'Activation code re-sent.',
     deactivated: 'Deactivated.', reactivated: 'Reactivated.',
+    mfaOn: 'MFA on', mfaOff: 'MFA not set up', resetMfa: 'Reset MFA', mfaReset: 'MFA reset. They set up an authenticator again at their next sign-in.',
+    confirmResetMfa: 'Reset MFA for {email}? Use this when they lost their authenticator. Their open sessions end.',
     loading: 'Loading…', loadError: 'The roster could not be loaded. Please try again.',
     CONFLICT: 'This email is already a platform admin or belongs to a customer organization.',
     CANNOT_CHANGE_SELF: 'You cannot deactivate your own account.',
@@ -69,6 +73,7 @@ async function change(key: string, send: () => Promise<unknown>, success: string
   failure.value = ''
   try {
     await send()
+    delete reasons[key]
     notice.value = success
     await load(true)
   } catch (cause) {
@@ -93,6 +98,13 @@ function setActive(admin: PlatformAdminRosterEntry, active: boolean) {
   return change(admin.email, () => platformSend('/admins/status', {
     method: 'PUT', body: { email: admin.email, active, reason: reasons[admin.email]?.trim() || null }
   }), active ? text.value.reactivated : text.value.deactivated)
+}
+
+function resetMfa(admin: PlatformAdminRosterEntry) {
+  if (!window.confirm(text.value.confirmResetMfa.replace('{email}', admin.email))) return
+  return change(admin.email, () => platformSend('/admins/mfa-reset', {
+    method: 'POST', body: { email: admin.email, reason: reasons[admin.email]?.trim() || null }
+  }), text.value.mfaReset)
 }
 
 onMounted(async () => {
@@ -128,6 +140,9 @@ onMounted(async () => {
               <span class="sysadmin-row-actions">
                 <span v-if="admin.isCurrentUser" class="sysadmin-pill is-ok">{{ text.you }}</span>
                 <span class="sysadmin-pill" :class="pillClass(admin.status)">{{ text[admin.status] }}</span>
+                <span v-if="admin.status !== 'Deactivated'" class="sysadmin-pill" :class="admin.mfaEnabled ? 'is-ok' : 'is-warn'">
+                  {{ admin.mfaEnabled ? text.mfaOn : text.mfaOff }}
+                </span>
               </span>
             </div>
             <div v-if="!admin.isCurrentUser" class="sysadmin-row-actions">
@@ -135,6 +150,8 @@ onMounted(async () => {
                 :aria-label="`${text.reason} — ${admin.email}`" />
               <button v-if="admin.status === 'PendingActivation'" class="button button-secondary" type="button"
                 :disabled="pending === admin.email" @click="resend(admin)">{{ text.resend }}</button>
+              <button v-if="admin.mfaEnabled" class="button button-secondary" type="button"
+                :disabled="pending === admin.email" @click="resetMfa(admin)">{{ text.resetMfa }}</button>
               <button v-if="admin.status === 'Deactivated'" class="button button-secondary" type="button"
                 :disabled="pending === admin.email" @click="setActive(admin, true)">{{ text.reactivate }}</button>
               <button v-else class="button button-secondary" type="button"

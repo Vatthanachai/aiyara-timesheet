@@ -14,6 +14,10 @@ var notificationInternalKey = builder.Configuration["NOTIFICATION_INTERNAL_KEY"]
     ?? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
 var pasetoSigningSeed = builder.Configuration["PASETO_SIGNING_SEED"]
     ?? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+// Set MFA_ENCRYPTION_KEY to the Compose value: AppHost shares Compose PostgreSQL, so a different key
+// cannot read authenticators enrolled there (sign-in then answers 503 until it matches).
+var mfaEncryptionKey = builder.Configuration["MFA_ENCRYPTION_KEY"]
+    ?? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
 var rustFsAccessKey = builder.AddParameterFromConfiguration(
     "rustfs-access-key", "RUSTFS_ACCESS_KEY", secret: true);
 var rustFsSecretKey = builder.AddParameterFromConfiguration(
@@ -62,6 +66,7 @@ var identityApi = builder.AddProject<Projects.Aiyara_Identities_Api>("aiyara-ide
     .WithEnvironment("Dependencies__RustFs__Port", rustFsPort);
 identityApi
     .WithEnvironment("Paseto__Key", pasetoSigningSeed)
+    .WithEnvironment("Mfa__EncryptionKey", mfaEncryptionKey)
     .WithEnvironment("Notification__InternalKey", notificationInternalKey)
     .WithEnvironment("Redis__ConnectionString", redisConnectionString)
     .WithEnvironment("ObjectStorage__Endpoint", $"http://localhost:{rustFsPort}")

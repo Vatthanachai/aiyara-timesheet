@@ -8,6 +8,8 @@ export type PlatformAdminRosterEntry = {
   lastName: string
   status: MembershipStatus
   createdAtUtc: string
+  isCurrentUser: boolean
+  mfaEnabled: boolean
 }
 export type PlatformOrganizationSummary = {
   tenantId: string

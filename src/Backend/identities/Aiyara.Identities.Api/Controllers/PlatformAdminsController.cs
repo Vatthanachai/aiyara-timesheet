@@ -44,6 +44,30 @@ public sealed class PlatformAdminsController(PlatformActorResolver actors,
         catch (PlatformOrganizationException exception) { return Error(exception); }
     }
 
+    [HttpPost("mfa-reset")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> ResetMfa([FromBody] ResetPlatformAdminMfaRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actor = await PlatformActorAsync(cancellationToken);
+        if (actor is null) return UnauthorizedResponse();
+        try
+        {
+            await roster.ResetMfaAsync(actor.AccountId, actor.SessionVersion, request, cancellationToken);
+            return ReturnResponseWithHttpStatus(new ServiceOkResponse<object>(new { }));
+        }
+        catch (PlatformOrganizationException exception) { return Error(exception); }
+        catch (AuthenticationException exception) when (exception.Failure == AuthenticationFailure.Unavailable)
+        {
+            return Error(StatusCodes.Status503ServiceUnavailable, "SESSION_REVOCATION_UNAVAILABLE");
+        }
+    }
+
     [HttpPut("status")]
     [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]

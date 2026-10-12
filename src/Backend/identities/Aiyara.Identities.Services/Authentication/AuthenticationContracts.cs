@@ -21,7 +21,16 @@ public sealed record LoginRequest
 /// <summary>Public login body. Tenants are selected only by organization code; the internal
 /// tenant ID is never accepted from callers.</summary>
 public sealed record OrganizationLoginRequest(string? OrganizationCode, string Email, string Password);
-public sealed record PlatformAdminLoginRequest(string Email, string Password);
+/// <summary>System administrator sign-in. A second factor is always required: a code from the
+/// enrolled authenticator, or one unused recovery code.</summary>
+public sealed record PlatformAdminLoginRequest(string Email, string Password, string? TotpCode = null,
+    string? RecoveryCode = null);
+/// <summary>The authenticator secret to add before the first code can be confirmed.</summary>
+public sealed record MfaEnrollment(string Secret, string ProvisioningUri);
+/// <summary>Either <see cref="Enrollment"/> is offered (no session yet) or <see cref="Session"/> is
+/// issued. <see cref="RecoveryCodes"/> is filled only once, when enrollment completes.</summary>
+public sealed record PlatformAdminLoginResponse(AuthenticationResponse? Session, MfaEnrollment? Enrollment,
+    IReadOnlyList<string> RecoveryCodes);
 public sealed record SignInRequest(string Email, string Password);
 public sealed record SignInOrganization(string OrganizationCode, string Name);
 /// <summary>Either <see cref="Session"/> is issued (one organization) or the caller must
@@ -57,7 +66,12 @@ public interface ISessionRevocationPublisher
         CancellationToken cancellationToken);
 }
 
-public enum AuthenticationFailure { InvalidInput, InvalidCredentials, Conflict, RateLimited, Unavailable }
+/// <summary><see cref="MfaRequired"/>: the password was right but a second factor must follow.
+/// <see cref="MfaInvalid"/>: the second factor was wrong, already used, or the enrollment expired.</summary>
+public enum AuthenticationFailure
+{
+    InvalidInput, InvalidCredentials, Conflict, RateLimited, Unavailable, MfaRequired, MfaInvalid
+}
 
 public sealed class AuthenticationException(AuthenticationFailure failure, string message)
     : Exception(message)

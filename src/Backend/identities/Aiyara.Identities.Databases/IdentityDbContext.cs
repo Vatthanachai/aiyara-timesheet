@@ -14,6 +14,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<CredentialChallenge> CredentialChallenges => Set<CredentialChallenge>();
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
     public DbSet<PlatformOrganizationAudit> PlatformOrganizationAudits => Set<PlatformOrganizationAudit>();
+    public DbSet<MfaRecoveryCode> MfaRecoveryCodes => Set<MfaRecoveryCode>();
     public Guid? CurrentTenantId => tenantScope.TenantId;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -53,6 +54,18 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(x => x.JobTitle).HasMaxLength(160);
             entity.HasIndex(x => x.Email).IsUnique();
             entity.Property(x => x.PasswordHash).HasMaxLength(256);
+            entity.Property(x => x.MfaSecretProtected).HasMaxLength(256);
+            entity.Property(x => x.MfaPendingSecretProtected).HasMaxLength(256);
+        });
+
+        modelBuilder.Entity<MfaRecoveryCode>(entity =>
+        {
+            entity.ToTable("mfa_recovery_codes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.CodeHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(x => x.CodeHash).IsUnique();
+            entity.HasIndex(x => x.AccountId);
+            entity.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId);
         });
 
         modelBuilder.Entity<Membership>(entity =>

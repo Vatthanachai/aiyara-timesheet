@@ -59,6 +59,26 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.Property<DateTime?>("LockedUntilUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("MfaEnabledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MfaFailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("MfaLastUsedStep")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("MfaPendingCreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MfaPendingSecretProtected")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("MfaSecretProtected")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<bool>("MustChangePassword")
                         .HasColumnType("boolean");
 
@@ -213,6 +233,36 @@ namespace Aiyara.Identities.Databases.Migrations
                         .IsUnique();
 
                     b.ToTable("memberships", (string)null);
+                });
+
+            modelBuilder.Entity("Aiyara.Identities.Models.Tenancy.MfaRecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique();
+
+                    b.ToTable("mfa_recovery_codes", (string)null);
                 });
 
             modelBuilder.Entity("Aiyara.Identities.Models.Tenancy.OnboardingCapability", b =>
@@ -444,6 +494,15 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.HasOne("Aiyara.Identities.Models.Tenancy.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Aiyara.Identities.Models.Tenancy.MfaRecoveryCode", b =>
+                {
+                    b.HasOne("Aiyara.Identities.Models.Tenancy.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

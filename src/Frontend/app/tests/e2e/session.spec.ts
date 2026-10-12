@@ -516,23 +516,26 @@ test('activation failure shows a safe message and does not expose the API error'
   await expect(page.getByRole('alert')).not.toContainText('Invalid or expired challenge')
 })
 
-test('platform admin signs in without an organization code and lands on the overview', async ({ page }) => {
-  let loginRequest: unknown
+const platformSession = () => ({
+  accessToken: 'platform-admin-token',
+  accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+  refreshToken: 'platform-admin-refresh',
+  refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+  mustChangePassword: false,
+  tenantId: '00000000-0000-0000-0000-000000000001',
+  role: 'PlatformAdmin'
+})
+const mfaRequired = { status: 401, contentType: 'application/json',
+  body: JSON.stringify({ statusCode: 401, statusMessage: 'The request could not be completed.', errorCode: 'MFAREQUIRED' }) }
+
+test('platform admin signs in with password and authenticator code and lands on the overview', async ({ page }) => {
+  const loginRequests: unknown[] = []
   await page.route('**/api/v1/auth/platform-admin/login', async route => {
-    loginRequest = route.request().postDataJSON()
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(apiOk({
-        accessToken: 'platform-admin-token',
-        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
-        refreshToken: 'platform-admin-refresh',
-        refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
-        mustChangePassword: false,
-        tenantId: '00000000-0000-0000-0000-000000000001',
-        role: 'PlatformAdmin'
-      }))
-    })
+    const body = route.request().postDataJSON()
+    loginRequests.push(body)
+    if (!body.totpCode && !body.recoveryCode) return route.fulfill(mfaRequired)
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(apiOk({ session: platformSession(), enrollment: null, recoveryCodes: [] })) })
   })
   await page.route('**/api/v1/platform/overview', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(emptyOverview) }))
@@ -547,11 +550,101 @@ test('platform admin signs in without an organization code and lands on the over
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
 
-  expect(loginRequest).toEqual({ email: 'operator@platform.test', password: 'test-password' })
+  const code = page.getByLabel('Authentication code')
+  await expect(code).toBeFocused()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await code.fill('123456')
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  expect(loginRequests).toEqual([
+    { email: 'operator@platform.test', password: 'test-password' },
+    { email: 'operator@platform.test', password: 'test-password', totpCode: '123456' }
+  ])
   await expect(page).toHaveURL(/\/sys-admin$/)
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.role')))
     .toBe('PlatformAdmin')
+})
+
+test('first platform admin sign in enrolls an authenticator and shows recovery codes before entering', async ({ page }) => {
+  const loginRequests: unknown[] = []
+  const recoveryCodes = ['ABCDE-FGHJK', 'LMNPQ-RSTUV']
+  await page.route('**/api/v1/auth/platform-admin/login', async route => {
+    const body = route.request().postDataJSON()
+    loginRequests.push(body)
+    const result = body.totpCode
+      ? { session: platformSession(), enrollment: null, recoveryCodes }
+      : { session: null, enrollment: { secret: 'JBSWY3DPEHPK3PXP',
+          provisioningUri: 'otpauth://totp/Aiyara%20Timesheet:operator%40platform.test?secret=JBSWY3DPEHPK3PXP' }, recoveryCodes: [] }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+  })
+  await page.route('**/api/v1/platform/overview', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(emptyOverview) }))
+
+  await page.goto('/sys-admin/login')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('operator@platform.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Set up your authenticator' })).toBeVisible()
+  await expect(page.getByText('JBSWY3DPEHPK3PXP')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open in authenticator app' })).toHaveAttribute('href', /^otpauth:\/\/totp\//)
+  await page.getByLabel('Authentication code').fill('654321')
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  const codes = page.getByRole('list', { name: 'Save your recovery codes' })
+  await expect(codes.getByRole('listitem')).toHaveText(recoveryCodes)
+  await expect(page).toHaveURL(/\/sys-admin\/login$/)
+  expect(await page.evaluate(() => sessionStorage.getItem('aiyara.access'))).toBeNull()
+  await page.getByRole('button', { name: 'I saved these codes, continue' }).click()
+  await expect(page).toHaveURL(/\/sys-admin$/)
+  expect(loginRequests.at(-1)).toEqual({ email: 'operator@platform.test', password: 'test-password', totpCode: '654321' })
+})
+
+test('platform admin can sign in with a recovery code and sees why a wrong code fails', async ({ page }) => {
+  const loginRequests: { totpCode?: string; recoveryCode?: string }[] = []
+  await page.route('**/api/v1/auth/platform-admin/login', async route => {
+    const body = route.request().postDataJSON()
+    loginRequests.push(body)
+    if (!body.totpCode && !body.recoveryCode) return route.fulfill(mfaRequired)
+    if (body.totpCode) return route.fulfill({ status: 401, contentType: 'application/json',
+      body: JSON.stringify({ statusCode: 401, statusMessage: 'The request could not be completed.', errorCode: 'MFAINVALID' }) })
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(apiOk({ session: platformSession(), enrollment: null, recoveryCodes: [] })) })
+  })
+  await page.route('**/api/v1/platform/overview', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(emptyOverview) }))
+
+  await page.goto('/sys-admin/login')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('operator@platform.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByLabel('Authentication code').fill('000000')
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await expect(page.getByRole('alert')).toHaveText('That code is not valid or has already been used.')
+
+  await page.getByRole('button', { name: 'Use a recovery code instead' }).click()
+  await page.getByLabel('Recovery code').fill('ABCDE-FGHJK')
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  await expect(page).toHaveURL(/\/sys-admin$/)
+  expect(loginRequests.at(-1)).toMatchObject({ recoveryCode: 'ABCDE-FGHJK' })
+  expect(loginRequests.at(-1)).not.toHaveProperty('totpCode')
+})
+
+test('email sign in for a platform admin account points to the system administrator page', async ({ page }) => {
+  await page.route('**/api/v1/auth/sign-in', route => route.fulfill(mfaRequired))
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('operator@platform.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  await expect(page.getByRole('alert')).toHaveText('This account signs in on the system administrator page.')
+  expect(await page.evaluate(() => sessionStorage.getItem('aiyara.access'))).toBeNull()
 })
 
 test('platform admin sign in shows a safe error for rejected credentials', async ({ page }) => {
@@ -879,9 +972,9 @@ test('organization detail shows members, administrators, and its own history', a
 
 test('platform admin roster invites, deactivates, and reactivates admins but never offers self-deactivation', async ({ page }) => {
   const roster = [
-    { email: 'platform@aiyara.test', firstName: 'Ploy', lastName: 'Root', status: 'Active', createdAtUtc: '2026-10-01T00:00:00Z', isCurrentUser: true },
-    { email: 'second@aiyara.test', firstName: '', lastName: '', status: 'Active', createdAtUtc: '2026-10-05T00:00:00Z', isCurrentUser: false },
-    { email: 'gone@aiyara.test', firstName: 'Former', lastName: 'Admin', status: 'Deactivated', createdAtUtc: '2026-10-02T00:00:00Z', isCurrentUser: false }
+    { email: 'platform@aiyara.test', firstName: 'Ploy', lastName: 'Root', status: 'Active', createdAtUtc: '2026-10-01T00:00:00Z', isCurrentUser: true, mfaEnabled: true },
+    { email: 'second@aiyara.test', firstName: '', lastName: '', status: 'Active', createdAtUtc: '2026-10-05T00:00:00Z', isCurrentUser: false, mfaEnabled: true },
+    { email: 'gone@aiyara.test', firstName: 'Former', lastName: 'Admin', status: 'Deactivated', createdAtUtc: '2026-10-02T00:00:00Z', isCurrentUser: false, mfaEnabled: false }
   ]
   const requests: { method: string; path: string; body: unknown }[] = []
   await page.route('**/api/v1/platform/admins**', async route => {
@@ -907,12 +1000,16 @@ test('platform admin roster invites, deactivates, and reactivates admins but nev
   await expect(rows.nth(0).getByRole('button')).toHaveCount(0)
   await expect(rows.nth(1)).toContainText('second@aiyara.test')
   await expect(rows.nth(2)).toContainText('Deactivated')
+  await expect(rows.nth(1)).toContainText('MFA on')
+  await expect(rows.nth(2).getByRole('button', { name: 'Reset MFA' })).toHaveCount(0)
 
   await page.getByLabel('Reason (optional) — second@aiyara.test').fill('Left the team')
   await rows.nth(1).getByRole('button', { name: 'Deactivate' }).click()
   await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('Deactivated.')
   await rows.nth(2).getByRole('button', { name: 'Reactivate' }).click()
   await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('Reactivated.')
+  await rows.nth(1).getByRole('button', { name: 'Reset MFA' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('MFA reset. They set up an authenticator again at their next sign-in.')
 
   const invite = page.getByRole('region', { name: 'Invite a platform admin' })
   await invite.getByLabel('Email').fill('owner@acme.test')
@@ -925,6 +1022,7 @@ test('platform admin roster invites, deactivates, and reactivates admins but nev
   expect(requests).toEqual([
     { method: 'PUT', path: '/api/v1/platform/admins/status', body: { email: 'second@aiyara.test', active: false, reason: 'Left the team' } },
     { method: 'PUT', path: '/api/v1/platform/admins/status', body: { email: 'gone@aiyara.test', active: true, reason: null } },
+    { method: 'POST', path: '/api/v1/platform/admins/mfa-reset', body: { email: 'second@aiyara.test', reason: null } },
     { method: 'POST', path: '/api/v1/platform/admins', body: { email: 'owner@acme.test' } },
     { method: 'POST', path: '/api/v1/platform/admins', body: { email: 'new@aiyara.test' } }
   ])
@@ -972,9 +1070,38 @@ test('organization detail demotes or removes an administrator and explains the l
   ])
 })
 
+test('security page loads and saves the platform password policy', async ({ page }) => {
+  let saved: unknown
+  await page.route('**/api/v1/platform/security/password-policy', async route => {
+    const current = { minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: false }
+    if (route.request().method() === 'PUT') {
+      saved = route.request().postDataJSON()
+      const { reason: _, ...policy } = saved as Record<string, unknown>
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk(policy)) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk(current)) })
+  })
+  await signInAs(page, 'PlatformAdmin')
+  await page.goto('/sys-admin/security')
+
+  const minimum = page.getByLabel('Minimum length (12–128)')
+  await expect(minimum).toHaveValue('12')
+  await expect(page.getByLabel('Require a symbol')).not.toBeChecked()
+  await minimum.fill('16')
+  await page.getByLabel('Require a symbol').check()
+  await page.getByLabel('Reason (optional)').fill('Annual review')
+  await page.getByRole('button', { name: 'Save policy' }).click()
+
+  await expect(page.getByRole('status').filter({ hasText: /./ })).toHaveText('Policy saved.')
+  expect(saved).toEqual({ minimumLength: 16, expiryDays: 180, requireUppercase: true, requireLowercase: true,
+    requireDigit: true, requireSymbol: true, reason: 'Annual review' })
+  await expect(page.getByRole('navigation', { name: 'System administration' }).getByRole('link', { name: 'Security' }))
+    .toHaveClass(/is-active/)
+})
+
 test('console pages stay restricted for non platform admins', async ({ page }) => {
   await signInAs(page, 'TenantAdmin')
-  for (const path of ['/sys-admin', '/sys-admin/audit', '/sys-admin/admins', '/sys-admin/organizations/c99358d1-e01f-4dfd-9693-38da8883562d']) {
+  for (const path of ['/sys-admin', '/sys-admin/audit', '/sys-admin/admins', '/sys-admin/security', '/sys-admin/organizations/c99358d1-e01f-4dfd-9693-38da8883562d']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'System administration' })).toHaveCount(0)
