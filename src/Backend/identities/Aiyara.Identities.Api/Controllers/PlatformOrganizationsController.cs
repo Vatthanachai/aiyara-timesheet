@@ -17,6 +17,9 @@ public sealed class PlatformOrganizationsController(IdentityDbContext db, Tenant
     ICredentialNotificationSender notifications) : BaseController
 {
     [HttpGet]
+    [ProducesResponseType(typeof(ServiceOkResponse<PlatformOrganizationListResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> List(string? search, int page = 1, int pageSize = 25,
         CancellationToken cancellationToken = default)
     {
@@ -29,6 +32,11 @@ public sealed class PlatformOrganizationsController(IdentityDbContext db, Tenant
     }
 
     [HttpPut("{tenantId:guid}")]
+    [ProducesResponseType(typeof(ServiceOkResponse<PlatformOrganizationUpdateResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Update(Guid tenantId,
         [FromBody] UpdatePlatformOrganizationRequest request,
         CancellationToken cancellationToken)
@@ -45,6 +53,12 @@ public sealed class PlatformOrganizationsController(IdentityDbContext db, Tenant
     }
 
     [HttpPut("{tenantId:guid}/status")]
+    [ProducesResponseType(typeof(ServiceOkResponse<PlatformOrganizationUpdateResult>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> SetStatus(Guid tenantId,
         [FromBody] SetPlatformOrganizationStatusRequest request,
         CancellationToken cancellationToken)
@@ -65,6 +79,12 @@ public sealed class PlatformOrganizationsController(IdentityDbContext db, Tenant
     }
 
     [HttpPost("{tenantId:guid}/administrators")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> InviteAdministrator(Guid tenantId,
         [FromBody] InvitePlatformOrganizationAdminRequest request,
         CancellationToken cancellationToken)
@@ -94,6 +114,12 @@ public sealed class PlatformOrganizationsController(IdentityDbContext db, Tenant
     }
 
     [HttpPost("{tenantId:guid}/administrators/activation")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> ResendAdministratorActivation(Guid tenantId,
         [FromBody] RequestPlatformAdministratorActivationRequest request,
         CancellationToken cancellationToken)

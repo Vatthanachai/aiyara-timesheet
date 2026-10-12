@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Aiyara.Timesheet.Component.Abstractions.Controllers;
 
 [ApiController]
+[ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status500InternalServerError)]
 public class BaseController : ControllerBase
 {
     protected IActionResult ReturnResponseWithHttpStatus(ServiceResponse response)

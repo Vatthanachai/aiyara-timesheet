@@ -10,6 +10,9 @@ public sealed class InternalNotificationController(
     IConfiguration configuration) : BaseController
 {
     [HttpPost("credential-email")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> CredentialEmail([FromBody] CredentialEmailRequest request,
         CancellationToken cancellationToken)
     {
@@ -21,6 +24,9 @@ public sealed class InternalNotificationController(
     }
 
     [HttpPost("report-ready")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> ReportReady([FromBody] ReportReadyEmailRequest request,
         CancellationToken cancellationToken)
     {
