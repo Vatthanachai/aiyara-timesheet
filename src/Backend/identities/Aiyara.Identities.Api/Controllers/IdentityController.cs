@@ -20,6 +20,9 @@ public sealed class IdentityController(
     IPasetoTokenService tokens) : BaseController
 {
     [HttpPost("tenants", Name = "CreateTenantV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<CreateTenantResponse>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateTenant([FromBody] CreateTenantRequest request, CancellationToken ct) =>
         await Onboarding(async () =>
         {
@@ -30,6 +33,10 @@ public sealed class IdentityController(
         });
 
     [HttpPost("invitations/accept", Name = "AcceptInvitationV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<AcceptInvitationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> AcceptInvitation([FromBody] AcceptInvitationRequest request, CancellationToken ct) =>
         await Onboarding(async () =>
         {
@@ -41,6 +48,10 @@ public sealed class IdentityController(
         });
 
     [HttpPost("tenants/{tenantId:guid}/invitations", Name = "IssueInvitationV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<IssueInvitationResponse>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> IssueInvitation(Guid tenantId, [FromBody] IssueInvitationRequest request,
         CancellationToken ct) => await Onboarding(async () =>
     {
@@ -53,43 +64,72 @@ public sealed class IdentityController(
 
     [HttpPost("auth/activation/request")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public Task<IActionResult> RequestActivation([FromBody] RequestCredentialEmail request, CancellationToken ct) =>
         Auth(async () => { await authentication.RequestActivationAsync(request, ct); return AcceptedResponse(); });
 
     [HttpPost("auth/activate")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
     public Task<IActionResult> Activate([FromBody] CompleteCredentialChallenge request, CancellationToken ct) =>
         Auth(async () => { await authentication.CompleteActivationAsync(request, ct); return NoContentResponse(); });
 
     [HttpPost("auth/login")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ServiceOkResponse<AuthenticationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
     public Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct) =>
         Auth(async () => { var result = await authentication.LoginAsync(request, ct);
             Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
 
     [HttpPost("auth/refresh")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ServiceOkResponse<AuthenticationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken ct) =>
         Auth(async () => { var result = await authentication.RefreshAsync(request, ct);
             Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
 
     [HttpPost("auth/logout")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public Task<IActionResult> Logout([FromBody] LogoutRequest request, CancellationToken ct) =>
         Auth(async () => { await authentication.LogoutAsync(request, ct); return NoContentResponse(); });
 
     [HttpPost("auth/password/forgot")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public Task<IActionResult> ForgotPassword([FromBody] RequestCredentialEmail request, CancellationToken ct) =>
         Auth(async () => { await authentication.RequestPasswordResetAsync(request, ct); return AcceptedResponse(); });
 
     [HttpPost("auth/password/reset")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
     public Task<IActionResult> ResetPassword([FromBody] CompleteCredentialChallenge request, CancellationToken ct) =>
         Auth(async () => { await authentication.CompletePasswordResetAsync(request, ct); return NoContentResponse(); });
 
     [HttpPost("auth/password/change")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct) =>
         Auth(async () =>
         {
@@ -102,6 +142,9 @@ public sealed class IdentityController(
 
     [HttpPut("auth/tenants/{tenantId:guid}/password-policy")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public Task<IActionResult> UpdatePasswordPolicy(Guid tenantId,
         [FromBody] TenantPasswordPolicyRequest request, CancellationToken ct) => Auth(async () =>
     {
@@ -115,6 +158,10 @@ public sealed class IdentityController(
 
     [HttpPost("auth/tenants/{tenantId:guid}/invitations")]
     [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ServiceOkResponse<IssueInvitationResponse>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> IssueAuthorizedInvitation(Guid tenantId,
         [FromBody] IssueInvitationRequest request, CancellationToken ct)
     {

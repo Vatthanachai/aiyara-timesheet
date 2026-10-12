@@ -17,6 +17,9 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     private const int MaxPhotoBytes = 5 * 1024 * 1024;
     private const string PhotoPath = "/api/v1/identity/profile/me/photo";
     [HttpGet("tenants/{tenantId:guid}/password-policy", Name = "GetTenantPasswordPolicyV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> PasswordPolicy(Guid tenantId, CancellationToken ct)
     {
         var account = await AuthenticatedAccount(ct);
@@ -36,6 +39,8 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     }
 
     [HttpGet("profile/me", Name = "GetMyProfileV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetMe(CancellationToken ct)
     {
         var account = await AuthenticatedAccount(ct);
@@ -44,6 +49,9 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     }
 
     [HttpPut("profile/me", Name = "UpdateMyProfileV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> UpdateMe([FromBody] ProfileRequest body, CancellationToken ct)
     {
         var account = await AuthenticatedAccount(ct);
@@ -70,6 +78,9 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     [HttpPost("profile/me/photo", Name = "UploadMyProfilePhotoV1")]
     [RequestSizeLimit(MaxPhotoBytes + 64 * 1024)]
     [IgnoreAntiforgeryToken]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> UploadPhoto([FromForm] IFormFile photo,
         [FromServices] IProfilePhotoStorage storage, CancellationToken ct)
     {
@@ -104,6 +115,9 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     }
 
     [HttpGet("profile/me/photo", Name = "GetMyProfilePhotoV1")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPhoto([FromServices] IProfilePhotoStorage storage, CancellationToken ct)
     {
         var account = await AuthenticatedAccount(ct);
@@ -126,6 +140,8 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     }
 
     [HttpDelete("profile/me/photo", Name = "DeleteMyProfilePhotoV1")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> DeletePhoto([FromServices] IProfilePhotoStorage storage, CancellationToken ct)
     {
         var account = await AuthenticatedAccount(ct);

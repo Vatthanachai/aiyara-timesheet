@@ -14,6 +14,10 @@ public sealed class InternalSnapshotsController(TimesheetDbContext db,
     TimesheetTenantScope scope, IConfiguration configuration) : BaseController
 {
     [HttpGet("{subjectId:guid}/{year:int}/{month:int}", Name = "GetInternalReportSnapshotV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<JsonElement>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid subjectId, int year, int month, CancellationToken ct)
     {
         var failure = Validate(year, month);
@@ -26,6 +30,9 @@ public sealed class InternalSnapshotsController(TimesheetDbContext db,
     }
 
     [HttpGet("{year:int}/{month:int}", Name = "ListInternalReportSnapshotsV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> List(int year, int month, CancellationToken ct)
     {
         var failure = Validate(year, month);
