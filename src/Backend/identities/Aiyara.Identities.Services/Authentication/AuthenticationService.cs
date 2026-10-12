@@ -133,10 +133,43 @@ public sealed class AuthenticationService(
             requiredRole: null, cancellationToken);
     }
 
-    public Task<AuthenticationResponse> LoginPlatformAdminAsync(
-        PlatformAdminLoginRequest request, CancellationToken cancellationToken) =>
-        LoginToTenantAsync(PlatformAdminBootstrap.PlatformTenantId, request.Email,
-            request.Password, TenantRole.PlatformAdmin, cancellationToken);
+    public async Task<AuthenticationResponse> LoginPlatformAdminAsync(
+        PlatformAdminLoginRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await LoginToTenantAsync(PlatformAdminBootstrap.PlatformTenantId, request.Email,
+                request.Password, TenantRole.PlatformAdmin, cancellationToken);
+        }
+        catch (AuthenticationException exception) when
+            (exception.Failure == AuthenticationFailure.InvalidCredentials)
+        {
+            await AuditFailedPlatformSignInAsync(request.Email, cancellationToken);
+            throw;
+        }
+    }
+
+    public const string PlatformSignInAction = "platform_admin.signed_in";
+    public const string PlatformSignInFailedAction = "platform_admin.sign_in_failed";
+
+    private async Task AuditFailedPlatformSignInAsync(string? email, CancellationToken cancellationToken)
+    {
+        // Record only well-formed addresses so arbitrary input never lands in the audit log.
+        var normalized = ValidEmail(email) ? email!.Trim().ToLowerInvariant() : null;
+        var accountId = normalized is null ? Guid.Empty : await db.Accounts
+            .Where(x => x.Email == normalized).Select(x => x.Id).SingleOrDefaultAsync(cancellationToken);
+        AddPlatformSignInAudit(PlatformSignInFailedAction, accountId, normalized);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private void AddPlatformSignInAudit(string action, Guid accountId, string? email) =>
+        db.PlatformOrganizationAudits.Add(new PlatformOrganizationAudit
+        {
+            Id = IdentityGuid.New(), TenantId = PlatformAdminBootstrap.PlatformTenantId,
+            ActorAccountId = accountId, Action = action,
+            AfterJson = System.Text.Json.JsonSerializer.Serialize(new { Email = email }),
+            CreatedAtUtc = DateTime.UtcNow
+        });
 
     public async Task<SignInResponse> SignInAsync(SignInRequest request,
         CancellationToken cancellationToken)
@@ -206,6 +239,9 @@ public sealed class AuthenticationService(
         if (membership is null) throw InvalidCredentials();
         if (requiredRole is { } role && membership.Role != role) throw InvalidCredentials();
         var mustChange = RequiresPasswordChange(account, membership, tenant);
+        // Audit every new Platform Admin session, whichever sign-in route issued it.
+        if (membership.Role == TenantRole.PlatformAdmin)
+            AddPlatformSignInAudit(PlatformSignInAction, account.Id, account.Email);
         return await CreateSessionAsync(account, membership, mustChange, cancellationToken);
     }
 

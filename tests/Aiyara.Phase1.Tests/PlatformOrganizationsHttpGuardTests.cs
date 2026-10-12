@@ -59,6 +59,21 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, await ListAs("v4.public.not-a-real-token"));
     }
 
+    [Theory]
+    [InlineData("/api/v1/platform/overview")]
+    [InlineData("/api/v1/platform/audit")]
+    [InlineData("/api/v1/platform/organizations/{tenant}")]
+    public async Task Console_read_routes_require_a_platform_admin(string template)
+    {
+        var path = template.Replace("{tenant}", customerTenantId.ToString());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Get, null, null, path)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(HttpMethod.Get,
+            Token(tenantAdminId, customerTenantId, "TenantAdmin"), null, path)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Send(HttpMethod.Get,
+            Token(platformAdminId, PlatformTenant, "PlatformAdmin"), null, path)).StatusCode);
+    }
+
     [Fact]
     public async Task Deactivated_platform_membership_loses_access_immediately()
     {
@@ -109,6 +124,8 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
         builder.Services.AddScoped(services => new PlatformOrganizationService(
             services.GetRequiredService<IdentityDbContext>(), services.GetRequiredService<TenantScope>(),
             services.GetRequiredService<ISessionRevocationPublisher>()));
+        builder.Services.AddScoped<PlatformConsoleService>();
+        builder.Services.AddScoped<PlatformActorResolver>();
         builder.Services.AddControllers()
             .AddApplicationPart(typeof(PlatformOrganizationsController).Assembly);
         app = builder.Build();
@@ -156,9 +173,10 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
     private async Task<HttpStatusCode> ListAs(string? token) =>
         (await Send(HttpMethod.Get, token, null)).StatusCode;
 
-    private async Task<HttpResponseMessage> Send(HttpMethod method, string? token, object? body)
+    private async Task<HttpResponseMessage> Send(HttpMethod method, string? token, object? body,
+        string path = Route)
     {
-        using var request = new HttpRequestMessage(method, Route);
+        using var request = new HttpRequestMessage(method, path);
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (body is not null) request.Content = JsonContent.Create(body);
         return await client.SendAsync(request);

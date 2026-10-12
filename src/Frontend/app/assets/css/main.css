@@ -35,6 +35,46 @@ button { cursor: pointer; }
 .link-button { background: none; border: 0; color: var(--color-brand); font: inherit; justify-self: start; padding: 0; text-decoration: underline; }
 .remote-workspace iframe { border: 0; display: block; height: 75vh; overflow: hidden; width: 100%; }
 
+/* SysAdmin console (shared by the /sys-admin pages and their components). */
+.sysadmin-nav { border-bottom: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: .25rem; margin: 1.5rem 0 1.25rem; }
+.sysadmin-nav a { border-bottom: 2px solid transparent; color: var(--color-muted); font-weight: 600; padding: .6rem .85rem; text-decoration: none; }
+.sysadmin-nav a.is-active { border-bottom-color: var(--color-brand); color: var(--color-brand); }
+.sysadmin-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-card); min-width: 0; padding: var(--space-6); }
+.sysadmin-card h2 { font-size: 1.05rem; margin: 0; }
+.sysadmin-card h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; }
+.sysadmin-card-heading { align-items: baseline; display: flex; gap: 1rem; justify-content: space-between; margin-bottom: .75rem; }
+.sysadmin-stats { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); margin: 0 0 1rem; }
+.sysadmin-stat { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: 1rem 1.25rem; }
+.sysadmin-stat dt { color: var(--color-muted); font-size: .85rem; }
+.sysadmin-stat dd { font-size: 1.75rem; font-variant-numeric: tabular-nums; font-weight: 700; margin: .25rem 0 0; }
+.sysadmin-columns { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+.sysadmin-org-list { display: grid; gap: .5rem; list-style: none; margin: 0; padding: 0; }
+.sysadmin-org-list li { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; }
+.sysadmin-code { background: #edf3ff; border-radius: .35rem; color: var(--color-brand); font-size: .8rem; font-weight: 700; letter-spacing: .08em; padding: .2rem .45rem; }
+.sysadmin-pill { border-radius: 999px; font-size: .78rem; font-weight: 700; padding: .2rem .55rem; }
+.sysadmin-pill.is-ok { background: #e8f6ef; color: #17663b; }
+.sysadmin-pill.is-warn { background: #fff4dc; color: #795400; }
+.sysadmin-facts { display: grid; gap: .45rem 1rem; grid-template-columns: max-content 1fr; margin: .75rem 0 0; }
+.sysadmin-facts dt { color: var(--color-muted); }
+.sysadmin-facts dd { margin: 0; }
+.sysadmin-empty, .sysadmin-muted { color: var(--color-muted); margin: .25rem 0; }
+.sysadmin-filters { align-items: end; display: grid; gap: .85rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); margin-bottom: 1rem; }
+.sysadmin-filters label { display: grid; gap: .3rem; font-size: .9rem; }
+.sysadmin-filters input, .sysadmin-filters select { border: 1px solid var(--color-border); border-radius: .45rem; font: inherit; min-width: 0; padding: .55rem .65rem; }
+.sysadmin-filters .sysadmin-check { align-items: center; display: flex; gap: .5rem; }
+.sysadmin-filter-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.button-secondary { background: #edf2f8; border: 1px solid var(--color-border); color: var(--color-ink); cursor: pointer; font: inherit; }
+.notice-error { background: #fff0f0; color: #8a2424; }
+.audit-list { display: grid; list-style: none; margin: 0; padding: 0; }
+.audit-row { border-top: 1px solid var(--color-border); display: grid; gap: .3rem; padding: .75rem 0; }
+.audit-row:first-child { border-top: 0; padding-top: 0; }
+.audit-row.audit-failed strong { color: #8a2424; }
+.audit-heading { align-items: baseline; display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; }
+.audit-heading time, .audit-meta { color: var(--color-muted); font-size: .85rem; }
+.audit-meta { display: flex; flex-wrap: wrap; gap: .75rem; margin: 0; overflow-wrap: anywhere; }
+.audit-changes { font-size: .85rem; margin: 0; overflow-wrap: anywhere; padding-left: 1.1rem; }
+.audit-reason { font-size: .85rem; margin: 0; }
+
 @media (max-width: 40rem) {
   .shell-header { align-items: flex-start; flex-direction: column; }
 }

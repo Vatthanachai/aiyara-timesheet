@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { unwrapResponse, type ApiEnvelope } from '../../../../shared/api-response'
-import { useLocaleText } from '../../../../shared/i18n'
+import { unwrapResponse, type ApiEnvelope } from '../../../../../shared/api-response'
+import { useLocaleText } from '../../../../../shared/i18n'
 type OrganizationAdmin = { email: string; status: 'Active' | 'PendingActivation' }
 type Organization = {
   tenantId: string
@@ -286,6 +286,7 @@ onMounted(async () => {
   </section>
 
   <template v-else>
+    <SysAdminNav />
     <section class="management-toolbar">
       <form class="search-form" role="search" @submit.prevent="applySearch">
         <label class="visually-hidden" for="organization-search">
@@ -337,7 +338,7 @@ onMounted(async () => {
       <article v-for="organization in organizations" :key="organization.tenantId" class="organization-card">
         <header class="organization-heading">
           <div>
-            <h2>{{ organization.name }}</h2>
+            <h2><NuxtLink :to="`/sys-admin/organizations/${organization.tenantId}`">{{ organization.name }}</NuxtLink></h2>
             <p>{{ organization.slug }}</p>
           </div>
           <div class="organization-badges">

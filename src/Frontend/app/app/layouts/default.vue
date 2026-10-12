@@ -13,8 +13,8 @@ const { locale, setLocale } = useLocale()
 const { token, role, logout, restore, renew } = useSession()
 const config = useRuntimeConfig()
 const text = useLocaleText(locale, {
-  th: { profile: 'โปรไฟล์', organizations: 'จัดการองค์กร', profileSettings: 'ตั้งค่าโปรไฟล์', signOut: 'ออกจากระบบ' },
-  en: { profile: 'Profile', organizations: 'Organizations', profileSettings: 'Profile settings', signOut: 'Sign out' }
+  th: { profile: 'โปรไฟล์', organizations: 'ผู้ดูแลระบบ', profileSettings: 'ตั้งค่าโปรไฟล์', signOut: 'ออกจากระบบ' },
+  en: { profile: 'Profile', organizations: 'System admin', profileSettings: 'Profile settings', signOut: 'Sign out' }
 })
 const profile = ref<ProfileSummary | null>(null)
 const profileMenu = ref<HTMLDetailsElement | null>(null)
@@ -118,7 +118,7 @@ onUnmounted(() => {
         <NuxtLink v-for="item in visibleNavigation.filter((item) => item.id !== 'identity')" :key="item.id" :to="item.path">
           {{ item.label[locale] }}
         </NuxtLink>
-        <NuxtLink v-if="token && role === 'PlatformAdmin'" to="/sys-admin/organizations">
+        <NuxtLink v-if="token && role === 'PlatformAdmin'" to="/sys-admin">
           {{ text.organizations }}
         </NuxtLink>
       </nav>
