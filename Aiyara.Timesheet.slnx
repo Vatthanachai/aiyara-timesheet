@@ -7,18 +7,14 @@
   <Folder Name="/src/Backend/identities/">
     <Project Path="src/Backend/identities/Aiyara.Identities.Api/Aiyara.Identities.Api.csproj" />
     <Project Path="src/Backend/identities/Aiyara.Identities.Databases/Aiyara.Identities.Databases.csproj" />
-    <Project Path="src/Backend/identities/Aiyara.Identities.Handlers/Aiyara.Identities.Handlers.csproj" />
     <Project Path="src/Backend/identities/Aiyara.Identities.Models/Aiyara.Identities.Models.csproj" />
     <Project Path="src/Backend/identities/Aiyara.Identities.Servives/Aiyara.Identities.Services.csproj" />
-    <Project Path="src/Backend/identities/Aiyara.Identities.Utilities/Aiyara.Identities.Utilities.csproj" />
   </Folder>
   <Folder Name="/src/Backend/reports/">
     <Project Path="src/Backend/reports/Aiyara.Report.Api/Aiyara.Report.Api.csproj" />
     <Project Path="src/Backend/reports/Aiyara.Report.Databases/Aiyara.Report.Databases.csproj" />
-    <Project Path="src/Backend/reports/Aiyara.Report.Handlers/Aiyara.Report.Handlers.csproj" />
     <Project Path="src/Backend/reports/Aiyara.Report.Models/Aiyara.Report.Models.csproj" />
     <Project Path="src/Backend/reports/Aiyara.Report.Services/Aiyara.Report.Services.csproj" />
-    <Project Path="src/Backend/reports/Aiyara.Report.Utilities/Aiyara.Report.Utilities.csproj" />
     <Project Path="src/Backend/reports/Aiyara.Report.Worker/Aiyara.Report.Worker.csproj" />
   </Folder>
   <Folder Name="/src/Backend/notifications/">
@@ -31,10 +27,6 @@
   <Folder Name="/src/Backend/timesheet/">
     <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Api/Aiyara.Timesheet.Api.csproj" />
     <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Databases/Aiyara.Timesheet.Databases.csproj" />
-    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Handlers/Aiyara.Timesheet.Handlers.csproj" />
-    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Models/Aiyara.Timesheet.Models.csproj" />
-    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Services/Aiyara.Timesheet.Services.csproj" />
-    <Project Path="src/Backend/timesheet/Aiyara.Timesheet.Utilities/Aiyara.Timesheet.Utilities.csproj" />
   </Folder>
   <Folder Name="/src/Dashboard/">
     <Project Path="src/Dashboard/Aiyara.Timesheet.AppHost/Aiyara.Timesheet.AppHost.csproj" />
