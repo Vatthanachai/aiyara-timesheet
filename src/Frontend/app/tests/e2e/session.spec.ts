@@ -281,6 +281,38 @@ test('failed sign in displays an error and does not persist credentials', async 
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.refresh'))).toBeNull()
 })
 
+test('rejected sign in fields show their own messages and clear on the next attempt', async ({ page }) => {
+  // Shaped like the real Gateway response to a sign-in body missing a field: SafeApiErrors'
+  // model-state factory keys errors by the C# property name with the INVALID_VALUE code.
+  let attempts = 0
+  await page.route('**/api/v1/auth/sign-in', route => {
+    attempts++
+    return route.fulfill(attempts === 1
+      ? { status: 400, contentType: 'application/json', body: JSON.stringify({
+          statusCode: 400, statusMessage: 'The request contains invalid fields.', errorCode: 'VALIDATION_FAILED',
+          errors: { Email: ['INVALID_VALUE'] }, traceId: 'trace-1' }) }
+      : { status: 401, contentType: 'application/json', body: JSON.stringify({
+          statusCode: 401, statusMessage: 'The request could not be completed.', errorCode: 'INVALIDCREDENTIALS' }) })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('secret-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  await expect(page.getByRole('alert')).toHaveText('Please check the entered information.')
+  const email = page.getByRole('textbox', { name: 'Email', exact: true })
+  await expect(email).toHaveAttribute('aria-invalid', 'true')
+  await expect(email).toHaveAccessibleDescription('Invalid value')
+  await expect(page.getByLabel('Password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true')
+
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Incorrect email or password.')
+  await expect(email).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByText('Invalid value')).toHaveCount(0)
+})
+
 test('activation submits the email code and new password then links to sign in', async ({ page }) => {
   let activationRequest: unknown
   await page.route('**/api/v1/auth/activate', async route => {
