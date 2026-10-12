@@ -128,7 +128,9 @@ $traceServices = @($traceResult.result.resourceSpans | ForEach-Object {
 })
 $loginSpans = @($traceResult.result.resourceSpans | ForEach-Object {
     $_.scopeSpans | ForEach-Object { $_.spans } |
-        Where-Object { $_.name -eq 'POST /api/v1/auth/login' }
+        # Span names carry the route template: Minimal API groups produced
+        # '/api/v1/auth/login', MVC attribute routes produce 'api/v1/auth/login'.
+        Where-Object { $_.name -match '^POST /?api/v1/auth/login$' }
 })
 if ('Aiyara.Gateways.Api' -notin $traceServices -or
     'Aiyara.Identities.Api' -notin $traceServices -or $loginSpans.Count -eq 0) {
