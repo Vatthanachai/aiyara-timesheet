@@ -29,6 +29,8 @@ public sealed class ReportController(ReportOperations operations) : BaseControll
 
     [HttpPost("definitions")]
     [ProducesResponseType(typeof(ServiceOkResponse<ReportDefinition>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceOkResponse<ReportDefinition>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
@@ -37,6 +39,7 @@ public sealed class ReportController(ReportOperations operations) : BaseControll
 
     [HttpPut("definitions/{id:guid}")]
     [ProducesResponseType(typeof(ServiceOkResponse<ReportDefinition>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]

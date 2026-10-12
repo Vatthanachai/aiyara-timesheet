@@ -101,6 +101,37 @@ public sealed class ReportRunListingTests : IAsyncLifetime
         Assert.Equal(1, dashboard.GetProperty("failed").GetInt32());
     }
 
+    [Fact]
+    public async Task Creating_or_renaming_into_an_existing_kind_and_format_is_a_conflict_not_a_server_error()
+    {
+        var duplicate = await operations.CreateDefinition(Admin,
+            new DefinitionRequest(ReportKind.Monthly, ReportFormat.Pdf, "Another monthly"), default);
+        var collision = await operations.UpdateDefinition(Admin, weekly.Id,
+            new DefinitionRequest(ReportKind.Monthly, ReportFormat.Pdf, "Weekly renamed"), default);
+
+        Assert.Equal((409, "DEFINITION_EXISTS"), (duplicate.StatusCode, ErrorCode(duplicate)));
+        Assert.Equal((409, "DEFINITION_EXISTS"), (collision.StatusCode, ErrorCode(collision)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(3, await db.ReportDefinitions.CountAsync());
+        Assert.Equal(ReportKind.Weekly, (await db.ReportDefinitions.SingleAsync(x => x.Id == weekly.Id)).Kind);
+        Assert.Empty(await db.Audits.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Creating_a_disabled_kind_and_format_enables_it_again_under_the_new_name()
+    {
+        var restored = await operations.CreateDefinition(Admin,
+            new DefinitionRequest(ReportKind.Annual, ReportFormat.Pdf, " Annual summary "), default);
+
+        Assert.Equal(200, restored.StatusCode);
+        db.ChangeTracker.Clear();
+        var annual = await db.ReportDefinitions.SingleAsync(x => x.Kind == ReportKind.Annual);
+        Assert.True(annual.IsEnabled);
+        Assert.Equal("Annual summary", annual.Name);
+        Assert.Equal(annual.Id, Result(restored).GetProperty("id").GetGuid());
+        Assert.Equal("definition.reenabled", (await db.Audits.SingleAsync()).Action);
+    }
+
     public async Task InitializeAsync()
     {
         await connection.OpenAsync();
@@ -167,6 +198,9 @@ public sealed class ReportRunListingTests : IAsyncLifetime
         var result = response.GetType().GetProperty("Result")!.GetValue(response);
         return JsonSerializer.SerializeToElement(result, Json);
     }
+
+    private static string? ErrorCode(ServiceResponse response) =>
+        response.GetType().GetProperty("ErrorCode")?.GetValue(response) as string;
 
     private sealed class UnusedStorage : IReportObjectStorage
     {

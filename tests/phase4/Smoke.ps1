@@ -86,9 +86,18 @@ Expect (Request Post '/api/v1/timesheets/entries' @{
 } $auth) 201 'timesheet entry' | Out-Null
 Expect (Request Post "/api/v1/timesheets/months/$year/$month/lock" $null $auth) 200 'month lock' | Out-Null
 
-$definition = Expect (Request Post '/api/v1/reports/definitions' @{
+# Locking the month makes the Report Worker create the tenant's default Monthly/PDF definition,
+# so this request can race it; a 409 DEFINITION_EXISTS means the Worker's definition is used.
+$definitionResponse = Request Post '/api/v1/reports/definitions' @{
     kind = 'Monthly'; format = 'Pdf'; name = 'Phase 4 live E2E'
-} $auth) 201 'report definition'
+} $auth
+if ($definitionResponse.StatusCode -eq 409 -and $definitionResponse.Content -match 'DEFINITION_EXISTS') {
+    $definition = (Expect (Request Get '/api/v1/reports/definitions' $null $auth) 200 'report definitions') |
+        Where-Object { $_.kind -eq 'Monthly' -and $_.format -eq 'Pdf' } | Select-Object -First 1
+    if (-not $definition) { throw 'report definition conflict reported but no Monthly/PDF definition is listed' }
+} else {
+    $definition = Expect $definitionResponse 201 'report definition'
+}
 $startLocal = [DateTimeOffset]::new([int]$year, [int]$month, 1, 0, 0, 0, [TimeSpan]::FromHours(7))
 $nextLocal = $startLocal.AddMonths(1)
 $run = Expect (Request Post '/api/v1/reports/runs' @{
