@@ -25,7 +25,7 @@ function Get-Code([string]$email, [string]$subject) {
             ($_.subject -eq $subject) -and ($_.to[0].address -eq $email)
         } | Select-Object -Last 1
         if ($message) {
-            $codeMatch = [regex]::Match($message.text, ':\s*([^\s]+)\s*$')
+            $codeMatch = [regex]::Match($message.text, '(?mi)code:\s*(\S+)')
             if ($codeMatch.Success) { return $codeMatch.Groups[1].Value }
         }
         Start-Sleep -Milliseconds 500
