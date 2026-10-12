@@ -64,6 +64,7 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
     [InlineData("/api/v1/platform/audit")]
     [InlineData("/api/v1/platform/organizations/{tenant}")]
     [InlineData("/api/v1/platform/admins")]
+    [InlineData("/api/v1/platform/security/password-policy")]
     public async Task Console_read_routes_require_a_platform_admin(string template)
     {
         var path = template.Replace("{tenant}", customerTenantId.ToString());
@@ -114,12 +115,16 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
     [Theory]
     [InlineData("POST", "/api/v1/platform/admins")]
     [InlineData("PUT", "/api/v1/platform/admins/status")]
+    [InlineData("POST", "/api/v1/platform/admins/mfa-reset")]
+    [InlineData("PUT", "/api/v1/platform/security/password-policy")]
     [InlineData("POST", "/api/v1/platform/organizations/{tenant}/administrators/demote")]
     [InlineData("POST", "/api/v1/platform/organizations/{tenant}/administrators/remove")]
     public async Task People_routes_reject_tenant_tokens(string method, string template)
     {
         var path = template.Replace("{tenant}", customerTenantId.ToString());
-        var body = new { email = "admin@acme.test", active = false, reason = (string?)null };
+        var body = new { email = "admin@acme.test", active = false, reason = (string?)null,
+            minimumLength = 16, expiryDays = 90, requireUppercase = true, requireLowercase = true,
+            requireDigit = true, requireSymbol = true };
 
         var anonymous = await Send(new HttpMethod(method), null, body, path);
         var tenantAdmin = await Send(new HttpMethod(method), Token(tenantAdminId, customerTenantId, "TenantAdmin"), body, path);
@@ -172,6 +177,12 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
         builder.Services.AddScoped(services => new PlatformAdminRosterService(
             services.GetRequiredService<IdentityDbContext>(), services.GetRequiredService<TenantScope>(),
             services.GetRequiredService<PlatformOrganizationService>()));
+        builder.Services.AddSingleton<IEncryptionService>(new EncryptionService(Options.Create(new PasswordGenerateSetting())));
+        builder.Services.AddSingleton<ICredentialAttemptLimiter, NoAttemptLimit>();
+        builder.Services.AddSingleton<IMfaSecretProtector>(new AesGcmMfaSecretProtector(
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))));
+        builder.Services.AddScoped<AuthenticationService>();
+        builder.Services.AddScoped<PlatformSecurityService>();
         builder.Services.AddScoped<PlatformActorResolver>();
         builder.Services.AddControllers()
             .AddApplicationPart(typeof(PlatformOrganizationsController).Assembly);
@@ -227,6 +238,12 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (body is not null) request.Content = JsonContent.Create(body);
         return await client.SendAsync(request);
+    }
+
+    private sealed class NoAttemptLimit : ICredentialAttemptLimiter
+    {
+        public Task CheckAsync(Guid tenantId, string normalizedEmail, string purpose,
+            CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class NullNotifications : ICredentialNotificationSender

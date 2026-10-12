@@ -149,9 +149,22 @@ selects a tenant only by organization code; the internal tenant ID is never
 accepted from callers.
 A session contains the internal tenant ID, a 15-minute PASETO v4.public access
 token, and a rotating opaque refresh token. The Platform Admin signs in at
-`/sys-admin/login` (`POST /api/v1/auth/platform-admin/login` with email and
-password), which accepts only `PlatformAdmin` accounts; organization code
-`AIYA001` still works with `/auth/login`. Platform Admins create organizations
+`/sys-admin/login` (`POST /api/v1/auth/platform-admin/login` with `email`,
+`password`, and a second factor: `totpCode` from an authenticator app or one
+unused `recoveryCode`). It accepts only `PlatformAdmin` accounts. Without a second factor it answers
+`MFAREQUIRED`. An admin without an authenticator receives an `enrollment`
+(Base32 secret and `otpauth://` URI) instead of a session; the first valid code
+confirms it and returns ten one-time recovery codes. Five wrong codes lock the
+account for 15 minutes. No other sign-in route (`/auth/sign-in`, `/auth/login`)
+issues a Platform Admin session. Platform Admins manage each other at
+`/sys-admin/admins` (`GET`/`POST /api/v1/platform/admins`,
+`PUT /api/v1/platform/admins/status`, `POST /api/v1/platform/admins/mfa-reset`):
+invite, deactivate, reactivate, and reset another admin's MFA. Nobody can
+deactivate themselves or reset their own MFA. They demote or remove a tenant
+administrator with `POST /api/v1/platform/organizations/{tenantId}/administrators/{demote|remove}`,
+never the last active one, and edit the platform password policy at
+`/sys-admin/security` (`GET`/`PUT /api/v1/platform/security/password-policy`).
+Platform Admins create organizations
 with `POST /api/v1/platform/organizations`
 (`{"name":"...","slug":"...","adminEmail":"..."}`, Platform Admin Bearer token);
 the creation is audited and returns no onboarding key. Public self-signup keeps
@@ -171,7 +184,12 @@ Forgot-password reset remains available if the current password is unknown.
 For Compose, set `PASETO_SIGNING_SEED` to a base64-encoded random 32-byte seed
 and `NOTIFICATION_INTERNAL_KEY` to an independent random value of at least 32
 characters in an untracked `.env`; see `.env.example`. Keep the signing seed
-stable across restarts to preserve sessions. Start the local SMTP inbox with
+stable across restarts to preserve sessions. Set `MFA_ENCRYPTION_KEY` to a
+separate base64-encoded random 32-byte key; Identity encrypts Platform Admin
+authenticator secrets with it (AES-256-GCM) and refuses to start without it.
+Keep it stable: a different key cannot read enrolled authenticators, sign-in
+then answers 503, and another admin must reset MFA. AppHost needs the same value
+because it shares the Compose database. Start the local SMTP inbox with
 `docker compose --profile maildev up -d`; its web UI is on
 `MAILDEV_WEB_PORT` (default 8080). If another SMTP test server is used, set
 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USE_TLS`, and optional `SMTP_USERNAME` /

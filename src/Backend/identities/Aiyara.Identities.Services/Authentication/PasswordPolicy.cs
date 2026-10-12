@@ -15,10 +15,12 @@ public static class PasswordPolicy
             (!tenant.PasswordRequireSymbol || password.Any(c => !char.IsLetterOrDigit(c)));
     }
 
-    public static void ValidateSettings(Tenant tenant)
+    public static void ValidateSettings(Tenant tenant) =>
+        ValidateSettings(tenant.PasswordMinimumLength, tenant.PasswordExpiryDays);
+
+    public static void ValidateSettings(int minimumLength, int expiryDays)
     {
-        if (tenant.PasswordMinimumLength is < 12 or > 128 ||
-            tenant.PasswordExpiryDays is < 1 or > 3650)
+        if (minimumLength is < 12 or > 128 || expiryDays is < 1 or > 3650)
             throw new AuthenticationException(AuthenticationFailure.InvalidInput,
                 "Invalid password policy.");
     }

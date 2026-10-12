@@ -37,11 +37,32 @@ public sealed record PlatformAdminRosterEntry(
     string LastName,
     string Status,
     DateTime CreatedAtUtc,
-    bool IsCurrentUser);
+    bool IsCurrentUser,
+    bool MfaEnabled);
 
 public sealed record InvitePlatformAdminRequest(string Email);
 
 public sealed record SetPlatformAdminStatusRequest(string Email, bool Active, string? Reason);
+
+/// <summary>Clears another Platform Admin's authenticator and recovery codes; they enroll again at next sign-in.</summary>
+public sealed record ResetPlatformAdminMfaRequest(string Email, string? Reason);
+
+public sealed record PlatformPasswordPolicy(
+    int MinimumLength,
+    int ExpiryDays,
+    bool RequireUppercase,
+    bool RequireLowercase,
+    bool RequireDigit,
+    bool RequireSymbol);
+
+public sealed record UpdatePlatformPasswordPolicyRequest(
+    int MinimumLength,
+    int ExpiryDays,
+    bool RequireUppercase,
+    bool RequireLowercase,
+    bool RequireDigit,
+    bool RequireSymbol,
+    string? Reason);
 
 public sealed record PlatformOrganizationUpdateResult(
     Guid TenantId,

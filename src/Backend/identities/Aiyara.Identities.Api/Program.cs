@@ -24,6 +24,10 @@ builder.Services.AddScoped<OnboardingService>();
 builder.Services.AddScoped<PlatformOrganizationService>();
 builder.Services.AddScoped<PlatformConsoleService>();
 builder.Services.AddScoped<PlatformAdminRosterService>();
+builder.Services.AddScoped<PlatformSecurityService>();
+// Fails at startup without a valid key, so second factors are never stored unencrypted.
+builder.Services.AddSingleton<IMfaSecretProtector>(
+    new AesGcmMfaSecretProtector(builder.Configuration["Mfa:EncryptionKey"]));
 builder.Services.AddScoped<Aiyara.Identities.Api.Controllers.PlatformActorResolver>();
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<PlatformAdminBootstrap>();

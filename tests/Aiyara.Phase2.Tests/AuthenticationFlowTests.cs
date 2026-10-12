@@ -189,9 +189,11 @@ public sealed class AuthenticationFlowTests
             fixture.Notifications.Messages.Single().Code, "Correct-Password-123!"), default);
         Assert.Null(await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
             .EnsureAsync("operator@platform.test", default));
-        var login = await fixture.Auth.LoginAsync(new LoginRequest(
-            PlatformAdminBootstrap.PlatformTenantId, bootstrap.Email,
-            "Correct-Password-123!"), default);
+        var withoutSecondFactor = await Assert.ThrowsAsync<AuthenticationException>(() =>
+            fixture.Auth.LoginAsync(new LoginRequest(PlatformAdminBootstrap.PlatformTenantId,
+                bootstrap.Email, "Correct-Password-123!"), default));
+        Assert.Equal(AuthenticationFailure.MfaRequired, withoutSecondFactor.Failure);
+        var login = await EnrollPlatformAdminAsync(fixture, bootstrap.Email, "Correct-Password-123!");
         Assert.StartsWith("v4.public.", login.AccessToken);
     }
 
@@ -266,8 +268,7 @@ public sealed class AuthenticationFlowTests
         await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
             fixture.Notifications.Messages.Last().Code, "Correct-Password-123!"), default);
 
-        var login = await fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(
-            "Operator@Platform.test", "Correct-Password-123!"), default);
+        var login = await EnrollPlatformAdminAsync(fixture, "Operator@Platform.test", "Correct-Password-123!");
 
         Assert.Equal(PlatformAdminBootstrap.PlatformTenantId, login.TenantId);
         Assert.Equal(nameof(TenantRole.PlatformAdmin), login.Role);
@@ -315,9 +316,11 @@ public sealed class AuthenticationFlowTests
         await ActivateTenantAdminAsync(fixture, "Acme", "acme", "admin@acme.test");
         var operatorId = (await fixture.Db.Accounts.SingleAsync(x => x.Email == "operator@platform.test")).Id;
 
-        await fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(
-            "operator@platform.test", "Correct-Password-123!"), default);
-        await fixture.Auth.SignInAsync(new SignInRequest("operator@platform.test", "Correct-Password-123!"), default);
+        await EnrollPlatformAdminAsync(fixture, "operator@platform.test", "Correct-Password-123!");
+        // Email sign-in cannot issue a Platform Admin session: it has no second factor.
+        var withoutSecondFactor = await Assert.ThrowsAsync<AuthenticationException>(() =>
+            fixture.Auth.SignInAsync(new SignInRequest("operator@platform.test", "Correct-Password-123!"), default));
+        Assert.Equal(AuthenticationFailure.MfaRequired, withoutSecondFactor.Failure);
         await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginPlatformAdminAsync(
             new PlatformAdminLoginRequest("operator@platform.test", "Wrong-Password-123!"), default));
         await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.LoginPlatformAdminAsync(
@@ -329,9 +332,11 @@ public sealed class AuthenticationFlowTests
         var audits = await fixture.Db.PlatformOrganizationAudits.IgnoreQueryFilters()
             .OrderBy(x => x.CreatedAtUtc).ToListAsync();
         Assert.All(audits, x => Assert.Equal(PlatformAdminBootstrap.PlatformTenantId, x.TenantId));
-        Assert.Equal([AuthenticationService.PlatformSignInAction, AuthenticationService.PlatformSignInAction,
-            AuthenticationService.PlatformSignInFailedAction, AuthenticationService.PlatformSignInFailedAction,
-            AuthenticationService.PlatformSignInFailedAction], audits.Select(x => x.Action));
+        // Enrollment and the session it opens are saved together, so their order is not asserted.
+        Assert.Equal(new[] { AuthenticationService.MfaEnrolledAction, AuthenticationService.PlatformSignInAction }
+            .Order(), audits.Take(2).Select(x => x.Action).Order());
+        Assert.Equal([AuthenticationService.PlatformSignInFailedAction, AuthenticationService.PlatformSignInFailedAction,
+            AuthenticationService.PlatformSignInFailedAction], audits.Skip(2).Select(x => x.Action));
         Assert.Equal(operatorId, audits[0].ActorAccountId);
         Assert.Equal(operatorId, audits[2].ActorAccountId);
         Assert.Equal(Guid.Empty, audits[3].ActorAccountId);
@@ -460,7 +465,7 @@ public sealed class AuthenticationFlowTests
         Assert.False((await fixture.Db.Memberships.SingleAsync()).MustChangePassword);
     }
 
-    private static async Task<CreateTenantResponse> ActivateTenantAdminAsync(Fixture fixture,
+    internal static async Task<CreateTenantResponse> ActivateTenantAdminAsync(Fixture fixture,
         string name, string slug, string email)
     {
         var tenant = await fixture.Onboarding.CreateTenantAsync(
@@ -472,7 +477,7 @@ public sealed class AuthenticationFlowTests
         return tenant;
     }
 
-    private sealed class FakeNotifications : ICredentialNotificationSender
+    internal sealed class FakeNotifications : ICredentialNotificationSender
     {
         public List<(string Email, string Template, string Code)> Messages { get; } = [];
         public Task SendAsync(string email, string template, string code,
@@ -483,7 +488,7 @@ public sealed class AuthenticationFlowTests
         }
     }
 
-    private sealed class FakeRevocations : ISessionRevocationPublisher
+    internal sealed class FakeRevocations : ISessionRevocationPublisher
     {
         public List<(Guid TenantId, Guid AccountId, long Version)> AccountEvents { get; } = [];
         public Task PublishAccountAsync(Guid tenantId, Guid accountId, long sessionVersion,
@@ -499,15 +504,29 @@ public sealed class AuthenticationFlowTests
             => Task.CompletedTask;
     }
 
-    private sealed class FakeAttemptLimiter : ICredentialAttemptLimiter
+    /// <summary>Signs a Platform Admin in for the first time: takes the offered enrollment secret
+    /// and confirms it with the current code, as an authenticator app would.</summary>
+    internal static async Task<AuthenticationResponse> EnrollPlatformAdminAsync(Fixture fixture,
+        string email, string password)
+    {
+        var offer = await fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(email, password), default);
+        Assert.Null(offer.Session);
+        var secret = Assert.IsType<MfaEnrollment>(offer.Enrollment).Secret;
+        var enrolled = await fixture.Auth.LoginPlatformAdminAsync(new PlatformAdminLoginRequest(email, password,
+            Totp.Compute(secret, Totp.StepAt(DateTimeOffset.UtcNow))), default);
+        Assert.Equal(10, enrolled.RecoveryCodes.Count);
+        return Assert.IsType<AuthenticationResponse>(enrolled.Session);
+    }
+
+    internal sealed class FakeAttemptLimiter : ICredentialAttemptLimiter
     {
         public Task CheckAsync(Guid tenantId, string normalizedEmail, string purpose,
             CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
-    private sealed class Fixture : IAsyncDisposable
+    internal sealed class Fixture : IAsyncDisposable
     {
-        private readonly SqliteConnection connection;
+        private readonly SqliteConnection? connection;
         public IdentityDbContext Db { get; }
         public TenantScope Scope { get; }
         public OnboardingService Onboarding { get; }
@@ -515,7 +534,7 @@ public sealed class AuthenticationFlowTests
         public FakeNotifications Notifications { get; } = new();
         public FakeRevocations Revocations { get; } = new();
 
-        private Fixture(SqliteConnection connection, IdentityDbContext db, TenantScope scope)
+        private Fixture(SqliteConnection? connection, IdentityDbContext db, TenantScope scope)
         {
             this.connection = connection;
             Db = db;
@@ -527,14 +546,27 @@ public sealed class AuthenticationFlowTests
                 Key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             }));
             Auth = new AuthenticationService(db, scope, passwords, tokens, Notifications,
-                Revocations, new FakeAttemptLimiter());
+                Revocations, new FakeAttemptLimiter(),
+                new AesGcmMfaSecretProtector(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))));
         }
 
+        /// <summary>Uses in-memory SQLite by default. When AIYARA_TEST_POSTGRES holds a server
+        /// connection string, each test instead gets a throwaway PostgreSQL database built from the
+        /// real migrations, because SQLite translates some EF queries differently.</summary>
         public static async Task<Fixture> CreateAsync()
         {
+            var scope = new TenantScope();
+            if (Environment.GetEnvironmentVariable("AIYARA_TEST_POSTGRES") is { Length: > 0 } server)
+            {
+                var database = $"identity_auth_test_{Guid.NewGuid():N}";
+                var postgres = new IdentityDbContext(new DbContextOptionsBuilder<IdentityDbContext>()
+                    .UseNpgsql(new Npgsql.NpgsqlConnectionStringBuilder(server) { Database = database }.ConnectionString)
+                    .Options, scope);
+                await postgres.Database.MigrateAsync();
+                return new Fixture(null, postgres, scope);
+            }
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
-            var scope = new TenantScope();
             var db = new IdentityDbContext(new DbContextOptionsBuilder<IdentityDbContext>()
                 .UseSqlite(connection).Options, scope);
             await db.Database.EnsureCreatedAsync();
@@ -543,8 +575,9 @@ public sealed class AuthenticationFlowTests
 
         public async ValueTask DisposeAsync()
         {
+            if (connection is null) await Db.Database.EnsureDeletedAsync();
             await Db.DisposeAsync();
-            await connection.DisposeAsync();
+            if (connection is not null) await connection.DisposeAsync();
         }
     }
 }

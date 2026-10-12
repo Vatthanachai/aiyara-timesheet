@@ -26,12 +26,12 @@ public sealed class PlatformAdminRosterService(IdentityDbContext db, TenantScope
                 (membership, account) => new
                 {
                     account.Id, account.Email, account.FirstName, account.LastName, membership.Status,
-                    membership.CreatedAtUtc
+                    membership.CreatedAtUtc, MfaEnabled = account.MfaEnabledAtUtc != null
                 })
             .OrderBy(x => x.Email)
             .ToListAsync(cancellationToken);
         return admins.Select(x => new PlatformAdminRosterEntry(x.Email, x.FirstName, x.LastName,
-            x.Status.ToString(), x.CreatedAtUtc, x.Id == actorAccountId)).ToArray();
+            x.Status.ToString(), x.CreatedAtUtc, x.Id == actorAccountId, x.MfaEnabled)).ToArray();
     }
 
     /// <summary>Invites a new Platform Admin, or re-sends activation to one who has not
@@ -116,6 +116,39 @@ public sealed class PlatformAdminRosterService(IdentityDbContext db, TenantScope
         await transaction.CommitAsync(cancellationToken);
         if (membership.Status == MembershipStatus.PendingActivation)
             await SendActivationAsync(email, cancellationToken);
+    }
+
+    /// <summary>Clears another Platform Admin's authenticator, pending enrollment, and recovery
+    /// codes, and ends their sessions; they enroll again at their next sign-in. Admins cannot reset
+    /// their own second factor, so a stolen session cannot remove it.</summary>
+    public async Task ResetMfaAsync(Guid actorAccountId, long actorSessionVersion,
+        ResetPlatformAdminMfaRequest request, CancellationToken cancellationToken)
+    {
+        await organizations.EnsurePlatformAdminAsync(actorAccountId, actorSessionVersion, cancellationToken);
+        var email = PlatformOrganizationService.NormalizeEmail(request.Email);
+        var reason = PlatformOrganizationService.NormalizeReason(request.Reason);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        tenantScope.TenantId = PlatformTenantId;
+        var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
+        if (account is null || !await db.Memberships.AnyAsync(x => x.AccountId == account.Id &&
+                x.Role == TenantRole.PlatformAdmin, cancellationToken))
+            throw new PlatformOrganizationException(PlatformOrganizationFailure.NotFound);
+        if (account.Id == actorAccountId)
+            throw new PlatformOrganizationException(PlatformOrganizationFailure.SelfChange);
+
+        var before = JsonSerializer.Serialize(new { Email = email, MfaEnabled = account.MfaEnabledAtUtc != null });
+        account.MfaSecretProtected = null;
+        account.MfaEnabledAtUtc = null;
+        account.MfaPendingSecretProtected = null;
+        account.MfaPendingCreatedAtUtc = null;
+        account.MfaLastUsedStep = 0;
+        account.MfaFailedCount = 0;
+        await db.MfaRecoveryCodes.Where(x => x.AccountId == account.Id).ExecuteDeleteAsync(cancellationToken);
+        organizations.AddAudit(PlatformTenantId, actorAccountId, "platform_admin.mfa_reset", reason, before,
+            JsonSerializer.Serialize(new { Email = email, MfaEnabled = false }));
+        await organizations.EndSessionsAsync(account, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private async Task SendActivationAsync(string email, CancellationToken cancellationToken)

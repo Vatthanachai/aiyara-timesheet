@@ -11,6 +11,12 @@ type AuthResponse = {
 
 export type SignInOrganization = { organizationCode: string; name: string }
 type SignInResponse = { session: AuthResponse | null; organizations: SignInOrganization[] }
+export type MfaEnrollment = { secret: string; provisioningUri: string }
+export type PlatformAdminLoginResult = {
+  session: AuthResponse | null
+  enrollment: MfaEnrollment | null
+  recoveryCodes: string[]
+}
 
 export function useSession() {
   const token = useState<string>('access-token', () => '')
@@ -61,11 +67,18 @@ export function useSession() {
     return response
   }
 
-  async function loginPlatformAdmin(email: string, password: string) {
-    const response = unwrapResponse(await $fetch<ApiEnvelope<AuthResponse>>(`${config.public.gatewayUrl}/api/v1/auth/platform-admin/login`, {
-      method: 'POST', body: { email, password }
+  /**
+   * Signs a system administrator in. Without a second factor the server either offers an
+   * authenticator enrollment or answers MFAREQUIRED. A session that comes with first-time
+   * recovery codes is not saved here: the caller saves it with `acceptSession` once the codes
+   * have been shown.
+   */
+  async function loginPlatformAdmin(email: string, password: string,
+    factor: { totpCode?: string; recoveryCode?: string } = {}) {
+    const response = unwrapResponse(await $fetch<ApiEnvelope<PlatformAdminLoginResult>>(`${config.public.gatewayUrl}/api/v1/auth/platform-admin/login`, {
+      method: 'POST', body: { email, password, ...factor }
     }))
-    save(response)
+    if (response.session && !response.recoveryCodes.length) save(response.session)
     return response
   }
 
@@ -110,5 +123,5 @@ export function useSession() {
     clear()
   }
 
-  return { token: readonly(token), tenantId: readonly(tenantId), role: readonly(role), login, signIn, loginPlatformAdmin, logout, renew, restore }
+  return { token: readonly(token), tenantId: readonly(tenantId), role: readonly(role), login, signIn, loginPlatformAdmin, acceptSession: save, logout, renew, restore }
 }

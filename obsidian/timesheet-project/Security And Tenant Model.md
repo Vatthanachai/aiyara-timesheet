@@ -9,6 +9,7 @@
 - Token claims include subject, tenant context, role, security/session version, token ID, password-change state, issuer, audience, issued-at, and expiry.
 - Gateway and internal APIs validate access tokens through Identity's gRPC API. They cache validation by token ID and session version in Redis for 1–5 minutes. The gRPC response carries the tenant policy version so an in-flight pre-change validation cannot be cached after a policy update. Logout, password reset, account disable, or policy-forced password change publishes an event that revokes the session and invalidates the cache.
 - Gateway owns public token handling; only the Identity service holds the private PASETO signing key.
+- Platform Admin sign-in needs a second factor: a TOTP code from an enrolled authenticator, or one single-use recovery code. No route issues a Platform Admin session without it. Authenticator secrets are encrypted with AES-256-GCM under `MFA_ENCRYPTION_KEY`, which is separate from the signing key; recovery codes are stored only as hashes. Five wrong second factors lock the account for 15 minutes. Only another Platform Admin can reset an admin's MFA. The platform tenant's password policy is managed by Platform Admins in the SysAdmin console.
 
 ## Accounts And Roles
 
