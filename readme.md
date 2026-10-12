@@ -144,12 +144,19 @@ The reset request and completion endpoints are `/password/forgot` and
 organization. When it has several, `session` is `null` and `organizations`
 lists each `organizationCode` and `name`; the caller then logs in with
 `POST /api/v1/auth/login` and
-`{"organizationCode":"ACME123","email":"...","password":"..."}`.
+`{"organizationCode":"ACME123","email":"...","password":"..."}`. The login body
+selects a tenant only by organization code; the internal tenant ID is never
+accepted from callers.
 A session contains the internal tenant ID, a 15-minute PASETO v4.public access
 token, and a rotating opaque refresh token. The Platform Admin signs in at
 `/sys-admin/login` (`POST /api/v1/auth/platform-admin/login` with email and
 password), which accepts only `PlatformAdmin` accounts; organization code
-`AIYA001` still works with `/auth/login`. `PUT /api/v1/auth/tenants/{tenantId}/password-policy` requires
+`AIYA001` still works with `/auth/login`. Platform Admins create organizations
+with `POST /api/v1/platform/organizations`
+(`{"name":"...","slug":"...","adminEmail":"..."}`, Platform Admin Bearer token);
+the creation is audited and returns no onboarding key. Public self-signup keeps
+using `POST /api/v1/tenants`. A Platform Admin account cannot join a customer
+organization, and the bootstrap email must not already belong to one. `PUT /api/v1/auth/tenants/{tenantId}/password-policy` requires
 an active Tenant Admin Bearer token. A stricter policy forces a password change
 before protected APIs accept new access tokens. A restricted login token can
 call `POST /api/v1/auth/password/change` with

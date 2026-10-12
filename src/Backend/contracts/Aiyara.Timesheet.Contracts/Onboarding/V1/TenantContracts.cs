@@ -10,8 +10,8 @@ public sealed record CreateTenantResponse(
     string Role,
     string Status,
     string TimeZoneId,
-    string OnboardingKey,
-    DateTime OnboardingKeyExpiresAtUtc)
+    string? OnboardingKey,
+    DateTime? OnboardingKeyExpiresAtUtc)
 {
     public override string ToString() =>
         $"CreateTenantResponse {{ TenantId = {TenantId}, OnboardingKey = [REDACTED] }}";

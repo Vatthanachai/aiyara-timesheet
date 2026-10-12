@@ -641,3 +641,39 @@ test('tenant admin can open tenant administration', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Access restricted' })).toHaveCount(0)
   await expect(page.locator('iframe')).toHaveCount(1)
 })
+
+test('platform admin creates an organization through the authenticated platform route', async ({ page }) => {
+  let createRequest: { authorization: string; body: unknown } | undefined
+  let publicSignupCalled = false
+  await page.route('**/api/v1/tenants', route => {
+    publicSignupCalled = true
+    return route.fulfill({ status: 500 })
+  })
+  await page.route('**/api/v1/platform/organizations**', async route => {
+    if (route.request().method() === 'POST') {
+      createRequest = { authorization: route.request().headers().authorization || '', body: route.request().postDataJSON() }
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(apiOk({
+        tenantId: 'c99358d1-e01f-4dfd-9693-38da8883562d', organizationCode: 'NEWO123',
+        name: 'New Org', slug: 'new-org', status: 'Active'
+      })) })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(apiOk({ totalCount: 0, page: 1, pageSize: 25, items: [] })) })
+  })
+  await signInAs(page, 'PlatformAdmin')
+  await page.goto('/sys-admin/organizations')
+
+  await page.getByRole('button', { name: 'Add organization' }).click()
+  await page.getByLabel('Organization name').fill('New Org')
+  await page.getByLabel('Organization URL name').fill('new-org')
+  await page.getByLabel('Organization administrator email').fill('owner@new.test')
+  await page.getByRole('button', { name: 'Create organization and send activation email' }).click()
+
+  await expect(page.getByText('Organization created. Code: NEWO123.')).toBeVisible()
+  expect(createRequest).toEqual({
+    authorization: 'Bearer PlatformAdmin-token',
+    body: { name: 'New Org', slug: 'new-org', adminEmail: 'owner@new.test' }
+  })
+  expect(publicSignupCalled).toBe(false)
+})

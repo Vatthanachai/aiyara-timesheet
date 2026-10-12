@@ -21,6 +21,8 @@ public sealed record UpdatePlatformOrganizationRequest(string Name, string Slug,
 
 public sealed record SetPlatformOrganizationStatusRequest(bool Suspended, string? Reason);
 
+public sealed record CreatePlatformOrganizationRequest(string Name, string Slug, string AdminEmail);
+
 public sealed record InvitePlatformOrganizationAdminRequest(string Email);
 
 public sealed record RequestPlatformAdministratorActivationRequest(string Email);

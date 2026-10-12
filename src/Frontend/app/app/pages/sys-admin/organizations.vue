@@ -49,7 +49,7 @@ const text = useLocaleText(locale, {
     inviteSent: 'ส่งคำเชิญผู้ดูแลองค์กรแล้ว',
     inviteError: 'ส่งคำเชิญไม่สำเร็จ กรุณาตรวจสอบอีเมลและสถานะองค์กร',
     createdTemplate: 'สร้างองค์กรแล้ว รหัสองค์กร {code} ระบบกำลังส่งอีเมลเปิดใช้งานให้ admin',
-    createSlugConflict: 'ชื่อ URL องค์กรนี้ถูกใช้แล้ว',
+    createSlugConflict: 'ชื่อ URL องค์กรนี้ถูกใช้แล้ว หรืออีเมลนี้เป็นบัญชีผู้ดูแลระบบซึ่งเป็นผู้ดูแลองค์กรไม่ได้',
     createError: 'สร้างองค์กรไม่สำเร็จ กรุณาตรวจสอบข้อมูล',
     resendAccepted: 'ระบบรับคำขอแล้ว หากบัญชียังรอเปิดใช้งานจะส่งรหัสใหม่ให้',
     resendError: 'ส่งคำขอไม่สำเร็จ กรุณาลองอีกครั้งภายหลัง'
@@ -83,7 +83,7 @@ const text = useLocaleText(locale, {
     inviteSent: 'Administrator invitation sent.',
     inviteError: 'Could not send invitation. Check the email and organization status.',
     createdTemplate: 'Organization created. Code: {code}. An activation email is being sent to the administrator.',
-    createSlugConflict: 'That organization URL is already in use.',
+    createSlugConflict: 'This organization URL name is taken, or the email belongs to a system administrator, who cannot administer an organization.',
     createError: 'Could not create the organization. Check the details and try again.',
     resendAccepted: 'Request accepted. If the account is pending activation, a new code will be sent.',
     resendError: 'Request failed. Please try again later.'
@@ -218,8 +218,8 @@ async function createOrganization() {
   createSuccess.value = ''
   createPending.value = true
   try {
-    const created = unwrapResponse(await $fetch<ApiEnvelope<{ organizationCode: string }>>(
-      `${config.public.gatewayUrl}/api/v1/tenants`, {
+    const created = unwrapResponse(await authorizedFetch<ApiEnvelope<{ organizationCode: string }>>(
+      `${config.public.gatewayUrl}/api/v1/platform/organizations`, {
         method: 'POST',
         body: {
           name: organizationName.value.trim(),

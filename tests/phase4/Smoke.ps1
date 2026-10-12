@@ -68,7 +68,7 @@ Expect (Request Post '/api/v1/auth/activate' @{
     code = (ActivationCode $adminEmail); password = $password
 }) 204 'admin activation' | Out-Null
 $session = Expect (Request Post '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $adminEmail; password = $password
+    organizationCode = $tenant.organizationCode; email = $adminEmail; password = $password
 }) 200 'admin login'
 $auth = @{ Authorization = "Bearer $($session.accessToken)" }
 $profile = Expect (Request Put '/api/v1/identity/profile/me' @{

@@ -303,6 +303,20 @@ public sealed class AuthenticationFlowTests
     }
 
     [Fact]
+    public async Task Platform_admin_bootstrap_rejects_an_email_that_belongs_to_a_customer_organization()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Acme", "acme", "owner@acme.test"), default);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PlatformAdminBootstrap(fixture.Db, fixture.Scope).EnsureAsync("owner@acme.test", default));
+
+        Assert.Contains("customer organization", exception.Message);
+        Assert.False((await fixture.Db.Accounts.SingleAsync()).IsPlatformAdmin);
+    }
+
+    [Fact]
     public async Task Platform_admin_bootstrap_backfills_organization_code_for_an_existing_platform_tenant()
     {
         await using var fixture = await Fixture.CreateAsync();

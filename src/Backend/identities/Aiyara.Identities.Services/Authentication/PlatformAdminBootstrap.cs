@@ -36,6 +36,11 @@ public sealed class PlatformAdminBootstrap(IdentityDbContext db, TenantScope ten
         tenantScope.TenantId = PlatformTenantId;
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
+        if (account is not null && await db.Memberships.IgnoreQueryFilters().AnyAsync(x =>
+                x.AccountId == account.Id && x.TenantId != PlatformTenantId, cancellationToken))
+            throw new InvalidOperationException(
+                "Bootstrap Platform Admin email already belongs to a customer organization. " +
+                "Platform Admins must use a dedicated account.");
         if (account is null)
         {
             account = new Account

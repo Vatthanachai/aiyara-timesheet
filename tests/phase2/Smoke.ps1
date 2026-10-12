@@ -68,8 +68,13 @@ Expect-Status (Send-Json '/api/v1/auth/activate' @{
     code = $code; password = $oldPassword
 }) 401 'single-use activation'
 
-$login = Send-Json '/api/v1/auth/login' @{
+# The public login body selects a tenant only by organization code; a caller-supplied
+# internal tenant ID is ignored, so these otherwise-valid credentials must be rejected.
+Expect-Status (Send-Json '/api/v1/auth/login' @{
     tenantId = $tenant.tenantId; email = $adminEmail; password = $oldPassword
+}) 401 'login by internal tenant ID'
+$login = Send-Json '/api/v1/auth/login' @{
+    organizationCode = $tenant.organizationCode; email = $adminEmail; password = $oldPassword
 }
 Expect-Status $login 200 'login'
 $session = ($login.Content | ConvertFrom-Json).result
@@ -103,7 +108,7 @@ Expect-Status (Send-Json '/api/v1/auth/activate' @{
     code = $employeeCode; password = $oldPassword
 }) 204 'invited employee activation'
 Expect-Status (Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $employeeEmail; password = $oldPassword
+    organizationCode = $tenant.organizationCode; email = $employeeEmail; password = $oldPassword
 }) 200 'invited employee login'
 
 $refreshed = Send-Json '/api/v1/auth/refresh' @{
@@ -119,7 +124,7 @@ Expect-Status (Send-Json '/api/v1/auth/refresh' @{
 }) 401 'replay revocation'
 
 $login = Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $adminEmail; password = $oldPassword
+    organizationCode = $tenant.organizationCode; email = $adminEmail; password = $oldPassword
 }
 Expect-Status $login 200 'second login'
 $session = ($login.Content | ConvertFrom-Json).result
@@ -135,17 +140,17 @@ $revoked = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/timesheets/health" `
 if ($revoked.StatusCode -ne 401) { throw 'Logout did not invalidate cached access token.' }
 
 Expect-Status (Send-Json '/api/v1/auth/password/forgot' @{
-    tenantId = $tenant.tenantId; email = $adminEmail
+    organizationCode = $tenant.organizationCode; email = $adminEmail
 }) 202 'forgot password'
 $resetCode = Get-Code $adminEmail 'Reset your Aiyara Timesheet password'
 Expect-Status (Send-Json '/api/v1/auth/password/reset' @{
     code = $resetCode; password = $newPassword
 }) 204 'password reset'
 Expect-Status (Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $adminEmail; password = $oldPassword
+    organizationCode = $tenant.organizationCode; email = $adminEmail; password = $oldPassword
 }) 401 'old password after reset'
 $login = Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $adminEmail; password = $newPassword
+    organizationCode = $tenant.organizationCode; email = $adminEmail; password = $newPassword
 }
 Expect-Status $login 200 'login after reset'
 $session = ($login.Content | ConvertFrom-Json).result
@@ -165,7 +170,7 @@ Expect-Status (Send-Json '/api/v1/auth/refresh' @{
     refreshToken = $session.refreshToken
 }) 401 'policy-revoked refresh session'
 $forced = Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $adminEmail; password = $newPassword
+    organizationCode = $tenant.organizationCode; email = $adminEmail; password = $newPassword
 }
 Expect-Status $forced 200 'forced-change login'
 if (-not (($forced.Content | ConvertFrom-Json).result).mustChangePassword) {
@@ -184,7 +189,7 @@ Expect-Status (Send-Json '/api/v1/auth/refresh' @{
     refreshToken = (($forced.Content | ConvertFrom-Json).result).refreshToken
 }) 401 'forced policy old session revoked'
 $compliant = Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $adminEmail
+    organizationCode = $tenant.organizationCode; email = $adminEmail
     password = 'Very-Strong-New-Password-789!'
 }
 Expect-Status $compliant 200 'login after forced policy reset'
@@ -195,14 +200,14 @@ if ((($compliant.Content | ConvertFrom-Json).result).mustChangePassword) {
 $unknownEmail = "phase2-unknown-$suffix@example.test"
 for ($attempt = 0; $attempt -lt 10; $attempt++) {
     Expect-Status (Send-Json '/api/v1/auth/login' @{
-        tenantId = $tenant.tenantId; email = $unknownEmail; password = 'Not-A-Password!'
+        organizationCode = $tenant.organizationCode; email = $unknownEmail; password = 'Not-A-Password!'
     }) 401 'unknown-account login'
 }
 Expect-Status (Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = $unknownEmail; password = 'Not-A-Password!'
+    organizationCode = $tenant.organizationCode; email = $unknownEmail; password = 'Not-A-Password!'
 }) 429 'account login rate limit'
 Expect-Status (Send-Json '/api/v1/auth/login' @{
-    tenantId = $tenant.tenantId; email = "other-$unknownEmail"
+    organizationCode = $tenant.organizationCode; email = "other-$unknownEmail"
     password = 'Not-A-Password!'
 }) 401 'independent account remains under rate limit'
 

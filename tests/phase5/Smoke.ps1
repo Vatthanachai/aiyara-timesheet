@@ -96,7 +96,7 @@ if ($missingStatuses.Count -gt 0) {
 $authProbePassword = "phase5-probe-$([guid]::NewGuid().ToString('N'))"
 $probeTraceId = [guid]::NewGuid().ToString('N')
 $probeSpanId = [guid]::NewGuid().ToString('N').Substring(0, 16)
-$authProbeBody = @{ tenantId = '00000000-0000-0000-0000-000000000001';
+$authProbeBody = @{ organizationCode = 'AIYA001';
     email = 'phase5-probe@invalid.example'; password = $authProbePassword } | ConvertTo-Json
 $authProbe = Invoke-WebRequest -Uri "http://127.0.0.1:$gatewayPort/api/v1/auth/login" `
     -Method Post -ContentType 'application/json' -Body $authProbeBody `

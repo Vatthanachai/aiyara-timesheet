@@ -9,8 +9,19 @@ namespace Aiyara.Identities.Services.Onboarding;
 
 public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantScope)
 {
-    public async Task<CreateTenantResponse> CreateTenantAsync(
-        CreateTenantRequest request, CancellationToken cancellationToken)
+    public const string PlatformAdminConflictMessage =
+        "Platform administrators cannot join customer organizations.";
+
+    public Task<CreateTenantResponse> CreateTenantAsync(
+        CreateTenantRequest request, CancellationToken cancellationToken) =>
+        CreateTenantAsync(request, issueOnboardingKey: true, beforeCommit: null, cancellationToken);
+
+    /// <param name="issueOnboardingKey">False when a Platform Admin creates the organization:
+    /// nobody receives the key, so no key-based invitation capability is created.</param>
+    /// <param name="beforeCommit">Runs inside the creation transaction, before the final save,
+    /// so callers can add rows (such as an audit entry) that commit atomically with the tenant.</param>
+    public async Task<CreateTenantResponse> CreateTenantAsync(CreateTenantRequest request,
+        bool issueOnboardingKey, Action<Tenant>? beforeCommit, CancellationToken cancellationToken)
     {
         var name = request.Name?.Trim();
         var slug = request.Slug?.Trim().ToLowerInvariant();
@@ -32,6 +43,8 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         var organizationCode = await OrganizationCodeGenerator.GenerateAsync(db, name,
             slug, cancellationToken);
         var account = await FindOrCreateAccountAsync(email, now, cancellationToken);
+        if (account.IsPlatformAdmin)
+            throw new OnboardingException(OnboardingFailure.Conflict, PlatformAdminConflictMessage);
         var tenant = new Tenant
         {
             Id = IdentityGuid.New(), OrganizationCode = organizationCode,
@@ -43,18 +56,23 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
             Role = TenantRole.TenantAdmin, Status = MembershipStatus.PendingActivation,
             CreatedAtUtc = now
         };
-        var onboardingKey = InvitationCode.Generate();
-        var onboardingKeyExpiresAtUtc = now.AddDays(7);
-        var capability = new OnboardingCapability
+        string? onboardingKey = null;
+        DateTime? onboardingKeyExpiresAtUtc = null;
+        if (issueOnboardingKey)
         {
-            Id = IdentityGuid.New(), TenantId = tenant.Id, AccountId = account.Id,
-            KeyHash = InvitationCode.Hash(onboardingKey), CreatedAtUtc = now,
-            ExpiresAtUtc = onboardingKeyExpiresAtUtc
-        };
+            onboardingKey = InvitationCode.Generate();
+            onboardingKeyExpiresAtUtc = now.AddDays(7);
+            db.OnboardingCapabilities.Add(new OnboardingCapability
+            {
+                Id = IdentityGuid.New(), TenantId = tenant.Id, AccountId = account.Id,
+                KeyHash = InvitationCode.Hash(onboardingKey), CreatedAtUtc = now,
+                ExpiresAtUtc = onboardingKeyExpiresAtUtc.Value
+            });
+        }
 
         db.Tenants.Add(tenant);
         db.Memberships.Add(membership);
-        db.OnboardingCapabilities.Add(capability);
+        beforeCommit?.Invoke(tenant);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -84,6 +102,8 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         tenantScope.TenantId = invitation.TenantId;
         var now = DateTime.UtcNow;
         var account = await FindOrCreateAccountAsync(invitation.Email, now, cancellationToken);
+        if (account.IsPlatformAdmin)
+            throw new OnboardingException(OnboardingFailure.Conflict, PlatformAdminConflictMessage);
         if (await db.Memberships.AnyAsync(x => x.AccountId == account.Id, cancellationToken))
         {
             throw new OnboardingException(OnboardingFailure.Conflict, "Account is already a tenant member.");
@@ -126,6 +146,8 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
 
         var existingAccount = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
+        if (existingAccount?.IsPlatformAdmin == true)
+            throw new OnboardingException(OnboardingFailure.Conflict, PlatformAdminConflictMessage);
         if (existingAccount is not null && await db.Memberships.AnyAsync(
             x => x.AccountId == existingAccount.Id, cancellationToken))
         {

@@ -120,7 +120,7 @@ public sealed class OnboardingTests
             new CreateTenantRequest("Second", "second", "admin@second.test"), default);
         var request = new IssueInvitationRequest("invite@first.test", "Employee");
 
-        Assert.NotEmpty(first.OnboardingKey);
+        Assert.False(string.IsNullOrEmpty(first.OnboardingKey));
         Assert.DoesNotContain(first.OnboardingKey, first.ToString());
         Assert.DoesNotContain(first.OnboardingKey,
             await fixture.Db.OnboardingCapabilities.IgnoreQueryFilters()
