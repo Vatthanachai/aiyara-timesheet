@@ -1,26 +1,15 @@
 <script setup lang="ts">
 import { useLocaleText } from '../../../shared/i18n'
 import type { PlatformAuditEntry } from '../composables/usePlatformApi'
+import { platformAuditActionLabels } from '../composables/platformAuditActions'
 
 const props = withDefaults(defineProps<{ entries: PlatformAuditEntry[]; showOrganization?: boolean }>(), {
   showOrganization: true
 })
 const { locale } = useLocale()
 const text = useLocaleText(locale, {
-  th: {
-    empty: 'ยังไม่มีประวัติการดำเนินการ', unknownActor: 'ไม่ทราบบัญชี', reason: 'เหตุผล',
-    'organization.created': 'สร้างองค์กร', 'organization.updated': 'แก้ไขข้อมูลองค์กร',
-    'organization.suspended': 'ระงับองค์กร', 'organization.reactivated': 'เปิดใช้งานองค์กรอีกครั้ง',
-    'administrator.invited': 'เชิญผู้ดูแลองค์กร', 'administrator.activation_resent': 'ส่งรหัสเปิดใช้งานใหม่',
-    'platform_admin.signed_in': 'ผู้ดูแลระบบเข้าสู่ระบบ', 'platform_admin.sign_in_failed': 'เข้าสู่ระบบผู้ดูแลระบบไม่สำเร็จ'
-  },
-  en: {
-    empty: 'No administrative activity yet.', unknownActor: 'Unknown account', reason: 'Reason',
-    'organization.created': 'Organization created', 'organization.updated': 'Organization details changed',
-    'organization.suspended': 'Organization suspended', 'organization.reactivated': 'Organization reactivated',
-    'administrator.invited': 'Administrator invited', 'administrator.activation_resent': 'Activation code re-sent',
-    'platform_admin.signed_in': 'System administrator signed in', 'platform_admin.sign_in_failed': 'System administrator sign-in failed'
-  }
+  th: { empty: 'ยังไม่มีประวัติการดำเนินการ', unknownActor: 'ไม่ทราบบัญชี', reason: 'เหตุผล', ...platformAuditActionLabels.th },
+  en: { empty: 'No administrative activity yet.', unknownActor: 'Unknown account', reason: 'Reason', ...platformAuditActionLabels.en }
 })
 
 function parse(json: string | null): Record<string, unknown> {

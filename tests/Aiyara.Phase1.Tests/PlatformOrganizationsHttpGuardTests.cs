@@ -63,6 +63,7 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
     [InlineData("/api/v1/platform/overview")]
     [InlineData("/api/v1/platform/audit")]
     [InlineData("/api/v1/platform/organizations/{tenant}")]
+    [InlineData("/api/v1/platform/admins")]
     public async Task Console_read_routes_require_a_platform_admin(string template)
     {
         var path = template.Replace("{tenant}", customerTenantId.ToString());
@@ -110,6 +111,49 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
         Assert.True(await db.Tenants.IgnoreQueryFilters().AnyAsync(x => x.Slug == "allowed"));
     }
 
+    [Theory]
+    [InlineData("POST", "/api/v1/platform/admins")]
+    [InlineData("PUT", "/api/v1/platform/admins/status")]
+    [InlineData("POST", "/api/v1/platform/organizations/{tenant}/administrators/demote")]
+    [InlineData("POST", "/api/v1/platform/organizations/{tenant}/administrators/remove")]
+    public async Task People_routes_reject_tenant_tokens(string method, string template)
+    {
+        var path = template.Replace("{tenant}", customerTenantId.ToString());
+        var body = new { email = "admin@acme.test", active = false, reason = (string?)null };
+
+        var anonymous = await Send(new HttpMethod(method), null, body, path);
+        var tenantAdmin = await Send(new HttpMethod(method), Token(tenantAdminId, customerTenantId, "TenantAdmin"), body, path);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, tenantAdmin.StatusCode);
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        Assert.Empty(await db.PlatformOrganizationAudits.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task People_routes_report_the_last_administrator_and_self_change_as_conflicts()
+    {
+        var platformToken = Token(platformAdminId, PlatformTenant, "PlatformAdmin");
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            await db.Memberships.IgnoreQueryFilters().Where(x => x.AccountId == tenantAdminId)
+                .ExecuteUpdateAsync(x => x.SetProperty(m => m.Status, MembershipStatus.Active));
+        }
+
+        var lastAdmin = await Send(HttpMethod.Post, platformToken,
+            new ChangePlatformOrganizationAdminRequest("admin@acme.test", null),
+            $"{Route}/{customerTenantId}/administrators/demote");
+        var self = await Send(HttpMethod.Put, platformToken,
+            new SetPlatformAdminStatusRequest("platform@aiyara.test", false, null), "/api/v1/platform/admins/status");
+
+        Assert.Equal(HttpStatusCode.Conflict, lastAdmin.StatusCode);
+        Assert.Contains("LAST_ADMINISTRATOR", await lastAdmin.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Conflict, self.StatusCode);
+        Assert.Contains("CANNOT_CHANGE_SELF", await self.Content.ReadAsStringAsync());
+    }
+
     public async Task InitializeAsync()
     {
         await connection.OpenAsync();
@@ -125,6 +169,9 @@ public sealed class PlatformOrganizationsHttpGuardTests : IAsyncLifetime
             services.GetRequiredService<IdentityDbContext>(), services.GetRequiredService<TenantScope>(),
             services.GetRequiredService<ISessionRevocationPublisher>()));
         builder.Services.AddScoped<PlatformConsoleService>();
+        builder.Services.AddScoped(services => new PlatformAdminRosterService(
+            services.GetRequiredService<IdentityDbContext>(), services.GetRequiredService<TenantScope>(),
+            services.GetRequiredService<PlatformOrganizationService>()));
         builder.Services.AddScoped<PlatformActorResolver>();
         builder.Services.AddControllers()
             .AddApplicationPart(typeof(PlatformOrganizationsController).Assembly);

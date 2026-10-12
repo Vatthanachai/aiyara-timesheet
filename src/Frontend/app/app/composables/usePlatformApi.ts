@@ -1,6 +1,14 @@
 import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
 
-export type PlatformAdminSummary = { email: string; status: 'Active' | 'PendingActivation' }
+export type MembershipStatus = 'Active' | 'PendingActivation' | 'Deactivated'
+export type PlatformAdminSummary = { email: string; status: MembershipStatus }
+export type PlatformAdminRosterEntry = {
+  email: string
+  firstName: string
+  lastName: string
+  status: MembershipStatus
+  createdAtUtc: string
+}
 export type PlatformOrganizationSummary = {
   tenantId: string
   organizationCode: string

@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { useLocaleText } from '../../../../shared/i18n'
 import type { PlatformAuditPage } from '../../composables/usePlatformApi'
-
-const actions = [
-  'organization.created', 'organization.updated', 'organization.suspended', 'organization.reactivated',
-  'administrator.invited', 'administrator.activation_resent',
-  'platform_admin.signed_in', 'platform_admin.sign_in_failed'
-] as const
+import { platformAuditActionLabels, platformAuditActions as actions } from '../../composables/platformAuditActions'
 
 const { locale } = useLocale()
 const text = useLocaleText(locale, {
@@ -17,10 +12,7 @@ const text = useLocaleText(locale, {
     apply: 'กรอง', clear: 'ล้างตัวกรอง', organizationFilter: 'เฉพาะองค์กรนี้', results: 'พบ {n} รายการ',
     loading: 'กำลังโหลด…', loadError: 'โหลดประวัติไม่สำเร็จ กรุณาตรวจสอบตัวกรองแล้วลองใหม่',
     previous: 'ก่อนหน้า', next: 'ถัดไป', pagination: 'แบ่งหน้า', filters: 'ตัวกรองประวัติ',
-    'organization.created': 'สร้างองค์กร', 'organization.updated': 'แก้ไขข้อมูลองค์กร',
-    'organization.suspended': 'ระงับองค์กร', 'organization.reactivated': 'เปิดใช้งานองค์กรอีกครั้ง',
-    'administrator.invited': 'เชิญผู้ดูแลองค์กร', 'administrator.activation_resent': 'ส่งรหัสเปิดใช้งานใหม่',
-    'platform_admin.signed_in': 'ผู้ดูแลระบบเข้าสู่ระบบ', 'platform_admin.sign_in_failed': 'เข้าสู่ระบบผู้ดูแลระบบไม่สำเร็จ'
+    ...platformAuditActionLabels.th
   },
   en: {
     eyebrow: 'SYSTEM ADMINISTRATION', title: 'Audit log',
@@ -29,10 +21,7 @@ const text = useLocaleText(locale, {
     apply: 'Filter', clear: 'Clear filters', organizationFilter: 'This organization only', results: '{n} entries',
     loading: 'Loading…', loadError: 'The audit log could not be loaded. Check the filters and try again.',
     previous: 'Previous', next: 'Next', pagination: 'Pagination', filters: 'Audit filters',
-    'organization.created': 'Organization created', 'organization.updated': 'Organization details changed',
-    'organization.suspended': 'Organization suspended', 'organization.reactivated': 'Organization reactivated',
-    'administrator.invited': 'Administrator invited', 'administrator.activation_resent': 'Activation code re-sent',
-    'platform_admin.signed_in': 'System administrator signed in', 'platform_admin.sign_in_failed': 'System administrator sign-in failed'
+    ...platformAuditActionLabels.en
   }
 })
 const route = useRoute()

@@ -23,6 +23,7 @@ builder.AddDatabaseHealthCheck<WebApplicationBuilder, IdentityDbContext>("identi
 builder.Services.AddScoped<OnboardingService>();
 builder.Services.AddScoped<PlatformOrganizationService>();
 builder.Services.AddScoped<PlatformConsoleService>();
+builder.Services.AddScoped<PlatformAdminRosterService>();
 builder.Services.AddScoped<Aiyara.Identities.Api.Controllers.PlatformActorResolver>();
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<PlatformAdminBootstrap>();

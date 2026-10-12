@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { unwrapResponse, type ApiEnvelope } from '../../../../../shared/api-response'
 import { useLocaleText } from '../../../../../shared/i18n'
-type OrganizationAdmin = { email: string; status: 'Active' | 'PendingActivation' }
+type OrganizationAdmin = { email: string; status: 'Active' | 'PendingActivation' | 'Deactivated' }
 type Organization = {
   tenantId: string
   organizationCode: string
@@ -36,7 +36,7 @@ const text = useLocaleText(locale, {
     statusActive: 'ใช้งาน', statusSuspended: 'ระงับ', save: 'บันทึก', cancel: 'ยกเลิก',
     editOrganization: 'แก้ไของค์กร', reasonForChange: 'เหตุผลการเปลี่ยนแปลง',
     suspendOrganization: 'ระงับองค์กร', reactivateOrganization: 'เปิดใช้งานองค์กร',
-    created: 'สร้างเมื่อ', adminActive: 'เปิดใช้งานแล้ว', adminPending: 'รอเปิดใช้งาน',
+    created: 'สร้างเมื่อ', adminActive: 'เปิดใช้งานแล้ว', adminPending: 'รอเปิดใช้งาน', adminRemoved: 'นำออกแล้ว',
     sending: 'กำลังส่ง…', resendCode: 'ส่งรหัสใหม่', noAdminFound: 'ไม่พบผู้ดูแลองค์กร',
     inviteAnother: 'เชิญผู้ดูแลเพิ่มเติม', sendInvitation: 'ส่งคำเชิญ', pagination: 'แบ่งหน้า',
     previous: 'ก่อนหน้า', next: 'ถัดไป',
@@ -70,7 +70,7 @@ const text = useLocaleText(locale, {
     statusActive: 'Active', statusSuspended: 'Suspended', save: 'Save', cancel: 'Cancel',
     editOrganization: 'Edit organization', reasonForChange: 'Reason for change',
     suspendOrganization: 'Suspend organization', reactivateOrganization: 'Reactivate organization',
-    created: 'Created', adminActive: 'Active', adminPending: 'Pending activation',
+    created: 'Created', adminActive: 'Active', adminPending: 'Pending activation', adminRemoved: 'Removed',
     sending: 'Sending…', resendCode: 'Resend code', noAdminFound: 'No organization administrator found',
     inviteAnother: 'Invite another administrator', sendInvitation: 'Send invitation', pagination: 'Pagination',
     previous: 'Previous', next: 'Next',
@@ -368,8 +368,8 @@ onMounted(async () => {
         <div v-if="organization.admins.length" class="admin-list">
           <div v-for="admin in organization.admins" :key="admin.email" class="admin-row">
             <span>{{ admin.email }}</span>
-            <span class="status-pill" :class="admin.status === 'Active' ? 'status-active' : 'status-pending'">
-              {{ admin.status === 'Active' ? text.adminActive : text.adminPending }}
+            <span class="status-pill" :class="admin.status === 'Active' ? 'status-active' : admin.status === 'Deactivated' ? 'status-off' : 'status-pending'">
+              {{ admin.status === 'Active' ? text.adminActive : admin.status === 'Deactivated' ? text.adminRemoved : text.adminPending }}
             </span>
             <button v-if="admin.status === 'PendingActivation'" class="text-button" type="button"
               :disabled="resending === `${organization.tenantId}:${admin.email}`"
@@ -428,6 +428,7 @@ onMounted(async () => {
 .status-pill { border-radius: 999px; font-size: .78rem; font-weight: 700; padding: .25rem .55rem; }
 .status-active { background: #e8f6ef; color: #17663b; }
 .status-pending { background: #fff4dc; color: #795400; }
+.status-off { background: #eef0f3; color: #4a5260; }
 .text-button { background: transparent; border: 0; color: var(--color-brand); cursor: pointer; font: inherit; text-decoration: underline; }
 .admin-row small { color: var(--color-muted); flex-basis: 100%; }
 .empty-state { margin-top: 1rem; }
