@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Aiyara.Identities.Databases;
+using Aiyara.Identities.Models.Tenancy;
 using Aiyara.Identities.Services.Authentication;
 using Aiyara.Identities.Services.Onboarding;
 using Aiyara.Timesheet.Component.Abstractions.Securities;
@@ -192,6 +193,49 @@ public sealed class AuthenticationFlowTests
             PlatformAdminBootstrap.PlatformTenantId, bootstrap.Email,
             "Correct-Password-123!"), default);
         Assert.StartsWith("v4.public.", login.AccessToken);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Platform_admin_bootstrap_is_a_no_op_when_email_is_not_configured(string? configuredEmail)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Assert.Null(await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+            .EnsureAsync(configuredEmail, default));
+        Assert.Empty(await fixture.Db.Accounts.ToListAsync());
+        Assert.Empty(await fixture.Db.Tenants.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Platform_admin_bootstrap_rejects_an_invalid_email()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+                .EnsureAsync("not-an-email", default));
+        Assert.Empty(await fixture.Db.Accounts.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Platform_admin_bootstrap_backfills_organization_code_for_an_existing_platform_tenant()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Db.Tenants.Add(new Tenant
+        {
+            Id = PlatformAdminBootstrap.PlatformTenantId, Slug = "platform-system",
+            Name = "Aiyara Platform", OrganizationCode = string.Empty,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        await new PlatformAdminBootstrap(fixture.Db, fixture.Scope)
+            .EnsureAsync("operator@platform.test", default);
+
+        var tenant = await fixture.Db.Tenants.IgnoreQueryFilters().SingleAsync(
+            x => x.Id == PlatformAdminBootstrap.PlatformTenantId);
+        Assert.Equal(OrganizationCodeGenerator.PlatformCode, tenant.OrganizationCode);
     }
 
     [Fact]
