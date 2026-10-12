@@ -10,9 +10,13 @@
   supplies the remaining prefix characters.
 - Identity chooses a cryptographically random starting suffix and searches the
   000–999 range for an unused code. A unique database index enforces uniqueness.
-- Tenant creation returns the code. Login sends `organizationCode`, email, and
-  password; a successful response includes the internal `tenantId` used by the
-  frontend for authenticated service calls and session renewal.
+- Tenant creation returns the code. `POST /api/v1/auth/login` sends
+  `organizationCode`, email, and password; a successful response includes the
+  internal `tenantId` used by the frontend for authenticated service calls and
+  session renewal. The Shell no longer asks for the code up front: it calls
+  `POST /api/v1/auth/sign-in` with email and password and uses the code only
+  when the account belongs to several organizations and the user picks one.
+  See [[Security And Tenant Model]].
 - `AIYA001` is reserved for the Platform Admin tenant. Existing tenants receive
   codes in the `AddTenantOrganizationCode` migration before the column becomes
   required and unique.

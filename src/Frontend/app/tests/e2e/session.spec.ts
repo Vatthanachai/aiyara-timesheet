@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 const organizationCode = 'ACME123'
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
 const apiOk = <T>(result: T) => ({ statusCode: 200, statusMessage: 'OK', result })
+const signInOk = <T>(session: T) => apiOk({ session, organizations: [] })
 
 async function waitForHydration(page: import('@playwright/test').Page) {
   await page.waitForFunction(() => Boolean(
@@ -12,12 +13,12 @@ async function waitForHydration(page: import('@playwright/test').Page) {
 
 test('sign in persists the session, restores it after reload, and signs out', async ({ page }) => {
   let loginRequest: unknown
-  await page.route('**/api/v1/auth/login', async route => {
+  await page.route('**/api/v1/auth/sign-in', async route => {
     loginRequest = route.request().postDataJSON()
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(apiOk({
+      body: JSON.stringify(signInOk({
         accessToken: 'test-access-token',
         accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
         refreshToken: 'test-refresh-token',
@@ -47,12 +48,11 @@ test('sign in persists the session, restores it after reload, and signs out', as
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('Organization code').fill(organizationCode)
   await page.getByLabel('Email').fill('admin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
 
-  expect(loginRequest).toMatchObject({ organizationCode, email: 'admin@example.test', password: 'test-password' })
+  expect(loginRequest).toEqual({ email: 'admin@example.test', password: 'test-password' })
   await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Reports.*View reports/ })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
@@ -87,8 +87,8 @@ test('profile settings previews and uploads an image then refreshes the shell av
       return
     }
 
-    if (request.url().endsWith('/api/v1/auth/login')) {
-      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk({
+    if (request.url().endsWith('/api/v1/auth/sign-in')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(signInOk({
         accessToken: 'profile-token',
         accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
         refreshToken: 'profile-refresh',
@@ -124,7 +124,6 @@ test('profile settings previews and uploads an image then refreshes the shell av
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('Organization code').fill(organizationCode)
   await page.getByLabel('Email').fill('admin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -175,8 +174,8 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
       await route.fulfill({ status: 204, headers: corsHeaders })
       return
     }
-    if (url.pathname.endsWith('/api/v1/auth/login')) {
-      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk({
+    if (url.pathname.endsWith('/api/v1/auth/sign-in')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(signInOk({
         accessToken: 'timesheet-token', refreshToken: 'timesheet-refresh',
         accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
         refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
@@ -219,7 +218,6 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('Organization code').fill(organizationCode)
   await page.getByLabel('Email').fill('admin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -264,7 +262,7 @@ test('failed sign in displays an error and does not persist credentials', async 
   // Shaped like Identity's real ServiceErrorResponse for AuthenticationFailure.InvalidCredentials
   // (IdentityController.Auth's catch maps it to errorCode "INVALIDCREDENTIALS"), not a generic
   // problem+json body, so this exercises the same safeError() branch the real API triggers.
-  await page.route('**/api/v1/auth/login', route => route.fulfill({
+  await page.route('**/api/v1/auth/sign-in', route => route.fulfill({
     status: 401,
     contentType: 'application/json',
     body: JSON.stringify({ statusCode: 401, statusMessage: 'The request could not be completed.', errorCode: 'INVALIDCREDENTIALS' })
@@ -272,7 +270,6 @@ test('failed sign in displays an error and does not persist credentials', async 
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('Organization code').fill(organizationCode)
   await page.getByLabel('Email').fill('admin@example.test')
   await page.getByLabel('Password').fill('wrong-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -358,11 +355,11 @@ test('platform admin can manage organization details, administrators, and lifecy
   const managementRequests: Array<{ method: string; url: string; body: unknown }> = []
   page.on('dialog', dialog => dialog.accept())
 
-  await page.route('**/api/v1/auth/login', async route => {
+  await page.route('**/api/v1/auth/sign-in', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(apiOk({
+      body: JSON.stringify(signInOk({
         accessToken: 'platform-admin-token',
         accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
         refreshToken: 'platform-admin-refresh',
@@ -408,7 +405,6 @@ test('platform admin can manage organization details, administrators, and lifecy
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('Organization code').fill('SYS0001')
   await page.getByLabel('Email').fill('sysadmin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -439,10 +435,10 @@ test('platform admin can manage organization details, administrators, and lifecy
 })
 
 test('tenant administrator cannot see the platform organization management page', async ({ page }) => {
-  await page.route('**/api/v1/auth/login', route => route.fulfill({
+  await page.route('**/api/v1/auth/sign-in', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify(apiOk({
+    body: JSON.stringify(signInOk({
       accessToken: 'tenant-admin-token',
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshToken: 'tenant-admin-refresh',
@@ -455,7 +451,6 @@ test('tenant administrator cannot see the platform organization management page'
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByLabel('Organization code').fill(organizationCode)
   await page.getByLabel('Email').fill('admin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -483,4 +478,106 @@ test('activation failure shows a safe message and does not expose the API error'
     'Activation failed. Check the code and your organization’s password requirements.'
   )
   await expect(page.getByRole('alert')).not.toContainText('Invalid or expired challenge')
+})
+
+test('platform admin signs in without an organization code and lands on organizations', async ({ page }) => {
+  let loginRequest: unknown
+  await page.route('**/api/v1/auth/platform-admin/login', async route => {
+    loginRequest = route.request().postDataJSON()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(apiOk({
+        accessToken: 'platform-admin-token',
+        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+        refreshToken: 'platform-admin-refresh',
+        refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+        mustChangePassword: false,
+        tenantId: '00000000-0000-0000-0000-000000000001',
+        role: 'PlatformAdmin'
+      }))
+    })
+  })
+  await page.route('**/api/v1/platform/organizations**', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(apiOk({ totalCount: 0, page: 1, pageSize: 20, items: [] }))
+  }))
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByRole('link', { name: 'System administrator sign in' }).click()
+  await expect(page).toHaveURL(/\/sys-admin\/login$/)
+  await waitForHydration(page)
+  await expect(page.getByLabel('Organization code')).toHaveCount(0)
+  await page.getByLabel('Email').fill('operator@platform.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  expect(loginRequest).toEqual({ email: 'operator@platform.test', password: 'test-password' })
+  await expect(page).toHaveURL(/\/sys-admin\/organizations$/)
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.role')))
+    .toBe('PlatformAdmin')
+})
+
+test('platform admin sign in shows a safe error for rejected credentials', async ({ page }) => {
+  await page.route('**/api/v1/auth/platform-admin/login', route => route.fulfill({
+    status: 401,
+    contentType: 'application/problem+json',
+    body: JSON.stringify({ title: 'Invalid credentials.', status: 401 })
+  }))
+
+  await page.goto('/sys-admin/login')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@acme.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page).toHaveURL(/\/sys-admin\/login$/)
+})
+
+test('sign in asks which organization to open when the account belongs to several', async ({ page }) => {
+  const loginRequests: unknown[] = []
+  await page.route('**/api/v1/auth/sign-in', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(apiOk({
+      session: null,
+      organizations: [
+        { organizationCode, name: 'Acme' },
+        { organizationCode: 'BETA456', name: 'Beta' }
+      ]
+    }))
+  }))
+  await page.route('**/api/v1/auth/login', async route => {
+    loginRequests.push(route.request().postDataJSON())
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(apiOk({
+        accessToken: 'beta-token',
+        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+        refreshToken: 'beta-refresh',
+        refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+        mustChangePassword: false,
+        tenantId,
+        role: 'Employee'
+      }))
+    })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Choose an organization' })).toBeVisible()
+  await page.getByRole('button', { name: 'Beta (BETA456)' }).click()
+
+  expect(loginRequests).toEqual([{ organizationCode: 'BETA456', email: 'admin@example.test', password: 'test-password' }])
+  await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
+    .toBe('beta-token')
 })

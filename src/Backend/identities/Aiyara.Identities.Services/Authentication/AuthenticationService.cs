@@ -129,21 +129,56 @@ public sealed class AuthenticationService(
         var tenantId = request.TenantId is { } requestedTenantId && requestedTenantId != Guid.Empty
             ? requestedTenantId
             : await ResolveOrganizationCodeAsync(request.OrganizationCode, cancellationToken);
-        if (tenantId == Guid.Empty || !ValidEmail(request.Email) ||
-            string.IsNullOrEmpty(request.Password)) throw InvalidCredentials();
-        tenantScope.TenantId = tenantId;
-        var email = request.Email.Trim().ToLowerInvariant();
-        await attempts.CheckAsync(tenantId, email, "Login", cancellationToken);
-        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
-        if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidCredentials();
+        return await LoginToTenantAsync(tenantId, request.Email, request.Password,
+            requiredRole: null, cancellationToken);
+    }
+
+    public Task<AuthenticationResponse> LoginPlatformAdminAsync(
+        PlatformAdminLoginRequest request, CancellationToken cancellationToken) =>
+        LoginToTenantAsync(PlatformAdminBootstrap.PlatformTenantId, request.Email,
+            request.Password, TenantRole.PlatformAdmin, cancellationToken);
+
+    public async Task<SignInResponse> SignInAsync(SignInRequest request,
+        CancellationToken cancellationToken)
+    {
+        var account = await VerifyCredentialsAsync(request.Email, request.Password,
+            cancellationToken);
+        var organizations = await db.Memberships.IgnoreQueryFilters()
+            .Where(x => x.AccountId == account.Id && x.Status == MembershipStatus.Active)
+            .Join(db.Tenants.IgnoreQueryFilters().Where(x => x.Status == TenantStatus.Active),
+                membership => membership.TenantId, tenant => tenant.Id,
+                (membership, tenant) => new { tenant.Id, tenant.OrganizationCode, tenant.Name })
+            .OrderBy(x => x.Name).ToListAsync(cancellationToken);
+        if (organizations.Count == 0) throw InvalidCredentials();
+        if (organizations.Count > 1)
+            return new SignInResponse(null, organizations
+                .Select(x => new SignInOrganization(x.OrganizationCode, x.Name)).ToList());
+        var session = await StartSessionAsync(organizations[0].Id, account, requiredRole: null,
+            cancellationToken);
+        return new SignInResponse(session, []);
+    }
+
+    private async Task<AuthenticationResponse> LoginToTenantAsync(Guid tenantId, string email,
+        string password, TenantRole? requiredRole, CancellationToken cancellationToken)
+    {
+        if (tenantId == Guid.Empty) throw InvalidCredentials();
+        var account = await VerifyCredentialsAsync(email, password, cancellationToken);
+        return await StartSessionAsync(tenantId, account, requiredRole, cancellationToken);
+    }
+
+    // Accounts are global (one per email), so attempts and lockout are counted per email
+    // rather than per tenant; otherwise a password could be guessed once per organization.
+    private async Task<Account> VerifyCredentialsAsync(string email, string password,
+        CancellationToken cancellationToken)
+    {
+        if (!ValidEmail(email) || string.IsNullOrEmpty(password)) throw InvalidCredentials();
+        email = email.Trim().ToLowerInvariant();
+        await attempts.CheckAsync(Guid.Empty, email, "Login", cancellationToken);
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
         if (account is null || account.PasswordHash is null ||
             account.LockedUntilUtc > DateTime.UtcNow) throw InvalidCredentials();
-        var membership = await db.Memberships.SingleOrDefaultAsync(x => x.AccountId == account.Id &&
-            x.Status == MembershipStatus.Active, cancellationToken);
-        if (membership is null) throw InvalidCredentials();
-        if (!passwords.VerifyPassword(request.Password, account.PasswordHash))
+        if (!passwords.VerifyPassword(password, account.PasswordHash))
         {
             account.FailedLoginCount++;
             if (account.FailedLoginCount >= 5)
@@ -157,6 +192,19 @@ public sealed class AuthenticationService(
         account.FailedLoginCount = 0;
         account.LockedUntilUtc = null;
         await db.SaveChangesAsync(cancellationToken);
+        return account;
+    }
+
+    private async Task<AuthenticationResponse> StartSessionAsync(Guid tenantId, Account account,
+        TenantRole? requiredRole, CancellationToken cancellationToken)
+    {
+        tenantScope.TenantId = tenantId;
+        var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidCredentials();
+        var membership = await db.Memberships.SingleOrDefaultAsync(x => x.AccountId == account.Id &&
+            x.Status == MembershipStatus.Active, cancellationToken);
+        if (membership is null) throw InvalidCredentials();
+        if (requiredRole is { } role && membership.Role != role) throw InvalidCredentials();
         var mustChange = RequiresPasswordChange(account, membership, tenant);
         return await CreateSessionAsync(account, membership, mustChange, cancellationToken);
     }

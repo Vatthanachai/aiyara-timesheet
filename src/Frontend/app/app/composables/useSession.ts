@@ -9,6 +9,9 @@ type AuthResponse = {
   role?: string
 }
 
+export type SignInOrganization = { organizationCode: string; name: string }
+type SignInResponse = { session: AuthResponse | null; organizations: SignInOrganization[] }
+
 export function useSession() {
   const token = useState<string>('access-token', () => '')
   const refreshToken = useState<string>('refresh-token', () => '')
@@ -44,6 +47,23 @@ export function useSession() {
   async function login(organizationCode: string, email: string, password: string) {
     const response = unwrapResponse(await $fetch<ApiEnvelope<AuthResponse>>(`${config.public.gatewayUrl}/api/v1/auth/login`, {
       method: 'POST', body: { organizationCode, email, password }
+    }))
+    save(response)
+    return response
+  }
+
+  /** Signs in by email alone; returns the organizations to choose from when there are several. */
+  async function signIn(email: string, password: string) {
+    const response = unwrapResponse(await $fetch<ApiEnvelope<SignInResponse>>(`${config.public.gatewayUrl}/api/v1/auth/sign-in`, {
+      method: 'POST', body: { email, password }
+    }))
+    if (response.session) save(response.session)
+    return response
+  }
+
+  async function loginPlatformAdmin(email: string, password: string) {
+    const response = unwrapResponse(await $fetch<ApiEnvelope<AuthResponse>>(`${config.public.gatewayUrl}/api/v1/auth/platform-admin/login`, {
+      method: 'POST', body: { email, password }
     }))
     save(response)
     return response
@@ -90,5 +110,5 @@ export function useSession() {
     clear()
   }
 
-  return { token: readonly(token), tenantId: readonly(tenantId), role: readonly(role), login, logout, renew, restore }
+  return { token: readonly(token), tenantId: readonly(tenantId), role: readonly(role), login, signIn, loginPlatformAdmin, logout, renew, restore }
 }

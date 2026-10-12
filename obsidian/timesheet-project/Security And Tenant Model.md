@@ -4,7 +4,7 @@
 
 ## Authentication And Sessions
 
-- Login uses the seven-character organization code plus email and password. The organization code selects the tenant; email identifies the account within that tenant. UI and reports display a person's first and last name from their profile. See [[Organization Codes And Identity IDs]].
+- Sign-in needs only email and password. Accounts are global (email is unique), so Identity finds the account's active memberships in active organizations: one membership issues a session immediately; several return the organization list (only after the password is verified) and the user picks one, which logs in with that organization code. Login attempts are limited per email across organizations. System administrators use `/sys-admin/login`, which accepts only `PlatformAdmin` memberships. UI and reports display a person's first and last name from their profile. See [[Organization Codes And Identity IDs]].
 - Identity issues PASETO `v4.public` access tokens signed with Ed25519. Access tokens are short-lived (target: 15 minutes); refresh tokens are opaque, one-time rotating secrets stored only as hashes.
 - Token claims include subject, tenant context, role, security/session version, token ID, password-change state, issuer, audience, issued-at, and expiry.
 - Gateway and internal APIs validate access tokens through Identity's gRPC API. They cache validation by token ID and session version in Redis for 1–5 minutes. The gRPC response carries the tenant policy version so an in-flight pre-change validation cannot be cached after a policy update. Logout, password reset, account disable, or policy-forced password change publishes an event that revokes the session and invalidates the cache.

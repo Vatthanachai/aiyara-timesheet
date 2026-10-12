@@ -282,7 +282,7 @@ onMounted(async () => {
   <section v-if="!isPlatformAdmin" class="management-card" role="alert">
     <h2>{{ text.accessRestrictedTitle }}</h2>
     <p>{{ text.accessRestrictedBody }}</p>
-    <NuxtLink class="button" to="/">{{ text.backToSignIn }}</NuxtLink>
+    <NuxtLink class="button" to="/sys-admin/login">{{ text.backToSignIn }}</NuxtLink>
   </section>
 
   <template v-else>
