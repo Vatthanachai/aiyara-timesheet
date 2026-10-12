@@ -7,15 +7,15 @@ public class PasetoTokenClaims
 {
     public Guid UserId { get; set; }
     public Guid TenantId { get; set; }
-    public string TokenId { get; set; }
+    public string TokenId { get; set; } = string.Empty;
     public long SessionVersion { get; set; }
     public DateTimeOffset ExpiresAtUtc { get; set; }
 
-    public string Email { get; set; }
+    public string Email { get; set; } = string.Empty;
 
     public bool MustChangePassword { get; set; }
 
-    public string Role { get; set; }
+    public string Role { get; set; } = string.Empty;
 }
 
 /// <summary>

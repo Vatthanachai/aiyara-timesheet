@@ -1,4 +1,4 @@
-﻿using Aiyara.Timesheet.Component.Abstractions.Extensions;
+using Aiyara.Timesheet.Component.Abstractions.Extensions;
 using Aiyara.Timesheet.Component.Data.Context;
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -33,7 +33,7 @@ internal class DbContextHealthCheck : IHealthCheck
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         var result = await ValidationCanConnect();
-        var status = result.SelectMany(s => s.Value as Dictionary<string, bool>).Any(w => !w.Value)
+        var status = result.SelectMany(s => (Dictionary<string, bool>)s.Value).Any(w => !w.Value)
             ? HealthStatus.Unhealthy
             : HealthStatus.Healthy;
 
@@ -49,8 +49,8 @@ internal class DbContextHealthCheck : IHealthCheck
         var values = new Dictionary<string, object>();
         foreach (var item in _dbContextTypes)
         {
-            var dbContext = (IBaseDbContext)_service.GetTryService(item);
-            bool canConnect = !dbContext.IsNullable() && await dbContext.Database.CanConnectAsync();
+            var dbContext = _service.GetTryService(item) as IBaseDbContext;
+            bool canConnect = dbContext is not null && await dbContext.Database.CanConnectAsync();
             values.Add(item.Name, new Dictionary<string, bool> { { "CanConnect", canConnect } });
         }
 

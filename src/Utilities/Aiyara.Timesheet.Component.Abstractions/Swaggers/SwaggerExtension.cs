@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 
 using Aiyara.Timesheet.Component.Abstractions.Extensions;
 using Aiyara.Timesheet.Component.Abstractions.Swaggers.Builders;
@@ -26,8 +26,8 @@ public static class SwaggerExtension
             ? attrMethod.GetCustomAttribute<MapToApiVersionAttribute>(true)
             : null;
 
-    private static bool IsMatchVersion(string version, MapToApiVersionAttribute apiVersionAttribute
-        , IEnumerable<ApiVersion> apiVersions)
+    private static bool IsMatchVersion(string version, MapToApiVersionAttribute? apiVersionAttribute
+        , IEnumerable<ApiVersion>? apiVersions)
     {
         if (apiVersions is null)
         {
@@ -115,7 +115,7 @@ public static class SwaggerExtension
     {
         var serviceProvider = services.BuildServiceProvider();
         var httpContext = serviceProvider.GetService<IHttpContextAccessor>()?.HttpContext;
-        var configuration = serviceProvider.GetService<IConfiguration>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
 
         var swaggerSetting = GetSwaggerSettings(configuration);
 
@@ -166,7 +166,7 @@ public static class SwaggerExtension
         };
     }
 
-    public static bool ApplyDocInclusionPredicate(this ApiDescription description, string version, HttpContext httpContext)
+    public static bool ApplyDocInclusionPredicate(this ApiDescription description, string version, HttpContext? httpContext)
     {
         if (!description.TryGetMethodInfo(out MethodInfo methodInfo)) return false;
 
@@ -186,7 +186,7 @@ public static class SwaggerExtension
                 var filterOutArr = filterOut.Split(",");
                 if (filterOutArr.Any())
                     if (filterOutArr.Any(itemFilter =>
-                            description.ActionDescriptor.DisplayName.Contains(itemFilter, StringComparison.OrdinalIgnoreCase)))
+                            description.ActionDescriptor.DisplayName?.Contains(itemFilter, StringComparison.OrdinalIgnoreCase) == true))
                         return false;
             }
 
@@ -195,7 +195,7 @@ public static class SwaggerExtension
                 var filterListArr = filter.Split(",");
                 if (filterListArr.Any())
                     return filterListArr.Any(itemFilter =>
-                        description.ActionDescriptor.DisplayName.Contains(itemFilter, StringComparison.OrdinalIgnoreCase));
+                        description.ActionDescriptor.DisplayName?.Contains(itemFilter, StringComparison.OrdinalIgnoreCase) == true);
             }
         }
 
@@ -209,7 +209,7 @@ public class ReplaceVersionWithExtractValueInPathFilter : IDocumentFilter
     {
         var paths = swaggerDoc.Paths
             .ToDictionary(p
-                => p.Key.Replace("v{version}", swaggerDoc.Info.Version.Replace("v", "").VersionFormatter()), path => path.Value).ToList();
+                => p.Key.Replace("v{version}", (swaggerDoc.Info.Version ?? string.Empty).Replace("v", "").VersionFormatter()), path => path.Value).ToList();
         swaggerDoc.Paths.Clear();
         paths.ForEach(paths => swaggerDoc.Paths.Add(paths.Key, paths.Value));
     }
