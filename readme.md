@@ -102,8 +102,9 @@ headers, and inject the validated tenant ID. Positive validation responses are
 cached in Redis for at most one minute; Identity publishes account/session and
 tenant-policy revocations. CORS origin comes from `FRONTEND_ORIGIN`; onboarding
 and authentication requests are IP rate limited. Login and credential-email
-requests also have per-tenant-account limits in Redis (without storing email
-addresses in limiter keys).
+requests also have per-account limits in Redis (without storing email
+addresses in limiter keys). Login attempts are counted per email across all
+organizations because an account is global.
 For onboarding, Identity generates both an internal tenant ID and a seven-
 character organization code. The code uses a four-character organization name
 prefix followed by three digits; it is included in the tenant creation response
@@ -137,11 +138,18 @@ the Shell page at `/activate` or with `POST /api/v1/auth/activate` and
 `{"code":"...","password":"..."}`. The page checks password confirmation
 and shows a generic error without exposing server exceptions.
 The reset request and completion endpoints are `/password/forgot` and
-`/password/reset`. Login uses
-`{"organizationCode":"ACME123","email":"...","password":"..."}`;
-it returns the internal tenant ID, a 15-minute PASETO v4.public access token,
-and a rotating opaque refresh token. The Platform Admin uses organization code
-`AIYA001`. `PUT /api/v1/auth/tenants/{tenantId}/password-policy` requires
+`/password/reset`. The Shell sign-in page needs only email and password:
+`POST /api/v1/auth/sign-in` with `{"email":"...","password":"..."}` returns
+`{"session":{...},"organizations":[]}` when the account has one active
+organization. When it has several, `session` is `null` and `organizations`
+lists each `organizationCode` and `name`; the caller then logs in with
+`POST /api/v1/auth/login` and
+`{"organizationCode":"ACME123","email":"...","password":"..."}`.
+A session contains the internal tenant ID, a 15-minute PASETO v4.public access
+token, and a rotating opaque refresh token. The Platform Admin signs in at
+`/sys-admin/login` (`POST /api/v1/auth/platform-admin/login` with email and
+password), which accepts only `PlatformAdmin` accounts; organization code
+`AIYA001` still works with `/auth/login`. `PUT /api/v1/auth/tenants/{tenantId}/password-policy` requires
 an active Tenant Admin Bearer token. A stricter policy forces a password change
 before protected APIs accept new access tokens. A restricted login token can
 call `POST /api/v1/auth/password/change` with
