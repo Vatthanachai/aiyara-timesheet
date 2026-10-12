@@ -11,5 +11,5 @@ public interface IPasetoTokenService
     /// Validates a PASETO v4.public access token and extracts its claims.
     /// Returns null when the token is missing, malformed, or expired.
     /// </summary>
-    PasetoTokenClaims ValidateToken(string token);
+    PasetoTokenClaims? ValidateToken(string token);
 }

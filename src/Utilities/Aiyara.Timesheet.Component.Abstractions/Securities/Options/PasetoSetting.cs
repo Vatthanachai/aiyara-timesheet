@@ -9,7 +9,7 @@ public class PasetoSetting
     /// <summary>
     /// Base64-encoded 32-byte Ed25519 seed. Configure only on Identity.
     /// </summary>
-    public string Key { get; set; }
+    public string Key { get; set; } = string.Empty;
 
     /// <summary>
     /// Token lifetime in minutes

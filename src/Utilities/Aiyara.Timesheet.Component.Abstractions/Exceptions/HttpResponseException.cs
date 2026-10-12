@@ -1,4 +1,4 @@
-﻿namespace Aiyara.Timesheet.Component.Abstractions.Exceptions;
+namespace Aiyara.Timesheet.Component.Abstractions.Exceptions;
 
 /// <summary>
 /// Http response exception
@@ -13,5 +13,5 @@ public class HttpResponseException : System.Exception
     /// <summary>
     /// Value of exception
     /// </summary>
-    public object Value { get; set; }
+    public object? Value { get; set; }
 }

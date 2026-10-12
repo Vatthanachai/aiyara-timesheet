@@ -1,4 +1,4 @@
-﻿using Microsoft.OpenApi;
+using Microsoft.OpenApi;
 
 using Swashbuckle.AspNetCore.SwaggerGen;
 
@@ -11,10 +11,11 @@ public class RemoveVersionFromParameterFilter : IOperationFilter
         // Only applicable to routes that literally embed "{version}" in the path (e.g.
         // "api/v{version}/..."). None of this app's controllers do - versioning is implicit
         // via AssumeDefaultVersionWhenUnspecified - so there's usually nothing to remove.
-        var versionParameter = operation.Parameters?.SingleOrDefault(p => p.Name == "version");
+        if (operation.Parameters is not { } parameters) return;
+        var versionParameter = parameters.SingleOrDefault(p => p.Name == "version");
         if (versionParameter is not null)
         {
-            operation.Parameters.Remove(versionParameter);
+            parameters.Remove(versionParameter);
         }
     }
 }

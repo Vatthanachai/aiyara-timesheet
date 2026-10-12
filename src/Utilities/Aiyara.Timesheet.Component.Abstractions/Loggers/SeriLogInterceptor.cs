@@ -1,4 +1,4 @@
-﻿using Aiyara.Timesheet.Component.Abstractions.DataTypes.Guids;
+using Aiyara.Timesheet.Component.Abstractions.DataTypes.Guids;
 
 using Castle.DynamicProxy;
 
@@ -61,7 +61,7 @@ public class SeriLogInterceptor : IInterceptor
             }
 
             Task.Run(async () => await taskProcess.ConfigureAwait(false));
-            if (taskProcess?.Exception != null) throw taskProcess.Exception;
+            if (taskProcess.Exception != null) throw taskProcess.Exception;
 
             var result = GetResultFromTask(taskProcess);
             var resultJson = result == null

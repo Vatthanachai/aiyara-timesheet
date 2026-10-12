@@ -36,7 +36,7 @@ public sealed class PasetoTokenService(IOptions<PasetoSetting> settings) : IPase
         return new PasetoToken(token, expiresAt);
     }
 
-    public PasetoTokenClaims ValidateToken(string token)
+    public PasetoTokenClaims? ValidateToken(string token)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > 8192) return null;
         var options = settings.Value;
@@ -64,9 +64,9 @@ public sealed class PasetoTokenService(IOptions<PasetoSetting> settings) : IPase
             {
                 UserId = userId,
                 TenantId = tenantId,
-                TokenId = Get(payload, "jti"),
-                Email = Get(payload, "email"),
-                Role = Get(payload, "role"),
+                TokenId = Get(payload, "jti")!,
+                Email = Get(payload, "email") ?? string.Empty,
+                Role = Get(payload, "role") ?? string.Empty,
                 SessionVersion = version,
                 ExpiresAtUtc = expiresAt,
                 MustChangePassword = bool.TryParse(Get(payload, "must_change_password"), out var mustChange) && mustChange
@@ -89,6 +89,6 @@ public sealed class PasetoTokenService(IOptions<PasetoSetting> settings) : IPase
             .GenerateAsymmetricKeyPair(seed);
     }
 
-    private static string Get(IDictionary<string, object> payload, string key)
+    private static string? Get(IDictionary<string, object> payload, string key)
         => payload.TryGetValue(key, out var value) ? value?.ToString() : null;
 }
