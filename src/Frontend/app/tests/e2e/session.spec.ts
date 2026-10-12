@@ -408,7 +408,7 @@ test('platform admin can manage organization details, administrators, and lifecy
   await page.getByLabel('Email').fill('sysadmin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: 'Organizations' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Organizations' }).click()
 
   await expect(page.getByRole('heading', { name: 'Organizations' })).toBeVisible()
   await expect(page.getByText('Acme Studio')).toBeVisible()
@@ -580,4 +580,64 @@ test('sign in asks which organization to open when the account belongs to severa
   await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
     .toBe('beta-token')
+})
+
+async function signInAs(page: import('@playwright/test').Page, role: string) {
+  await page.route('**/api/v1/auth/sign-in', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(signInOk({
+      accessToken: `${role}-token`,
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshToken: `${role}-refresh`,
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+      mustChangePassword: false,
+      tenantId,
+      role
+    }))
+  }))
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill(`${role.toLowerCase()}@example.test`)
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
+}
+
+test('platform admin sees only platform areas and cannot open tenant administration', async ({ page }) => {
+  await signInAs(page, 'PlatformAdmin')
+
+  const navigation = page.getByRole('navigation', { name: 'Primary navigation' })
+  await expect(navigation.getByRole('link', { name: 'Organizations' })).toBeVisible()
+  for (const name of ['Timesheet', 'Reports', 'Administration'])
+    await expect(navigation.getByRole('link', { name })).toHaveCount(0)
+  const apps = page.getByRole('region', { name: 'Available applications' })
+  await expect(apps.getByRole('link', { name: /Organizations/ })).toBeVisible()
+  await expect(apps.getByRole('link', { name: /Administration/ })).toHaveCount(0)
+
+  await page.goto('/remote/administration')
+  await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
+  await expect(page.locator('iframe')).toHaveCount(0)
+})
+
+test('employee cannot see or open tenant administration', async ({ page }) => {
+  await signInAs(page, 'Employee')
+
+  const navigation = page.getByRole('navigation', { name: 'Primary navigation' })
+  await expect(navigation.getByRole('link', { name: 'Timesheet' })).toBeVisible()
+  await expect(navigation.getByRole('link', { name: 'Administration' })).toHaveCount(0)
+
+  await page.goto('/remote/administration')
+  await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
+  await expect(page.locator('iframe')).toHaveCount(0)
+})
+
+test('tenant admin can open tenant administration', async ({ page }) => {
+  await signInAs(page, 'TenantAdmin')
+
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'Administration' })).toBeVisible()
+  await page.goto('/remote/administration')
+  await expect(page.getByRole('heading', { name: 'Access restricted' })).toHaveCount(0)
+  await expect(page.locator('iframe')).toHaveCount(1)
 })

@@ -69,7 +69,7 @@ public static class ReportAuthentication
 
             context.RequestServices.GetRequiredService<ReportingTenantScope>().TenantId = tenantId;
             context.Items[ReportActor.ContextKey] = new ReportActor(tenantId, userId,
-                validation.Roles.FirstOrDefault(role => role is "TenantAdmin" or "PlatformAdmin") ??
+                validation.Roles.FirstOrDefault(role => role is "TenantAdmin") ??
                 validation.Roles.FirstOrDefault() ?? "", string.IsNullOrWhiteSpace(validation.TimeZoneId)
                     ? "Asia/Bangkok" : validation.TimeZoneId);
             await next();

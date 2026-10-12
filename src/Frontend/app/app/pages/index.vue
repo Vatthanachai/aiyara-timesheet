@@ -2,22 +2,22 @@
 import { safeError } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
 import type { SignInOrganization } from '../composables/useSession'
-const { navigation } = useRemoteNavigation()
-const { token, login, signIn } = useSession()
+const { visibleNavigation } = useRemoteNavigation()
+const { token, role, login, signIn } = useSession()
 const { locale } = useLocale()
 const text = useLocaleText(locale, {
   th: {
     heroTitle: 'พื้นที่ทำงานของคุณ', heroSubtitle: 'บันทึกเวลาทำงาน จัดการงานและข้อมูลส่วนตัว',
     signIn: 'เข้าสู่ระบบ', email: 'อีเมล', password: 'รหัสผ่าน',
     chooseOrganization: 'เลือกองค์กร', chooseOrganizationHint: 'บัญชีนี้อยู่ในหลายองค์กร เลือกองค์กรที่ต้องการเข้าใช้งาน',
-    back: 'ย้อนกลับ',
+    back: 'ย้อนกลับ', organizations: 'จัดการองค์กร', organizationsHint: 'ค้นหาและจัดการองค์กรทั้งหมดในระบบ',
     signUp: 'สมัครใช้งานองค์กร', activateAccount: 'เปิดใช้งานบัญชี', adminSignIn: 'เข้าสู่ระบบผู้ดูแลระบบ'
   },
   en: {
     heroTitle: 'Your workspace', heroSubtitle: 'Record time, manage tasks and your profile.',
     signIn: 'Sign in', email: 'Email', password: 'Password',
     chooseOrganization: 'Choose an organization', chooseOrganizationHint: 'This account belongs to several organizations. Choose the one to open.',
-    back: 'Back',
+    back: 'Back', organizations: 'Organizations', organizationsHint: 'Find and manage every organization on the platform.',
     signUp: 'Sign up your organization', activateAccount: 'Activate account', adminSignIn: 'System administrator sign in'
   }
 })
@@ -88,9 +88,13 @@ function backToSignIn() {
   </form>
 
   <section v-if="token" aria-label="Available applications" class="remote-grid">
-    <NuxtLink v-for="remote in navigation" :key="remote.id" class="remote-card" :to="remote.path">
+    <NuxtLink v-for="remote in visibleNavigation" :key="remote.id" class="remote-card" :to="remote.path">
       <h2>{{ remote.label[locale] }}</h2>
       <p>{{ remote.description[locale] }}</p>
+    </NuxtLink>
+    <NuxtLink v-if="role === 'PlatformAdmin'" class="remote-card" to="/sys-admin/organizations">
+      <h2>{{ text.organizations }}</h2>
+      <p>{{ text.organizationsHint }}</p>
     </NuxtLink>
   </section>
 </template>

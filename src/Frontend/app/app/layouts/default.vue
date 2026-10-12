@@ -8,7 +8,7 @@ type ProfileSummary = {
   photoUrl: string | null
 }
 
-const { navigation } = useRemoteNavigation()
+const { visibleNavigation } = useRemoteNavigation()
 const { locale, setLocale } = useLocale()
 const { token, role, logout, restore, renew } = useSession()
 const config = useRuntimeConfig()
@@ -115,7 +115,7 @@ onUnmounted(() => {
     <header class="shell-header">
       <NuxtLink class="brand" to="/">Aiyara Timesheet</NuxtLink>
       <nav aria-label="Primary navigation" class="navigation">
-        <NuxtLink v-for="item in navigation.filter((item) => item.id !== 'identity')" :key="item.id" :to="item.path">
+        <NuxtLink v-for="item in visibleNavigation.filter((item) => item.id !== 'identity')" :key="item.id" :to="item.path">
           {{ item.label[locale] }}
         </NuxtLink>
         <NuxtLink v-if="token && role === 'PlatformAdmin'" to="/sys-admin/organizations">
