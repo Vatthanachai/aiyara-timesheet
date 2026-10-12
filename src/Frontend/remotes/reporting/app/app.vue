@@ -28,7 +28,7 @@ const error = ref('')
 const notice = ref('')
 const copy = useLocaleText(locale, { th: {
   title: 'รายงานและเอกสาร', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
-  dashboard: 'ภาพรวม', total: 'รายงานทั้งหมด', ready: 'พร้อมดาวน์โหลด', queued: 'กำลังดำเนินการ', failed: 'ผิดพลาด',
+  dashboard: 'ภาพรวม', total: 'รายงานทั้งหมด', ready: 'พร้อมดาวน์โหลด', dashboardQueued: 'กำลังดำเนินการ', dashboardFailed: 'ผิดพลาด',
   request: 'ขอรายงาน', definition: 'รูปแบบรายงาน', kind: 'ประเภทรายงาน', format: 'ไฟล์',
   start: 'ตั้งแต่วันที่', end: 'ถึงวันที่', create: 'สร้างรายงาน', history: 'ประวัติรายงาน',
   name: 'ชื่อ', status: 'สถานะ', period: 'ช่วงเวลา', created: 'วันที่ขอ', download: 'ดาวน์โหลด',
@@ -43,7 +43,7 @@ const copy = useLocaleText(locale, { th: {
   requiresLocked: 'สร้างรายงานได้เมื่อเดือนต้นทางถูกล็อกแล้ว'
 }, en: {
   title: 'Reports and documents', signIn: 'Please sign in through Aiyara Shell',
-  dashboard: 'Summary', total: 'Total reports', ready: 'Ready to download', queued: 'In progress', failed: 'Failed',
+  dashboard: 'Summary', total: 'Total reports', ready: 'Ready to download', dashboardQueued: 'In progress', dashboardFailed: 'Failed',
   request: 'Request a report', definition: 'Report format', kind: 'Report type', format: 'File',
   start: 'From', end: 'To', create: 'Generate report', history: 'Report history',
   name: 'Name', status: 'Status', period: 'Period', created: 'Requested', download: 'Download',
@@ -207,8 +207,8 @@ function statusLabel(status: string) {
       <section><h3>{{ copy.dashboard }}</h3><dl class="dashboard">
         <div><dt>{{ copy.total }}</dt><dd>{{ dashboard.total }}</dd></div>
         <div><dt>{{ copy.ready }}</dt><dd>{{ dashboard.ready }}</dd></div>
-        <div><dt>{{ copy.queued }}</dt><dd>{{ dashboard.queued }}</dd></div>
-        <div><dt>{{ copy.failed }}</dt><dd>{{ dashboard.failed }}</dd></div>
+        <div><dt>{{ copy.dashboardQueued }}</dt><dd>{{ dashboard.queued }}</dd></div>
+        <div><dt>{{ copy.dashboardFailed }}</dt><dd>{{ dashboard.failed }}</dd></div>
       </dl></section>
       <section>
         <h3>{{ copy.request }}</h3>
