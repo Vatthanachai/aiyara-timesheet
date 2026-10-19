@@ -9,6 +9,11 @@ using Yarp.ReverseProxy.Transforms;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+// Every protected route depends on Identity's gRPC token validation, so Gateway is
+// not ready while it is unreachable. Redis is only a validation cache with a gRPC
+// fallback, so it is deliberately not a readiness dependency.
+var identityGrpcUrl = new Uri(builder.Configuration["IdentityGrpc:Url"] ?? "http://localhost:8082");
+builder.AddTcpDependencyHealthCheck("IdentityGrpc", identityGrpcUrl);
 
 builder.Services.AddControllers();
 builder.Services.AddSafeApiErrors();
@@ -44,8 +49,7 @@ builder.Services.AddReverseProxy()
             });
         }
     });
-builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
-    builder.Configuration["IdentityGrpc:Url"] ?? "http://localhost:8082"));
+builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(identityGrpcUrl));
 builder.Services.AddSingleton(provider =>
     new IdentityValidationService.IdentityValidationServiceClient(provider.GetRequiredService<GrpcChannel>()));
 builder.Services.AddSingleton<RedisIdentityValidationCache>();
