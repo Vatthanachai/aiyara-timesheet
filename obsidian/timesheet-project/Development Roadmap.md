@@ -125,7 +125,7 @@ tenant isolation and report retention also have focused database tests.
 - Every new tenant-owned record and query enforces tenant isolation.
 - Secrets never enter Git, logs, traces, test snapshots, API documentation, or Obsidian notes.
 - API changes update OpenAPI/Scalar documentation and contract tests in the same change.
-- New user-facing work is responsive and uses i18n keys; Thai is the default locale.
+- New user-facing work is responsive and uses i18n keys; English is the default locale and Thai is supported through the same keys.
 - A change is not complete until its relevant automated tests pass in the Compose-compatible environment.
 
 ## Related

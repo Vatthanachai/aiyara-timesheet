@@ -48,7 +48,7 @@ Each service has its own PostgreSQL database and migration history, while Docker
 
 ## Frontend
 
-The frontend is a separately deployed micro-frontend system: a Shell owns navigation, session handling, shared design tokens, i18n, and route composition. Route-based remotes own Identity/Profile, Timesheet, Reports, and Admin. Use Tailwind and Thai as the default locale while supporting Thai/English through translation keys.
+The frontend is a separately deployed micro-frontend system: a Shell owns navigation, session handling, shared design tokens, i18n, and route composition. Route-based remotes own Identity/Profile, Timesheet, Reports, and Admin. Use Tailwind and English as the default locale while supporting Thai/English through translation keys.
 
 Timesheet remains table-first and responsive. A task tray lets users drag shared project/category tasks or personal tasks into a day to prefill the entry. Kanban is an optional task view, not the source of truth for recorded time. An entry supports date, start/end time, task name, detail, category/project, and notes; an end time earlier than the start time means an overnight entry, limited to 24 hours.
 
