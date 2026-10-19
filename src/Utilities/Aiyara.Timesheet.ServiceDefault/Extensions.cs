@@ -177,6 +177,18 @@ public static class Extensions
 
         var configuredPort = builder.Configuration[$"Dependencies:{dependency}:Port"];
         var port = string.IsNullOrWhiteSpace(configuredPort) ? defaultPort : int.Parse(configuredPort);
+        return builder.AddTcpDependencyHealthCheck(dependency, host, port);
+    }
+
+    // For a dependency already addressed by a URL (such as a gRPC channel), so its
+    // readiness probe cannot drift from the address the service actually calls.
+    public static TBuilder AddTcpDependencyHealthCheck<TBuilder>(
+        this TBuilder builder, string dependency, Uri endpoint) where TBuilder : IHostApplicationBuilder
+        => builder.AddTcpDependencyHealthCheck(dependency, endpoint.Host, endpoint.Port);
+
+    private static TBuilder AddTcpDependencyHealthCheck<TBuilder>(
+        this TBuilder builder, string dependency, string host, int port) where TBuilder : IHostApplicationBuilder
+    {
         builder.Services.AddHealthChecks().Add(new HealthCheckRegistration(
             dependency.ToLowerInvariant(),
             new TcpDependencyHealthCheck(host, port),

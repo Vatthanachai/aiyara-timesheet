@@ -48,6 +48,9 @@ is intentional.
 Backend `/alive` checks only the process. Backend `/health` checks configured
 dependencies; the four APIs with PostgreSQL databases also authenticate and
 check database connectivity. Their EF migrations run at API startup.
+Gateway's `/health` checks the Identity gRPC address from `IdentityGrpc__Url`,
+because every protected route needs it. Redis is not part of it: Gateway uses
+Redis only as a validation cache and falls back to gRPC without it.
 When launching a backend directly, dependency hosts default to `localhost` and
 their standard ports. Override `Dependencies__<Name>__Host` and
 `Dependencies__<Name>__Port` if the dependencies use different endpoints.
