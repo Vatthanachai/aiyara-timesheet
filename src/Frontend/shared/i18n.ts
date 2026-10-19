@@ -14,9 +14,9 @@ import type { Locale } from './api-response'
  */
 export type { Locale }
 
-/** Reads the locale carried by the Shell's `aiyara.session` message, defaulting to Thai. */
+/** Reads the locale carried by the Shell's `aiyara.session` message, defaulting to English. */
 export function readSessionLocale(data: unknown): Locale {
-  return (data as { locale?: unknown } | null | undefined)?.locale === 'en' ? 'en' : 'th'
+  return (data as { locale?: unknown } | null | undefined)?.locale === 'th' ? 'th' : 'en'
 }
 
 /**
