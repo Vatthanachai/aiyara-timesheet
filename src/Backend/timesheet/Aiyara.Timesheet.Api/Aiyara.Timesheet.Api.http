@@ -1,6 +1,14 @@
 @Aiyara.Timesheet.Api_HostAddress = http://localhost:5198
 
-GET {{Aiyara.Timesheet.Api_HostAddress}}/weatherforecast/
+GET {{Aiyara.Timesheet.Api_HostAddress}}/alive
+
+###
+
+GET {{Aiyara.Timesheet.Api_HostAddress}}/health
+
+###
+
+GET {{Aiyara.Timesheet.Api_HostAddress}}/openapi/v1.json
 Accept: application/json
 
 ###
