@@ -1,6 +1,14 @@
 @Aiyara.Report.Api_HostAddress = http://localhost:5160
 
-GET {{Aiyara.Report.Api_HostAddress}}/weatherforecast/
+GET {{Aiyara.Report.Api_HostAddress}}/alive
+
+###
+
+GET {{Aiyara.Report.Api_HostAddress}}/health
+
+###
+
+GET {{Aiyara.Report.Api_HostAddress}}/openapi/v1.json
 Accept: application/json
 
 ###
