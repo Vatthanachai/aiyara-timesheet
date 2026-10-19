@@ -259,6 +259,110 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   await expect(timesheet.locator('tbody')).not.toContainText('ข้อความที่ยกเลิก')
 })
 
+test('timesheet task tray keeps a rejected task name, prefills the entry form, and records leave', async ({ page }) => {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const corsHeaders = {
+    'access-control-allow-origin': 'http://127.0.0.1:3102',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const tasks: Record<string, unknown>[] = []
+  const leaves: Record<string, unknown>[] = []
+  let taskPosts = 0
+  let leaveRequest: Record<string, unknown> | null = null
+  const json = (body: unknown) => ({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk(body)) })
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: corsHeaders })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/auth/sign-in')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(signInOk({
+        accessToken: 'tray-token', refreshToken: 'tray-refresh',
+        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+        refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+        mustChangePassword: false, tenantId, role: 'Employee'
+      })) })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/tasks')) {
+      if (request.method() === 'POST') {
+        taskPosts += 1
+        if (taskPosts === 1) {
+          await route.fulfill({ status: 400, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({
+            statusCode: 400, statusMessage: 'Bad Request', errorCode: 'INVALID_VALUE'
+          }) })
+          return
+        }
+        const body = request.postDataJSON()
+        tasks.push({ id: `task-${taskPosts}`, name: body.name, status: body.status, projectId: null, categoryId: null })
+        await route.fulfill({ status: 201, headers: corsHeaders })
+        return
+      }
+      await route.fulfill(json(tasks))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/leave')) {
+      if (request.method() === 'POST') {
+        leaveRequest = request.postDataJSON()
+        leaves.push({ id: 'leave-1', notes: null, ...leaveRequest })
+        await route.fulfill({ status: 201, headers: corsHeaders })
+        return
+      }
+      await route.fulfill(json(leaves))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/entries')) {
+      await route.fulfill(json([]))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
+      await route.fulfill(json({ projects: [{ id: 'project-1', name: 'Website' }], categories: [], holidays: [] }))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/context')) {
+      await route.fulfill(json({ currentMonth, locked: false }))
+      return
+    }
+    await route.fulfill({ status: 404, headers: corsHeaders })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('employee@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+
+  const timesheet = page.frameLocator('iframe')
+  const tray = timesheet.locator('.task-panel')
+  const newTask = tray.locator('.add-task-form input')
+  await newTask.fill('Weekly planning')
+  await tray.getByRole('button', { name: 'Add entry' }).click()
+  await expect(timesheet.locator('.feedback.error')).toBeVisible()
+  await expect(newTask).toHaveValue('Weekly planning')
+  await tray.getByRole('button', { name: 'Add entry' }).click()
+  await expect(newTask).toHaveValue('')
+  await expect(tray.locator('.task-list li input')).toHaveValue('Weekly planning')
+
+  const entryTask = timesheet.locator('.entry-panel').getByLabel('Task', { exact: true })
+  await tray.locator('.task-list').getByRole('button', { name: 'Use' }).click()
+  await expect(entryTask).toHaveValue('Weekly planning')
+  await tray.locator('.quick-picks').getByRole('button', { name: 'Website' }).click()
+  await expect(entryTask).toHaveValue('Website')
+  await expect(timesheet.locator('.entry-panel').getByLabel('Project')).toHaveValue('project-1')
+
+  const leaveForm = timesheet.locator('.inline-form')
+  await leaveForm.getByLabel('Date').fill(`${currentMonth}-10`)
+  await leaveForm.getByLabel('Kind').selectOption('sick')
+  await leaveForm.getByRole('button', { name: 'Add entry' }).click()
+  await expect.poll(() => leaveRequest).toEqual({ date: `${currentMonth}-10`, kind: 'sick' })
+  await expect(timesheet.locator('.simple-list li input[type="date"]')).toHaveValue(`${currentMonth}-10`)
+})
+
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {
   // Shaped like Identity's real ServiceErrorResponse for AuthenticationFailure.InvalidCredentials
   // (IdentityController.Auth's catch maps it to errorCode "INVALIDCREDENTIALS"), not a generic
