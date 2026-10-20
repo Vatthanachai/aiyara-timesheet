@@ -10,6 +10,8 @@
     <PackageReference Include="AWSSDK.S3" />
     <PackageReference Include="ClosedXML" />
     <PackageReference Include="PDFsharp" />
+    <!-- Overrides PDFsharp's vulnerable transitive 8.0.1. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <ProjectReference Include="..\Aiyara.Report.Models\Aiyara.Report.Models.csproj" />
   </ItemGroup>
