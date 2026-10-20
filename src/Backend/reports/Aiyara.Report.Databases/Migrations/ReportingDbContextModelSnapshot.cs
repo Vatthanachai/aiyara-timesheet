@@ -257,6 +257,13 @@ namespace Aiyara.Report.Databases.Migrations
                     b.Property<Guid>("ReportDefinitionId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("SubjectGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SubjectGroupName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -268,7 +275,12 @@ namespace Aiyara.Report.Databases.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "ReportDefinitionId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"SubjectGroupId\" IS NULL");
+
+                    b.HasIndex("TenantId", "ReportDefinitionId", "SubjectGroupId")
+                        .IsUnique()
+                        .HasFilter("\"SubjectGroupId\" IS NOT NULL");
 
                     b.ToTable("report_schedules", (string)null);
                 });

@@ -324,6 +324,31 @@ public sealed class TenantMemberManagementTests
     }
 
     [Fact]
+    public async Task The_group_directory_lists_a_groups_members_in_any_status_and_only_in_its_tenant()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var active = await fixture.AddMemberAsync(fixture.TenantId, "zoe@acme.test", TenantRole.Employee);
+        var gone = await fixture.AddMemberAsync(fixture.TenantId, "gone@acme.test", TenantRole.Employee,
+            MembershipStatus.Deactivated);
+        await fixture.AddMemberAsync(fixture.TenantId, "other@acme.test", TenantRole.Employee);
+        var outsource = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Outsource"), default);
+        foreach (var member in new[] { active, gone })
+            await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, member,
+                new SetTenantMemberGroupRequest(outsource.Id), default);
+        var other = await fixture.CreateTenantAsync("Globex", "globex", "owner@globex.test");
+
+        var found = await MemberGroupDirectory.FindAsync(fixture.Db, fixture.Scope, fixture.TenantId, outsource.Id, default);
+        var elsewhere = await MemberGroupDirectory.FindAsync(fixture.Db, fixture.Scope, other.TenantId, outsource.Id, default);
+        var missing = await MemberGroupDirectory.FindAsync(fixture.Db, fixture.Scope, fixture.TenantId, Guid.NewGuid(), default);
+
+        Assert.Equal("Outsource", found!.Value.Name);
+        Assert.Equal(new[] { active, gone }.Order(), found.Value.MemberIds);
+        Assert.Null(elsewhere);
+        Assert.Null(missing);
+    }
+
+    [Fact]
     public async Task Changing_a_role_ends_the_members_sessions_and_is_audited()
     {
         await using var fixture = await Fixture.CreateAsync();

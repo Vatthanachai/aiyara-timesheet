@@ -113,51 +113,103 @@ internal sealed class TimesheetMonthEventConsumer(IServiceScopeFactory scopes,
 }
 
 internal sealed class ScheduleDispatchJob(IServiceScopeFactory scopes,
-    IConfiguration configuration) : IJob
+    IConfiguration configuration, IReportGroupDirectory groups, ILogger<ScheduleDispatchJob> logger) : IJob
 {
     public ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken = default) =>
         ReportQuartzMetrics.MeasureAsync("schedule_dispatch", () => ExecuteCoreAsync(context));
 
     private async ValueTask ExecuteCoreAsync(IJobExecutionContext context)
     {
+        await DispatchDueAsync(context.CancellationToken);
+        await RepublishQueuedAsync(context.CancellationToken);
+    }
+
+    /// <summary>Queues a run for every due schedule and moves it to its next fire time. A group
+    /// schedule reads the group's current members from Identity; if Identity cannot be reached the
+    /// schedule stays due and is tried again next minute, without holding up other schedules.</summary>
+    internal async Task DispatchDueAsync(CancellationToken cancellationToken)
+    {
         using var scope = scopes.CreateScope();
         var tenantScope = scope.ServiceProvider.GetRequiredService<ReportingTenantScope>();
         var db = scope.ServiceProvider.GetRequiredService<ReportingDbContext>();
         var due = await db.ReportSchedules.IgnoreQueryFilters().AsNoTracking()
-            .Where(x => x.IsEnabled && x.NextFireAtUtc <= DateTime.UtcNow).ToListAsync(context.CancellationToken);
+            .Where(x => x.IsEnabled && x.NextFireAtUtc <= DateTime.UtcNow).ToListAsync(cancellationToken);
         foreach (var pending in due)
         {
             tenantScope.TenantId = pending.TenantId;
-            var schedule = await db.ReportSchedules.SingleOrDefaultAsync(x => x.Id == pending.Id, context.CancellationToken);
-            if (schedule is null || !schedule.IsEnabled || schedule.NextFireAtUtc > DateTime.UtcNow) continue;
-            var definition = await db.ReportDefinitions.SingleAsync(x => x.Id == schedule.ReportDefinitionId, context.CancellationToken);
-            var fired = new DateTimeOffset(DateTime.SpecifyKind(schedule.NextFireAtUtc!.Value, DateTimeKind.Utc));
-            var period = ReportCalendar.ClosedPeriod(definition.Kind, schedule.TimeZoneId, fired);
-            var key = $"schedule:{schedule.Id:N}:{period.StartUtc:yyyyMMdd}:{period.EndUtc:yyyyMMdd}";
-            if (!await db.ReportRuns.AnyAsync(x => x.IdempotencyKey == key, context.CancellationToken))
+            try { await DispatchAsync(db, pending.Id, cancellationToken); }
+            catch (Exception error) when (error is not OperationCanceledException)
             {
-                var run = new ReportRun { TenantId = schedule.TenantId, ReportDefinitionId = definition.Id,
-                    RequestedBy = Guid.Empty, TimeZoneId = schedule.TimeZoneId, IdempotencyKey = key,
-                    PeriodStartUtc = period.StartUtc.UtcDateTime, PeriodEndUtc = period.EndUtc.UtcDateTime,
-                    CreatedAtUtc = DateTime.UtcNow };
-                db.ReportRuns.Add(run);
-                db.Audits.Add(new ReportAudit { TenantId = schedule.TenantId, ActorId = Guid.Empty,
-                    ReportRunId = run.Id, Action = "run.queued.schedule", DetailsJson = "{}",
-                    OccurredAtUtc = DateTime.UtcNow });
+                db.ChangeTracker.Clear();
+                logger.LogWarning("Report schedule {ScheduleId} was not dispatched: {FailureType}",
+                    pending.Id, error.GetType().Name);
             }
-            schedule.LastFireAtUtc = schedule.NextFireAtUtc;
-            schedule.NextFireAtUtc = ReportCalendar.NextFireUtc(definition.Kind, schedule.TimeZoneId,
-                fired.AddTicks(1), schedule.LocalTime).UtcDateTime;
-            await db.SaveChangesAsync(context.CancellationToken);
         }
+    }
+
+    private async Task DispatchAsync(ReportingDbContext db, Guid scheduleId, CancellationToken cancellationToken)
+    {
+        var schedule = await db.ReportSchedules.SingleOrDefaultAsync(x => x.Id == scheduleId, cancellationToken);
+        if (schedule is null || !schedule.IsEnabled || schedule.NextFireAtUtc > DateTime.UtcNow) return;
+        var definition = await db.ReportDefinitions.SingleAsync(x => x.Id == schedule.ReportDefinitionId, cancellationToken);
+        var fired = new DateTimeOffset(DateTime.SpecifyKind(schedule.NextFireAtUtc!.Value, DateTimeKind.Utc));
+        var period = ReportCalendar.ClosedPeriod(definition.Kind, schedule.TimeZoneId, fired);
+        var key = $"schedule:{schedule.Id:N}:{period.StartUtc:yyyyMMdd}:{period.EndUtc:yyyyMMdd}";
+        ReportGroup? group = null;
+        if (schedule.SubjectGroupId is { } groupId)
+        {
+            group = await groups.FindAsync(schedule.TenantId, groupId, cancellationToken);
+            if (group is null)
+            {
+                // The group was deleted, so the schedule has nothing left to report on.
+                schedule.IsEnabled = false;
+                AddAudit(db, schedule, null, "schedule.disabled.group_deleted");
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            schedule.SubjectGroupName = group.Name;
+        }
+        if (group is { MemberIds.Count: 0 })
+            AddAudit(db, schedule, null, "schedule.skipped.empty_group");
+        else if (group is { MemberIds.Count: > ReportGroupLimits.MaxMembers })
+            AddAudit(db, schedule, null, "schedule.skipped.group_too_large");
+        else if (!await db.ReportRuns.AnyAsync(x => x.IdempotencyKey == key, cancellationToken))
+        {
+            var run = new ReportRun { TenantId = schedule.TenantId, ReportDefinitionId = definition.Id,
+                SubjectGroupName = group?.Name,
+                SubjectGroupMemberIdsJson = group is null ? null
+                    : JsonSerializer.Serialize(group.MemberIds.Order()),
+                RequestedBy = Guid.Empty, TimeZoneId = schedule.TimeZoneId, IdempotencyKey = key,
+                PeriodStartUtc = period.StartUtc.UtcDateTime, PeriodEndUtc = period.EndUtc.UtcDateTime,
+                CreatedAtUtc = DateTime.UtcNow };
+            db.ReportRuns.Add(run);
+            AddAudit(db, schedule, run.Id, "run.queued.schedule");
+        }
+        schedule.LastFireAtUtc = schedule.NextFireAtUtc;
+        schedule.NextFireAtUtc = ReportCalendar.NextFireUtc(definition.Kind, schedule.TimeZoneId,
+            fired.AddTicks(1), schedule.LocalTime).UtcDateTime;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void AddAudit(ReportingDbContext db, ReportSchedule schedule, Guid? runId, string action) =>
+        db.Audits.Add(new ReportAudit { TenantId = schedule.TenantId, ActorId = Guid.Empty, ReportRunId = runId,
+            Action = action, DetailsJson = JsonSerializer.Serialize(new { ScheduleId = schedule.Id,
+                schedule.SubjectGroupId, schedule.SubjectGroupName }),
+            OccurredAtUtc = DateTime.UtcNow });
+
+    private async Task RepublishQueuedAsync(CancellationToken cancellationToken)
+    {
+        using var scope = scopes.CreateScope();
+        var tenantScope = scope.ServiceProvider.GetRequiredService<ReportingTenantScope>();
+        var db = scope.ServiceProvider.GetRequiredService<ReportingDbContext>();
         var queued = await db.ReportRuns.IgnoreQueryFilters().AsNoTracking()
             .Where(x => x.Status == ReportRunStatus.Queued).OrderBy(x => x.CreatedAtUtc)
-            .Take(100).ToListAsync(context.CancellationToken);
+            .Take(100).ToListAsync(cancellationToken);
         foreach (var run in queued)
         {
             tenantScope.TenantId = run.TenantId;
-            var definition = await db.ReportDefinitions.SingleAsync(x => x.Id == run.ReportDefinitionId, context.CancellationToken);
-            await ReportCommandPublisher.PublishAsync(configuration, [run], definition, context.CancellationToken);
+            var definition = await db.ReportDefinitions.SingleAsync(x => x.Id == run.ReportDefinitionId, cancellationToken);
+            await ReportCommandPublisher.PublishAsync(configuration, [run], definition, cancellationToken);
         }
     }
 }
