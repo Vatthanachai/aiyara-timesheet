@@ -77,6 +77,25 @@ public sealed class ReportRunListingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Runs_filter_by_subject_members_and_leave_out_whole_organization_runs()
+    {
+        var group = await RunsAsync(Admin, new RunQuery(null, null, SubjectUserIds: [employeeId, Guid.NewGuid()]));
+        var nobody = await RunsAsync(Admin, new RunQuery(null, null, SubjectUserIds: [Guid.NewGuid()]));
+        var combined = await RunsAsync(Admin, new RunQuery(ReportRunStatus.Queued, null, SubjectUserIds: [employeeId]));
+        var tooMany = await operations.Runs(Admin, new RunQuery(null, null,
+            SubjectUserIds: Enumerable.Range(0, RunQuery.MaxSubjectUserIds + 1).Select(_ => Guid.NewGuid()).ToArray()), default);
+        // An employee's own visibility still applies under a subject filter.
+        var employee = await RunsAsync(Employee, new RunQuery(null, null, SubjectUserIds: [adminId]));
+
+        Assert.Equal(1, group.GetProperty("totalCount").GetInt32());
+        Assert.Equal(succeeded.Id, group.GetProperty("items")[0].GetProperty("id").GetGuid());
+        Assert.Equal(0, nobody.GetProperty("totalCount").GetInt32());
+        Assert.Equal(0, combined.GetProperty("totalCount").GetInt32());
+        Assert.Equal((400, "VALIDATION_FAILED"), (tooMany.StatusCode, ErrorCode(tooMany)));
+        Assert.Equal(0, employee.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
     public async Task Employees_see_only_their_own_runs()
     {
         var page = await RunsAsync(Employee, new RunQuery(null, null));
