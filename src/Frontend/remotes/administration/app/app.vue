@@ -42,13 +42,13 @@ const copy = useLocaleText(locale, { th: {
   projects: 'โครงการ', projectName: 'ชื่อโครงการ', categories: 'หมวดหมู่',
   categoryName: 'ชื่อหมวดหมู่', holidays: 'วันหยุด', holidayName: 'ชื่อวันหยุด',
   date: 'วันที่', add: 'เพิ่มรายการ', save: 'บันทึก', delete: 'ลบ', policy: 'นโยบายรหัสผ่าน',
-  tenantId: 'รหัสองค์กร', minimumLength: 'ความยาวขั้นต่ำ', expiryDays: 'อายุรหัสผ่าน (วัน)',
+  tenantId: 'รหัสองค์กร', minimumLength: 'ความยาวขั้นต่ำ (12–128)', expiryDays: 'อายุรหัสผ่าน (1–3650 วัน)',
   lengthUnit: 'ตัวอักษร', expiryUnit: 'วัน',
   uppercase: 'ตัวพิมพ์ใหญ่', lowercase: 'ตัวพิมพ์เล็ก', digit: 'ตัวเลข', symbol: 'สัญลักษณ์',
   lockMonth: 'ปิดรอบเดือน', lock: 'ปิดรอบเดือน', loadedError: 'โหลดข้อมูลไม่สำเร็จ',
   saveError: 'บันทึกไม่สำเร็จ (ต้องเป็นผู้ดูแล)', deleteError: 'ลบไม่สำเร็จ',
   updateError: 'แก้ไขไม่สำเร็จ', policySaved: 'บันทึกนโยบายแล้ว',
-  policyError: 'บันทึกนโยบายไม่สำเร็จ', locked: 'ปิดรอบเดือนแล้ว', lockError: 'ปิดรอบเดือนไม่สำเร็จ',
+  policyError: 'บันทึกนโยบายไม่สำเร็จ', policyInvalid: 'ความยาวขั้นต่ำต้องอยู่ระหว่าง 12–128 ตัวอักษร และอายุรหัสผ่านต้องอยู่ระหว่าง 1–3650 วัน', locked: 'ปิดรอบเดือนแล้ว', lockError: 'ปิดรอบเดือนไม่สำเร็จ',
   projectHint: 'จัดการโครงการที่ทีมใช้บันทึกเวลาทำงาน', categoryHint: 'กำหนดประเภทงานให้เลือกใน timesheet', holidayHint: 'วันหยุดจะแสดงในปฏิทินของทีม',
   empty: 'ยังไม่มีรายการ', loading: 'กำลังโหลดข้อมูล…', policyHint: 'กำหนดมาตรฐานรหัสผ่านสำหรับสมาชิกในองค์กร',
   lockHint: 'เมื่อปิดรอบแล้ว สมาชิกจะไม่สามารถแก้ไข timesheet ของเดือนนั้นได้',
@@ -81,13 +81,13 @@ const copy = useLocaleText(locale, { th: {
   projects: 'Projects', projectName: 'Project name', categories: 'Categories',
   categoryName: 'Category name', holidays: 'Holidays', holidayName: 'Holiday name',
   date: 'Date', add: 'Add item', save: 'Save', delete: 'Delete', policy: 'Password policy',
-  tenantId: 'Tenant ID', minimumLength: 'Minimum length', expiryDays: 'Expiry days',
+  tenantId: 'Tenant ID', minimumLength: 'Minimum length (12–128)', expiryDays: 'Expiry (1–3650 days)',
   lengthUnit: 'characters', expiryUnit: 'days',
   uppercase: 'Uppercase', lowercase: 'Lowercase', digit: 'Digit', symbol: 'Symbol',
   lockMonth: 'Close timesheet month', lock: 'Close month', loadedError: 'Could not load settings',
   saveError: 'Save failed (admin role required)', deleteError: 'Delete failed',
   updateError: 'Update failed', policySaved: 'Policy saved',
-  policyError: 'Could not save policy', locked: 'Month closed', lockError: 'Could not close month',
+  policyError: 'Could not save policy', policyInvalid: 'Minimum length must be 12–128 characters and expiry 1–3650 days.', locked: 'Month closed', lockError: 'Could not close month',
   projectHint: 'Manage projects available for time entry', categoryHint: 'Set the work types available in timesheets', holidayHint: 'Holidays appear on your team calendar',
   empty: 'No items yet', loading: 'Loading settings…', policyHint: 'Set password standards for members of this organization',
   lockHint: 'Closing a month prevents members from editing timesheets for that month.',
@@ -277,7 +277,11 @@ async function savePolicy() {
   try {
     await identityApi(`/auth/tenants/${tenantId.value}/password-policy`, { method: 'PUT', body: policy })
     notice.value = copy.value.policySaved
-  } catch (cause) { error.value = safeError(cause, locale.value) }
+  } catch (cause) {
+    // Identity accepts 12–128 characters and 1–3650 days; say so instead of a generic message.
+    const code = (cause as { data?: { errorCode?: string } })?.data?.errorCode
+    error.value = code === 'INVALIDINPUT' ? copy.value.policyInvalid : safeError(cause, locale.value)
+  }
   finally { isSavingPolicy.value = false }
 }
 async function lock() {
@@ -314,7 +318,7 @@ async function lock() {
         <section class="panel panel-wide"><div class="panel-heading"><span class="panel-icon orange">▣</span><div><h2>{{ copy.holidays }}</h2><p>{{ copy.holidayHint }}</p></div></div><form class="add-form holiday-form" @submit.prevent="add('holidays')"><label><span>{{ copy.date }}</span><input v-model="holidayDate" required type="date" :aria-label="copy.date" /></label><label class="holiday-name"><span>{{ copy.holidayName }}</span><input v-model="holidayName" required maxlength="200" :placeholder="copy.holidayName" /></label><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.holidays.length" class="item-list"><li v-for="item in catalog.holidays" :key="item.id" class="item-row holiday-row"><input v-model="item.date" type="date" :aria-label="copy.date" /><input v-model="item.name" :aria-label="copy.holidayName" /><div class="row-actions"><button class="button button-subtle" @click="update('holidays', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('holidays', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
       </div>
       <div class="settings-grid">
-        <section class="panel policy-panel"><div class="panel-heading"><span class="panel-icon green">⌑</span><div><h2>{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="8" max="128" required /><span>{{ copy.lengthUnit }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" required /><span>{{ copy.expiryUnit }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
+        <section class="panel policy-panel"><div class="panel-heading"><span class="panel-icon green">⌑</span><div><h2>{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="12" max="128" required /><span>{{ copy.lengthUnit }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" max="3650" required /><span>{{ copy.expiryUnit }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
         <section class="panel close-panel"><span class="panel-icon orange">◷</span><h2>{{ copy.lockMonth }}</h2><p>{{ copy.lockHint }}</p><form class="close-form" @submit.prevent="lock"><label :aria-label="copy.lockMonth"><input v-model="lockMonth" type="month" required /></label><button class="button button-warning" :disabled="isLocking">{{ isLocking ? copy.loading : copy.lock }}</button></form></section>
       </div>
     </template>
