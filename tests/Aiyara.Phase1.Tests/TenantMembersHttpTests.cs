@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Aiyara.Identities.Api.Controllers;
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Models.Tenancy;
+using Aiyara.Identities.Services.Authentication;
+using Aiyara.Identities.Services.Onboarding;
 using Aiyara.Timesheet.Component.Abstractions.Securities;
 using Aiyara.Timesheet.Component.Abstractions.Securities.Options;
 using Microsoft.AspNetCore.Builder;
@@ -29,6 +32,7 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
     private readonly Guid beta = Guid.NewGuid();
     private readonly Guid adminId = Guid.NewGuid();
     private readonly Guid employeeId = Guid.NewGuid();
+    private readonly Guid outsiderId = Guid.NewGuid();
     private WebApplication app = null!;
     private HttpClient client = null!;
 
@@ -43,6 +47,7 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
         Assert.Equal(["Anong", "Somchai", ""], members.Select(x => x.GetProperty("firstName").GetString()));
         Assert.Equal(["TenantAdmin", "Employee", "Employee"], members.Select(x => x.GetProperty("role").GetString()));
         Assert.Equal("PendingActivation", members[2].GetProperty("status").GetString());
+        Assert.Equal([true, false, false], members.Select(x => x.GetProperty("isCurrentUser").GetBoolean()));
         Assert.DoesNotContain(members, x => x.GetProperty("email").GetString() == "outsider@beta.test");
         Assert.DoesNotContain("passwordHash", json.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
@@ -59,6 +64,34 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, wrongTenant.StatusCode);
     }
 
+    [Fact]
+    public async Task Member_changes_answer_with_the_documented_status_codes()
+    {
+        var admin = Token(adminId, acme, "TenantAdmin");
+
+        using var self = await Send(HttpMethod.Put, $"/api/v1/members/{adminId}/role", admin, new { role = "Employee" });
+        using var badRole = await Send(HttpMethod.Put, $"/api/v1/members/{employeeId}/role", admin, new { role = "Owner" });
+        using var outsider = await Send(HttpMethod.Put, $"/api/v1/members/{outsiderId}/status", admin, new { active = false });
+        using var noInvitation = await Send(HttpMethod.Delete, $"/api/v1/members/invitations/{Guid.NewGuid()}", admin);
+        using var byEmployee = await Send(HttpMethod.Put, $"/api/v1/members/{employeeId}/role",
+            Token(employeeId, acme, "Employee"), new { role = "TenantAdmin" });
+        using var promoted = await Send(HttpMethod.Put, $"/api/v1/members/{employeeId}/role", admin, new { role = "TenantAdmin" });
+        using var invitations = await Send(HttpMethod.Get, "/api/v1/members/invitations", admin);
+
+        Assert.Equal((HttpStatusCode.Conflict, "CANNOT_CHANGE_SELF"), (self.StatusCode, await ErrorCode(self)));
+        Assert.Equal(HttpStatusCode.BadRequest, badRole.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, outsider.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, noInvitation.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byEmployee.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, promoted.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, invitations.StatusCode);
+        Assert.Equal("no-store", promoted.Headers.CacheControl?.ToString());
+
+        // The promotion ended the member's sessions, so their old token no longer works.
+        using var staleAdmin = await Send(HttpMethod.Get, "/api/v1/members", Token(employeeId, acme, "TenantAdmin"));
+        Assert.Equal(HttpStatusCode.Unauthorized, staleAdmin.StatusCode);
+    }
+
     public async Task InitializeAsync()
     {
         await connection.OpenAsync();
@@ -67,6 +100,11 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
         builder.Services.AddScoped<TenantScope>();
         builder.Services.AddDbContext<IdentityDbContext>(options => options.UseSqlite(connection));
         builder.Services.AddSingleton<IPasetoTokenService>(tokens);
+        builder.Services.AddScoped<OnboardingService>();
+        builder.Services.AddScoped<PlatformOrganizationService>();
+        builder.Services.AddScoped<TenantMemberService>();
+        builder.Services.AddSingleton<ISessionRevocationPublisher, NoRevocations>();
+        builder.Services.AddSingleton<ICredentialNotificationSender, NoNotifications>();
         builder.Services.AddControllers().AddApplicationPart(typeof(ProfileController).Assembly);
         app = builder.Build();
         app.MapControllers();
@@ -80,9 +118,9 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
                 new Tenant { Id = acme, Name = "Acme", Slug = "acme", OrganizationCode = "ACME123", CreatedAtUtc = now },
                 new Tenant { Id = beta, Name = "Beta", Slug = "beta", OrganizationCode = "BETA123", CreatedAtUtc = now });
             var pendingId = Guid.NewGuid();
-            var outsiderId = Guid.NewGuid();
             db.Accounts.AddRange(
-                new Account { Id = adminId, Email = "admin@acme.test", FirstName = "Anong", LastName = "Admin", CreatedAtUtc = now },
+                new Account { Id = adminId, Email = "admin@acme.test", FirstName = "Anong", LastName = "Admin", CreatedAtUtc = now,
+                    PasswordHash = "hash", PasswordChangedAtUtc = now.AddSeconds(1) },
                 new Account { Id = employeeId, Email = "somchai@acme.test", FirstName = "Somchai", LastName = "Staff", CreatedAtUtc = now },
                 new Account { Id = pendingId, Email = "new@acme.test", CreatedAtUtc = now },
                 new Account { Id = outsiderId, Email = "outsider@beta.test", FirstName = "Aaron", CreatedAtUtc = now });
@@ -116,6 +154,35 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
         UserId = userId, TenantId = tenantId, TokenId = Guid.NewGuid().ToString(), Email = "caller@test",
         Role = role, SessionVersion = 0
     }).Value;
+
+    private async Task<HttpResponseMessage> Send(HttpMethod method, string path, string token, object? body = null)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (body is not null) request.Content = JsonContent.Create(body);
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<string?> ErrorCode(HttpResponseMessage response)
+    {
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return json.RootElement.GetProperty("errorCode").GetString();
+    }
+
+    private sealed class NoRevocations : ISessionRevocationPublisher
+    {
+        public Task PublishAccountAsync(Guid tenantId, Guid accountId, long sessionVersion,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task PublishTenantPolicyAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task CompleteTenantPolicyAsync(Guid tenantId, long policyVersion,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class NoNotifications : ICredentialNotificationSender
+    {
+        public Task SendAsync(string email, string template, string code, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+    }
 
     private async Task<HttpResponseMessage> Get(string? token)
     {

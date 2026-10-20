@@ -5,7 +5,7 @@
 ## Implementation Progress
 
 - **Phase A** (invitation UI on existing APIs): implemented on `feature/member-invitations-ui`. The Shell has `/accept-invitation` (linked from sign-in and from the invitation email), and the Administration remote has a Members panel with the directory and an invite form. The panel marks your own row by comparing `profile/me` with the directory, until Phase B returns that flag. The Close month form now wraps at 320 px, which the new narrow-width check found.
-- **Phase B** (member management APIs): not started.
+- **Phase B** (member management APIs): implemented on `feature/member-management-api`. `TenantMemberService` and `TenantMembersController` (`api/v1/members`, which replaces `ProfileController.Members` and adds `isCurrentUser`); the Tenant Admin check moved into `TenantAdministrators.IsActiveAdminAsync`, shared with the existing invitation route, and now also requires an active tenant. A wrong role answers 403 as before; an unknown or stale admin answers 401. The `.http` files stay anonymous-only, because `tests/local/HttpFiles.ps1` expects every request in them to answer 200.
 - **Phase C** (member management UI): not started.
 
 ## Audit: What Exists On `develop`
@@ -46,14 +46,14 @@ Branch `feature/member-invitations-ui`. No API change.
 
 Branch `feature/member-management-api`. Identity gets a `TenantMembersController` under `api/v1/members` (Gateway `/api/v1/identity/members/...`, policy `TenantMember`), guarded like `IssueAuthorizedInvitation`: active `TenantAdmin`, matching session version, no forced or overdue password change.
 
-- [ ] B1. Move `GET /members` into the new controller; add `GET /members/invitations` (pending, unexpired: email, role, invited by, expiry).
-- [ ] B2. `POST /members/invitations/{id}/resend` (expire the old code, issue and email a new one) and `DELETE /members/invitations/{id}` (revoke). A new invitation for an email expires that email's older pending invitations.
-- [ ] B3. `PUT /members/{accountId}/role` (`Employee` or `TenantAdmin`).
-- [ ] B4. `PUT /members/{accountId}/status` (`Active` or `Deactivated`). Reactivating an account with a password restores `Active`; without one it returns to `PendingActivation` and the activation email is sent again.
-- [ ] B5. `POST /members/{accountId}/activation` re-sends activation to a pending member.
-- [ ] B6. Accepting an invitation with an account that already has a password activates the membership at once (decision 5) and sends no activation email.
-- [ ] B7. Audit actions `member.invited`, `member.invitation_resent`, `member.invitation_revoked`, `member.role_changed`, `member.deactivated`, `member.reactivated`, `member.activation_resent`, with labels in the sys-admin audit list.
-- [ ] B8. Tests: service tests for every rule in decisions 2–3 and tenant isolation (another tenant's member or invitation is `NOT_FOUND`); HTTP guard tests; OpenAPI and `.http` updates; phase 2 smoke covers invite, list, role change, deactivate, and reactivate through Gateway.
+- [x] B1. Move `GET /members` into the new controller; add `GET /members/invitations` (pending, unexpired: email, role, invited by, expiry).
+- [x] B2. `POST /members/invitations/{id}/resend` (expire the old code, issue and email a new one) and `DELETE /members/invitations/{id}` (revoke). A new invitation for an email expires that email's older pending invitations.
+- [x] B3. `PUT /members/{accountId}/role` (`Employee` or `TenantAdmin`).
+- [x] B4. `PUT /members/{accountId}/status` (`Active` or `Deactivated`). Reactivating an account with a password restores `Active`; without one it returns to `PendingActivation` and the activation email is sent again.
+- [x] B5. `POST /members/{accountId}/activation` re-sends activation to a pending member.
+- [x] B6. Accepting an invitation with an account that already has a password activates the membership at once (decision 5) and sends no activation email.
+- [x] B7. Audit actions `member.invited`, `member.invitation_resent`, `member.invitation_revoked`, `member.role_changed`, `member.deactivated`, `member.reactivated`, `member.activation_resent`, with labels in the sys-admin audit list.
+- [x] B8. Tests: service tests for every rule in decisions 2–3 and tenant isolation (another tenant's member or invitation is `NOT_FOUND`); HTTP guard tests; OpenAPI from the controller attributes; phase 2 smoke covers invite, list, role change, deactivate, and reactivate through Gateway.
 
 ## Phase C — Member Management UI
 

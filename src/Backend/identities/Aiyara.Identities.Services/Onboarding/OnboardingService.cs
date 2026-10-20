@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Models.Tenancy;
@@ -109,10 +110,14 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
             throw new OnboardingException(OnboardingFailure.Conflict, "Account is already a tenant member.");
         }
 
+        // An account that already has a password (it belongs to another organization) keeps it:
+        // activation would replace the password it uses everywhere, so it joins as active and signs
+        // in with that password. A new account sets its first password through activation.
         var membership = new Membership
         {
             Id = IdentityGuid.New(), TenantId = invitation.TenantId, AccountId = account.Id,
-            Role = invitation.Role, Status = MembershipStatus.PendingActivation,
+            Role = invitation.Role,
+            Status = account.PasswordHash is null ? MembershipStatus.PendingActivation : MembershipStatus.Active,
             CreatedAtUtc = now
         };
         db.Memberships.Add(membership);
@@ -154,18 +159,36 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
             throw new OnboardingException(OnboardingFailure.Conflict, "Account is already a tenant member.");
         }
 
+        var now = DateTime.UtcNow;
+        var (invitation, code) = await ReplaceInvitationAsync(tenantId, email, role, actorAccountId, now,
+            cancellationToken);
+        PlatformOrganizationService.Audit(db, tenantId, actorAccountId, "member.invited", null, null,
+            JsonSerializer.Serialize(new { Email = email, Role = role.ToString() }), now);
+        await db.SaveChangesAsync(cancellationToken);
+        return new IssueInvitationResponse(invitation.Id, tenantId, invitation.ExpiresAtUtc, code);
+    }
+
+    /// <summary>Adds a 7-day invitation and expires the email's older pending invitations in the
+    /// tenant, so only the newest code works. Does not save.</summary>
+    internal async Task<(Invitation Invitation, string Code)> ReplaceInvitationAsync(Guid tenantId,
+        string email, TenantRole role, Guid actorAccountId, DateTime now,
+        CancellationToken cancellationToken)
+    {
+        tenantScope.TenantId = tenantId;
+        var pending = await db.Invitations.Where(x => x.Email == email && x.AcceptedAtUtc == null &&
+            x.ExpiresAtUtc > now).ToListAsync(cancellationToken);
+        foreach (var stale in pending) stale.ExpiresAtUtc = now;
         var code = InvitationCode.Generate();
         var invitation = new Invitation
         {
             Id = IdentityGuid.New(), TenantId = tenantId, Email = email,
             TokenHash = InvitationCode.Hash(code), Role = role,
             InvitedByAccountId = actorAccountId,
-            CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.AddDays(7)
+            CreatedAtUtc = now,
+            ExpiresAtUtc = now.AddDays(7)
         };
         db.Invitations.Add(invitation);
-        await db.SaveChangesAsync(cancellationToken);
-        return new IssueInvitationResponse(invitation.Id, tenantId, invitation.ExpiresAtUtc, code);
+        return (invitation, code);
     }
 
     public async Task<IssueInvitationResponse> IssueInvitationWithKeyAsync(
@@ -207,23 +230,10 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         Guid tenantId, Guid actorAccountId, long sessionVersion,
         IssueInvitationRequest request, CancellationToken cancellationToken)
     {
-        tenantScope.TenantId = tenantId;
-        var account = await db.Accounts.SingleOrDefaultAsync(x => x.Id == actorAccountId,
-            cancellationToken);
-        var membership = await db.Memberships.SingleOrDefaultAsync(x =>
-            x.AccountId == actorAccountId && x.Role == TenantRole.TenantAdmin &&
-            x.Status == MembershipStatus.Active, cancellationToken);
-        if (account is null || account.SessionVersion != sessionVersion ||
-            membership is null)
+        if (!await TenantAdministrators.IsActiveAdminAsync(db, tenantScope, tenantId, actorAccountId,
+                sessionVersion, cancellationToken))
             throw new OnboardingException(OnboardingFailure.Unauthorized,
-                "Active tenant administrator is required.");
-        var tenant = await db.Tenants.SingleAsync(cancellationToken);
-        if (account.MustChangePassword || membership.MustChangePassword ||
-            account.PasswordChangedAtUtc is null ||
-            account.PasswordChangedAtUtc < tenant.PasswordPolicyUpdatedAtUtc ||
-            account.PasswordChangedAtUtc < DateTime.UtcNow.AddDays(-tenant.PasswordExpiryDays))
-            throw new OnboardingException(OnboardingFailure.Unauthorized,
-                "Password change is required.");
+                "Active tenant administrator with a current password is required.");
         return await IssueInvitationAsync(tenantId, actorAccountId, request,
             cancellationToken);
     }

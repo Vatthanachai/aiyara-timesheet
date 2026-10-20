@@ -1221,6 +1221,22 @@ test('invitation page accepts a code and points to activation, and explains a ba
   await expect(page).toHaveURL(/\/activate$/)
 })
 
+test('an account that already has a password joins from the invitation page without activation', async ({ page }) => {
+  await page.route('**/api/v1/invitations/accept', route => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(apiOk({ tenantId, accountId: 'a3', membershipId: 'm3', role: 'Employee', status: 'Active' })) }))
+
+  await page.goto('/accept-invitation')
+  await waitForHydration(page)
+  await page.getByLabel('Invitation code from email').fill('member-code')
+  await page.getByRole('button', { name: 'Accept invitation' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Invitation accepted' })).toBeVisible()
+  await expect(page.getByText('Sign in with your email and your existing password.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Go to activation' })).toHaveCount(0)
+  await page.getByRole('link', { name: 'Go to sign in' }).click()
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
+})
+
 test('platform admin creates an organization through the authenticated platform route', async ({ page }) => {
   let createRequest: { authorization: string; body: unknown } | undefined
   let publicSignupCalled = false

@@ -103,6 +103,40 @@ Expect-Status (Send-Json '/api/v1/auth/login' @{
     organizationCode = $tenant.organizationCode; email = $employeeEmail; password = $oldPassword
 }) 200 'invited employee login'
 
+# Tenant Admin member management through Gateway.
+function Get-Members([string]$path) {
+    $response = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members$path" -Headers $authorization -SkipHttpErrorCheck
+    Expect-Status $response 200 "GET members$path"
+    @(($response.Content | ConvertFrom-Json).result)
+}
+$members = Get-Members ''
+$employee = $members | Where-Object email -eq $employeeEmail
+$self = $members | Where-Object email -eq $adminEmail
+if (-not $employee -or $employee.status -ne 'Active' -or -not $self.isCurrentUser) {
+    throw 'Member directory did not list the activated employee and mark the admin as the caller.'
+}
+$pendingEmail = "phase2-pending-$suffix@example.test"
+Expect-Status (Send-Json "/api/v1/auth/tenants/$($tenant.tenantId)/invitations" @{
+    email = $pendingEmail; role = 'Employee'
+} 'Post' $authorization) 201 'second invitation'
+$pending = Get-Members '/invitations' | Where-Object email -eq $pendingEmail
+if (-not $pending) { throw 'Pending invitation was not listed.' }
+Expect-Status (Send-Json "/api/v1/identity/members/invitations/$($pending.id)" $null 'Delete' $authorization) 204 'invitation revocation'
+if (Get-Members '/invitations' | Where-Object email -eq $pendingEmail) { throw 'Revoked invitation is still listed.' }
+Expect-Status (Send-Json "/api/v1/identity/members/$($self.id)/role" @{ role = 'Employee' } 'Put' $authorization) 409 'own role change'
+Expect-Status (Send-Json "/api/v1/identity/members/$($employee.id)/role" @{ role = 'TenantAdmin' } 'Put' $authorization) 204 'promotion'
+Expect-Status (Send-Json "/api/v1/identity/members/$($employee.id)/status" @{ active = $false } 'Put' $authorization) 204 'deactivation'
+Expect-Status (Send-Json '/api/v1/auth/login' @{
+    organizationCode = $tenant.organizationCode; email = $employeeEmail; password = $oldPassword
+}) 401 'deactivated member login'
+Expect-Status (Send-Json "/api/v1/identity/members/$($employee.id)/status" @{ active = $true } 'Put' $authorization) 204 'reactivation'
+Expect-Status (Send-Json '/api/v1/auth/login' @{
+    organizationCode = $tenant.organizationCode; email = $employeeEmail; password = $oldPassword
+}) 200 'reactivated member login'
+if ((Get-Members '' | Where-Object email -eq $employeeEmail).role -ne 'TenantAdmin') {
+    throw 'Reactivation did not keep the promoted role.'
+}
+
 $refreshed = Send-Json '/api/v1/auth/refresh' @{
     refreshToken = $session.refreshToken
 }

@@ -363,6 +363,12 @@ public sealed class PlatformOrganizationService(IdentityDbContext db, TenantScop
 
     internal void AddAudit(Guid tenantId, Guid actorAccountId, string action, string? reason,
         string? before, string? after, DateTime? createdAtUtc = null) =>
+        Audit(db, tenantId, actorAccountId, action, reason, before, after, createdAtUtc);
+
+    /// <summary>Adds an organization audit row; Tenant Admin member actions use it too, so
+    /// Platform Admins see them in the audit log. Does not save.</summary>
+    internal static void Audit(IdentityDbContext db, Guid tenantId, Guid actorAccountId,
+        string action, string? reason, string? before, string? after, DateTime? createdAtUtc = null) =>
         db.PlatformOrganizationAudits.Add(new PlatformOrganizationAudit
         {
             Id = IdentityGuid.New(), TenantId = tenantId, ActorAccountId = actorAccountId,
