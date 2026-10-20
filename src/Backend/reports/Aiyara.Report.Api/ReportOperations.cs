@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Aiyara.Report.Databases;
 using Aiyara.Report.Models;
@@ -126,7 +127,7 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         var rows = await query.OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Join(db.ReportDefinitions, run => run.ReportDefinitionId, definition => definition.Id,
-                (run, definition) => new { run.Id, run.SubjectUserId, run.Status,
+                (run, definition) => new { run.Id, run.SubjectUserId, run.SubjectGroupName, run.Status,
                     run.PeriodStartUtc, run.PeriodEndUtc, run.AttemptCount, run.CreatedAtUtc,
                     run.CompletedAtUtc, run.FailureReason, DefinitionId = definition.Id,
                     definition.Kind, definition.Format, definition.Name,
@@ -136,7 +137,7 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         var items = rows.Select(row =>
         {
             var (reason, blockedMonth) = ReportRunReasons.Describe(row.Status, row.FailureReason);
-            return new { row.Id, row.DefinitionId, row.SubjectUserId, row.Status,
+            return new { row.Id, row.DefinitionId, row.SubjectUserId, row.SubjectGroupName, row.Status,
                 StatusReason = reason, BlockedMonth = blockedMonth, row.PeriodStartUtc, row.PeriodEndUtc,
                 row.AttemptCount, row.CreatedAtUtc, row.CompletedAtUtc, row.SignedVersion,
                 row.Kind, row.Format, row.Name };
@@ -149,22 +150,36 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         if (body.PeriodStartUtc >= body.PeriodEndUtc ||
             body.PeriodEndUtc - body.PeriodStartUtc > TimeSpan.FromDays(367))
             return Error(400, "VALIDATION_FAILED");
+        var isGroup = body.GroupName is not null || body.GroupMemberIds is not null;
+        if (isGroup && !actor.IsAdmin) return Error(403, "FORBIDDEN");
+        var groupName = body.GroupName?.Trim();
+        var groupMembers = body.GroupMemberIds?.Distinct().Order().ToArray();
+        if (isGroup && (body.SubjectUserId is not null || groupName is not { Length: > 0 and <= 100 } ||
+                groupMembers is not { Length: > 0 and <= RunQuery.MaxSubjectUserIds }))
+            return Error(400, "VALIDATION_FAILED");
         var subject = body.SubjectUserId ?? (actor.IsAdmin ? null : actor.UserId);
         if (!actor.IsAdmin && subject != actor.UserId) return Error(403, "FORBIDDEN");
         var definition = await db.ReportDefinitions.SingleOrDefaultAsync(x =>
             x.Id == body.DefinitionId && x.IsEnabled, ct);
         if (definition is null) return Error(404, "NOT_FOUND");
-        var key = $"manual:{definition.Id:N}:{subject?.ToString("N") ?? "tenant"}:{body.PeriodStartUtc:yyyyMMdd}:{body.PeriodEndUtc:yyyyMMdd}";
+        var groupMembersJson = groupMembers is null ? null : JsonSerializer.Serialize(groupMembers);
+        // The same group (name and members) for the same period is the same report.
+        var target = groupMembersJson is not null
+            ? "group-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(groupName + "\n" + groupMembersJson)))[..32]
+            : subject?.ToString("N") ?? "tenant";
+        var key = $"manual:{definition.Id:N}:{target}:{body.PeriodStartUtc:yyyyMMdd}:{body.PeriodEndUtc:yyyyMMdd}";
         var existing = await db.ReportRuns.SingleOrDefaultAsync(x => x.IdempotencyKey == key, ct);
         if (existing is not null) return Accepted(existing, $"/api/v1/runs/{existing.Id}");
         await storage.EnsureBucketAsync(ct);
         var run = new ReportRun { TenantId = actor.TenantId, ReportDefinitionId = definition.Id,
-            SubjectUserId = subject, RequestedBy = actor.UserId, TimeZoneId = actor.TimeZoneId,
+            SubjectUserId = subject, SubjectGroupName = isGroup ? groupName : null,
+            SubjectGroupMemberIdsJson = groupMembersJson, RequestedBy = actor.UserId, TimeZoneId = actor.TimeZoneId,
             IdempotencyKey = key, PeriodStartUtc = body.PeriodStartUtc.UtcDateTime,
             PeriodEndUtc = body.PeriodEndUtc.UtcDateTime, CreatedAtUtc = DateTime.UtcNow };
         db.ReportRuns.Add(run);
         Audit(actor, "run.requested", run.Id, new { definition.Kind, definition.Format,
-            run.SubjectUserId, run.PeriodStartUtc, run.PeriodEndUtc });
+            run.SubjectUserId, run.SubjectGroupName, GroupMemberCount = groupMembers?.Length,
+            run.PeriodStartUtc, run.PeriodEndUtc });
         await db.SaveChangesAsync(ct);
         try { await ReportCommandPublisher.PublishAsync(configuration, actor.TenantId, run, definition, ct); }
         catch (Exception) { /* Scheduled recovery republishes queued runs. */ }

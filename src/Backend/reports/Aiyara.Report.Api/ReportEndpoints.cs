@@ -11,8 +11,13 @@ using RabbitMQ.Client;
 namespace Aiyara.Report.Api;
 
 public sealed record DefinitionRequest(ReportKind Kind, ReportFormat Format, string Name);
+/// <summary>SubjectUserId reports on one member. Tenant Admins may instead report on a member group
+/// with GroupName and GroupMemberIds (1–<see cref="RunQuery.MaxSubjectUserIds"/> accounts); Report
+/// does not know about groups, so the caller sends the group's current members and the run keeps
+/// them. Neither means the whole organization (admins) or yourself (employees).</summary>
 public sealed record RunRequest(Guid DefinitionId, DateTimeOffset PeriodStartUtc,
-    DateTimeOffset PeriodEndUtc, Guid? SubjectUserId);
+    DateTimeOffset PeriodEndUtc, Guid? SubjectUserId, string? GroupName = null,
+    IReadOnlyCollection<Guid>? GroupMemberIds = null);
 public sealed record ScheduleRequest(Guid ReportDefinitionId, string TimeZoneId, TimeOnly LocalTime);
 public sealed record RetentionRequest(int Years);
 /// <summary>SubjectUserIds, when given, keeps only runs about those members (at most

@@ -38,6 +38,10 @@ public sealed class ReportRun : ITenantOwnedReportRecord
     public Guid TenantId { get; set; }
     public Guid ReportDefinitionId { get; set; }
     public Guid? SubjectUserId { get; set; }
+    /// <summary>For a member group report: the group's name and its members (a JSON array of
+    /// account IDs) when it was requested. Null for member and whole-organization reports.</summary>
+    public string? SubjectGroupName { get; set; }
+    public string? SubjectGroupMemberIdsJson { get; set; }
     public Guid RequestedBy { get; set; }
     public required string TimeZoneId { get; set; }
     public required string IdempotencyKey { get; set; }

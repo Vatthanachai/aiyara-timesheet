@@ -1794,7 +1794,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     run('run-blocked', { status: 'Queued', statusReason: 'SOURCE_MONTH_NOT_LOCKED', blockedMonth: '2026-09',
       subjectUserId: 'member-somchai', completedAtUtc: null }),
     run('run-failed', { status: 'Failed', statusReason: 'GENERATION_FAILED' }),
-    run('run-ready', { signedVersion: 2, subjectUserId: 'member-gone' })
+    run('run-ready', { signedVersion: 2, subjectUserId: 'member-gone' }),
+    run('run-group', { subjectGroupName: 'Outsource' })
   ]
   await page.route('**/api/v1/**', async route => {
     const request = route.request()
@@ -1880,6 +1881,7 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await expect(history).toContainText('Somchai Staff')
   await expect(history).toContainText('Former member')
   await expect(history).toContainText('Whole organization')
+  await expect(history).toContainText('Group: Outsource')
   await expect(history).toContainText('Waiting for 2026-09 to be locked')
   await expect(history).toContainText('Request it again')
   await expect(history).toContainText('Signed v2')
@@ -1890,7 +1892,8 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   const year = new Date().getFullYear()
   await frame.locator('.request-form').getByLabel(/^Month/).selectOption('1')
   await frame.locator('.request-form').getByLabel(/^Year/).selectOption(String(year))
-  await expect(frame.getByLabel('Report on').locator('option')).toHaveText(['Whole organization', 'Anong Admin', 'Somchai Staff'])
+  await expect(frame.getByLabel('Report on').locator('option'))
+    .toHaveText(['Whole organization', 'Outsource', 'Permanent staff', 'Anong Admin', 'Somchai Staff'])
   await frame.getByLabel('Report on').selectOption({ label: 'Somchai Staff' })
   await expect(frame.locator('.preview')).toHaveText(`Period: Jan 1, ${year} – Jan 31, ${year} (Asia/Bangkok)`)
   await frame.getByRole('button', { name: 'Generate report' }).click()
@@ -1898,6 +1901,15 @@ test('reporting shows names and reasons, requests a member report by calendar pe
     definitionId: 'def-month', subjectUserId: 'member-somchai',
     periodStartUtc: `${year - 1}-12-31T17:00:00.000Z`, periodEndUtc: `${year}-01-31T17:00:00.000Z`
   }])
+
+  // A member group report sends the group's name and its current members.
+  await frame.getByLabel('Report on').selectOption({ label: 'Outsource' })
+  await frame.getByRole('button', { name: 'Generate report' }).click()
+  await expect.poll(() => state.created.at(-1)).toEqual({
+    definitionId: 'def-month', subjectUserId: null, groupName: 'Outsource', groupMemberIds: ['member-somchai'],
+    periodStartUtc: `${year - 1}-12-31T17:00:00.000Z`, periodEndUtc: `${year}-01-31T17:00:00.000Z`
+  })
+  await frame.getByLabel('Report on').selectOption({ label: 'Whole organization' })
 
   // Weekly report: any day picks its Monday-to-Sunday week.
   await frame.locator('.request-form select').first().selectOption('def-week')
@@ -1922,7 +1934,7 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await expect(frame.getByText('No reports match these filters.')).toBeVisible()
   await groupFilter.selectOption({ label: 'All groups' })
   await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual([])
-  await expect(history.locator('tbody tr')).toHaveCount(4)
+  await expect(history.locator('tbody tr')).toHaveCount(5)
 
   // While a report is queued the list refreshes itself.
   await expect(frame.getByText('Statuses refresh automatically')).toBeVisible()

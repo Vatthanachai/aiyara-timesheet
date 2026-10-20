@@ -96,6 +96,56 @@ public sealed class ReportRunListingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Admins_request_a_member_group_report_once_per_group_and_period()
+    {
+        var (ada, ben) = (Guid.NewGuid(), Guid.NewGuid());
+        RunRequest Request(string? name, params Guid[] members) => new(monthly.Id,
+            new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero),
+            null, name, members);
+
+        var created = await operations.CreateRun(Admin, Request(" Outsource ", ben, ada, ada), default);
+        var again = await operations.CreateRun(Admin, Request("Outsource", ada, ben), default);
+        var otherMembers = await operations.CreateRun(Admin, Request("Outsource", ada), default);
+
+        Assert.Equal(202, created.StatusCode);
+        db.ChangeTracker.Clear();
+        var run = await db.ReportRuns.SingleAsync(x => x.SubjectGroupName != null && x.SubjectGroupMemberIdsJson!.Contains(ben.ToString()));
+        Assert.Equal("Outsource", run.SubjectGroupName);
+        Assert.Null(run.SubjectUserId);
+        Assert.Equal(new[] { ada, ben }.Order(), JsonSerializer.Deserialize<Guid[]>(run.SubjectGroupMemberIdsJson!));
+        // The same group and period is the same report; a different membership is a new one.
+        Assert.Equal(run.Id, Result(again, 202).GetProperty("id").GetGuid());
+        Assert.NotEqual(run.Id, Result(otherMembers, 202).GetProperty("id").GetGuid());
+        var listed = (await RunsAsync(Admin, new RunQuery(null, null))).GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == run.Id);
+        Assert.Equal("Outsource", listed.GetProperty("subjectGroupName").GetString());
+        Assert.Contains("\"SubjectGroupName\":\"Outsource\"", (await db.Audits.FirstAsync(x => x.ReportRunId == run.Id)).DetailsJson);
+    }
+
+    [Fact]
+    public async Task Group_reports_are_for_admins_with_a_named_group_of_one_to_five_hundred_members()
+    {
+        var period = (Start: new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero), End: new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+        async Task<(int, string?)> Create(ReportActor actor, Guid? subject, string? name, Guid[]? members)
+        {
+            var response = await operations.CreateRun(actor, new RunRequest(monthly.Id, period.Start, period.End,
+                subject, name, members), default);
+            return (response.StatusCode, ErrorCode(response));
+        }
+
+        Assert.Equal((403, "FORBIDDEN"), await Create(Employee, null, "Outsource", [employeeId]));
+        Assert.Equal((400, "VALIDATION_FAILED"), await Create(Admin, employeeId, "Outsource", [employeeId]));
+        Assert.Equal((400, "VALIDATION_FAILED"), await Create(Admin, null, "  ", [employeeId]));
+        Assert.Equal((400, "VALIDATION_FAILED"), await Create(Admin, null, new string('x', 101), [employeeId]));
+        Assert.Equal((400, "VALIDATION_FAILED"), await Create(Admin, null, "Outsource", []));
+        Assert.Equal((400, "VALIDATION_FAILED"), await Create(Admin, null, "Outsource", null));
+        Assert.Equal((400, "VALIDATION_FAILED"), await Create(Admin, null, "Outsource",
+            Enumerable.Range(0, RunQuery.MaxSubjectUserIds + 1).Select(_ => Guid.NewGuid()).ToArray()));
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, await db.ReportRuns.CountAsync(x => x.SubjectGroupName != null));
+    }
+
+    [Fact]
     public async Task Employees_see_only_their_own_runs()
     {
         var page = await RunsAsync(Employee, new RunQuery(null, null));
@@ -158,7 +208,9 @@ public sealed class ReportRunListingTests : IAsyncLifetime
         db = new ReportingDbContext(new DbContextOptionsBuilder<ReportingDbContext>()
             .UseSqlite(connection).Options, scope);
         await db.Database.EnsureCreatedAsync();
-        operations = new ReportOperations(db, new ConfigurationBuilder().Build(), new UnusedStorage());
+        // Publishing a requested run fails fast against a host that never resolves; recovery would republish it.
+        operations = new ReportOperations(db, new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["RabbitMQ:Host"] = "rabbitmq.invalid" }).Build(), new UnusedStorage());
 
         var now = DateTime.UtcNow;
         monthly = Definition(ReportKind.Monthly, "Monthly PDF");
@@ -211,9 +263,9 @@ public sealed class ReportRunListingTests : IAsyncLifetime
     private async Task<JsonElement> RunsAsync(ReportActor actor, RunQuery query) =>
         Result(await operations.Runs(actor, query, default));
 
-    private static JsonElement Result(ServiceResponse response)
+    private static JsonElement Result(ServiceResponse response, int status = 200)
     {
-        Assert.Equal(200, response.StatusCode);
+        Assert.Equal(status, response.StatusCode);
         var result = response.GetType().GetProperty("Result")!.GetValue(response);
         return JsonSerializer.SerializeToElement(result, Json);
     }
@@ -223,7 +275,7 @@ public sealed class ReportRunListingTests : IAsyncLifetime
 
     private sealed class UnusedStorage : IReportObjectStorage
     {
-        public Task EnsureBucketAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task EnsureBucketAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task PutAsync(string key, Stream content, string contentType, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
         public Task<ReportObjectDownload> GetAsync(string key, CancellationToken cancellationToken = default) =>
