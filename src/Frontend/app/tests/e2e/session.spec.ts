@@ -1091,6 +1091,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
     }
     if (url.pathname.endsWith('/identity/members')) return ok([])
     if (url.pathname.endsWith('/identity/members/invitations')) return ok([])
+    if (url.pathname.endsWith('/identity/organization')) return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null })
     if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'admin@example.test', firstName: '', lastName: '', photoUrl: null })
     return route.fulfill({ status: 404, headers: cors })
   })
@@ -1156,6 +1157,7 @@ test('tenant admin manages members and invitations from the Members panel', asyn
     if (path === '/identity/profile/me') return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
     if (path === '/identity/members') return ok(members)
     if (path === '/identity/members/invitations') return ok(invitations)
+    if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null })
     if (request.method() !== 'GET') calls.push(`${request.method()} ${path} ${request.postData() ?? ''}`.trim())
     if (path === `/auth/tenants/${tenantId}/invitations`) {
       const body = request.postDataJSON()
@@ -1266,6 +1268,91 @@ test('tenant admin manages members and invitations from the Members panel', asyn
     await page.setViewportSize({ width, height: 820 })
     await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
+})
+
+test('tenant admin renames the organization and sets its logo, and the Shell header follows', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=', 'base64')
+  const organization = { name: 'Acme', organizationCode: 'ACME123', logoUrl: null as string | null }
+  const changes: string[] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    // The Shell (3100) and the remote (3104) both call these routes.
+    const headers = { ...cors, 'access-control-allow-origin': request.headers().origin || 'http://127.0.0.1:3100' }
+    const ok = (result: unknown) => route.fulfill({ status: 200, headers, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+    const path = url.pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [] })
+    if (path === `/identity/tenants/${tenantId}/password-policy`)
+      return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
+    if (path === '/identity/profile/me') return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
+    if (path === '/identity/members' || path === '/identity/members/invitations') return ok([])
+    if (path === '/identity/organization') {
+      if (request.method() === 'PUT') {
+        changes.push(`rename ${request.postDataJSON().name}`)
+        organization.name = request.postDataJSON().name.trim()
+      }
+      return ok(organization)
+    }
+    if (path === '/identity/organization/logo') {
+      if (request.method() === 'GET') return route.fulfill({ status: 200, headers, contentType: 'image/png', body: png })
+      if (request.method() === 'POST') {
+        changes.push(`upload ${(request.postDataBuffer()?.includes('name="logo"')) ? 'logo' : 'missing'}`)
+        organization.logoUrl = '/api/v1/identity/organization/logo?v=1'
+      } else {
+        changes.push('remove')
+        organization.logoUrl = null
+      }
+      return ok(organization)
+    }
+    return route.fulfill({ status: 404, headers })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  const brand = page.locator('.shell-header .brand')
+  await expect(brand).toHaveText('Aiyara Timesheet')
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(brand).toHaveText('Acme')
+  await expect(brand.locator('img')).toHaveCount(0)
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+
+  const frame = page.frameLocator('iframe')
+  const panel = frame.getByRole('region', { name: 'Organization' })
+  await expect(panel.getByLabel('Organization name')).toHaveValue('Acme')
+  await expect(panel.getByRole('button', { name: 'Save name' })).toBeDisabled()
+  await panel.getByLabel('Organization name').fill('  Acme Studio  ')
+  await panel.getByRole('button', { name: 'Save name' }).click()
+  await expect(frame.getByText('Organization name saved.')).toBeVisible()
+  await expect(brand).toHaveText('Acme Studio')
+
+  await panel.locator('input[type=file]').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: png })
+  await expect(frame.getByText('Logo updated.')).toBeVisible()
+  await expect(panel.getByRole('img', { name: 'Logo' })).toHaveAttribute('src', /^blob:/)
+  await expect(brand.locator('img')).toHaveAttribute('src', /^blob:/)
+  await expect(panel.getByText('Replace logo')).toBeVisible()
+
+  await panel.getByRole('button', { name: 'Remove logo' }).click()
+  await expect(frame.getByText('Logo removed.')).toBeVisible()
+  await expect(brand.locator('img')).toHaveCount(0)
+  await expect(panel.getByText('No logo yet')).toBeVisible()
+  expect(changes).toEqual(['rename   Acme Studio  ', 'upload logo', 'remove'])
+
+  await page.locator('.profile-trigger').click()
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await expect(brand).toHaveText('Aiyara Timesheet')
 })
 
 test('invitation page accepts a code and points to activation, and explains a bad code', async ({ page }) => {

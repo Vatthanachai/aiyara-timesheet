@@ -26,6 +26,7 @@ builder.Services.AddScoped<PlatformConsoleService>();
 builder.Services.AddScoped<PlatformAdminRosterService>();
 builder.Services.AddScoped<PlatformSecurityService>();
 builder.Services.AddScoped<TenantMemberService>();
+builder.Services.AddScoped<OrganizationBrandingService>();
 // Fails at startup without a valid key, so second factors are never stored unencrypted.
 builder.Services.AddSingleton<IMfaSecretProtector>(
     new AesGcmMfaSecretProtector(builder.Configuration["Mfa:EncryptionKey"]));
@@ -33,7 +34,10 @@ builder.Services.AddScoped<Aiyara.Identities.Api.Controllers.PlatformActorResolv
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<PlatformAdminBootstrap>();
 builder.Services.AddSingleton(ProfilePhotoStorage.CreateClient(builder.Configuration));
-builder.Services.AddSingleton<IProfilePhotoStorage, ProfilePhotoStorage>();
+builder.Services.AddSingleton<ProfilePhotoStorage>();
+builder.Services.AddSingleton<IProfilePhotoStorage>(services => services.GetRequiredService<ProfilePhotoStorage>());
+builder.Services.AddSingleton<IOrganizationLogoStorage>(services => services.GetRequiredService<ProfilePhotoStorage>());
+builder.Services.AddScoped<AuthenticatedMemberResolver>();
 builder.Services.AddSingleton<ISessionRevocationPublisher, RedisSessionRevocationPublisher>();
 builder.Services.AddSingleton<ICredentialAttemptLimiter, RedisCredentialAttemptLimiter>();
 builder.Services.Configure<PasswordGenerateSetting>(builder.Configuration.GetSection("PasswordGeneration"));

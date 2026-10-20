@@ -19,4 +19,8 @@ public sealed class Tenant
     public bool PasswordRequireSymbol { get; set; } = true;
     public DateTime PasswordPolicyUpdatedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    /// <summary>Object-storage key of the organization's logo, shown in the Shell header.</summary>
+    public string? LogoKey { get; set; }
+    /// <summary>When the logo last changed; versions its URL so browsers fetch the new one.</summary>
+    public DateTime? LogoUpdatedAtUtc { get; set; }
 }

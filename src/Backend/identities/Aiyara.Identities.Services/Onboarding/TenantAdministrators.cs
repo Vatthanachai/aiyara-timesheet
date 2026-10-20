@@ -7,7 +7,7 @@ namespace Aiyara.Identities.Services.Onboarding;
 /// <summary>The check behind every Tenant Admin action on members: an active TenantAdmin
 /// membership in the tenant, the token's session version, and a password that is neither
 /// flagged for change nor older than the tenant's policy or expiry. Leaves the tenant scope set.</summary>
-internal static class TenantAdministrators
+public static class TenantAdministrators
 {
     public static async Task<bool> IsActiveAdminAsync(IdentityDbContext db, TenantScope tenantScope,
         Guid tenantId, Guid actorAccountId, long sessionVersion, CancellationToken cancellationToken)

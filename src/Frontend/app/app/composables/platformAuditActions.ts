@@ -6,7 +6,8 @@ export const platformAuditActions = [
   'platform_admin.mfa_enrolled', 'platform_admin.mfa_reset', 'platform_admin.recovery_code_used', 'platform.password_policy_updated',
   'platform_admin.signed_in', 'platform_admin.sign_in_failed',
   'member.invited', 'member.invitation_resent', 'member.invitation_revoked', 'member.role_changed',
-  'member.deactivated', 'member.reactivated', 'member.activation_resent'
+  'member.deactivated', 'member.reactivated', 'member.activation_resent',
+  'organization.logo_updated', 'organization.logo_removed'
 ] as const
 
 export type PlatformAuditAction = typeof platformAuditActions[number]
@@ -25,7 +26,8 @@ export const platformAuditActionLabels: Record<'th' | 'en', Record<PlatformAudit
     'member.invited': 'ผู้ดูแลองค์กรเชิญสมาชิก', 'member.invitation_resent': 'ส่งคำเชิญสมาชิกใหม่',
     'member.invitation_revoked': 'ยกเลิกคำเชิญสมาชิก', 'member.role_changed': 'เปลี่ยนบทบาทสมาชิก',
     'member.deactivated': 'ปิดการใช้งานสมาชิก', 'member.reactivated': 'เปิดใช้งานสมาชิกอีกครั้ง',
-    'member.activation_resent': 'ส่งรหัสเปิดใช้งานสมาชิกใหม่'
+    'member.activation_resent': 'ส่งรหัสเปิดใช้งานสมาชิกใหม่',
+    'organization.logo_updated': 'เปลี่ยนโลโก้องค์กร', 'organization.logo_removed': 'ลบโลโก้องค์กร'
   },
   en: {
     'organization.created': 'Organization created', 'organization.updated': 'Organization details changed',
@@ -40,6 +42,7 @@ export const platformAuditActionLabels: Record<'th' | 'en', Record<PlatformAudit
     'member.invited': 'Member invited', 'member.invitation_resent': 'Member invitation re-sent',
     'member.invitation_revoked': 'Member invitation revoked', 'member.role_changed': 'Member role changed',
     'member.deactivated': 'Member deactivated', 'member.reactivated': 'Member reactivated',
-    'member.activation_resent': 'Member activation re-sent'
+    'member.activation_resent': 'Member activation re-sent',
+    'organization.logo_updated': 'Organization logo changed', 'organization.logo_removed': 'Organization logo removed'
   }
 }
