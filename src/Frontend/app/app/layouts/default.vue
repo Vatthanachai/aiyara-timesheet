@@ -114,11 +114,11 @@ onUnmounted(() => {
   <div class="shell">
     <header class="shell-header">
       <NuxtLink class="brand" to="/">Aiyara Timesheet</NuxtLink>
-      <nav aria-label="Primary navigation" class="navigation">
+      <nav v-if="token" aria-label="Primary navigation" class="navigation">
         <NuxtLink v-for="item in visibleNavigation.filter((item) => item.id !== 'identity')" :key="item.id" :to="item.path">
           {{ item.label[locale] }}
         </NuxtLink>
-        <NuxtLink v-if="token && role === 'PlatformAdmin'" to="/sys-admin">
+        <NuxtLink v-if="role === 'PlatformAdmin'" to="/sys-admin">
           {{ text.organizations }}
         </NuxtLink>
       </nav>
