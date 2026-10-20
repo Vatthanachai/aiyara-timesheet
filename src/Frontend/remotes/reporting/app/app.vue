@@ -284,6 +284,13 @@ async function reportFetch(path: string, options: RequestInit = {}) {
   }, token, config.public.shellOrigin)
 }
 
+async function timesheetGet<T>(path: string, query: Record<string, unknown>) {
+  return unwrapResponse(await withRemoteRefresh(accessToken =>
+    $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/timesheets${path}`, {
+      query, headers: { Authorization: `Bearer ${accessToken}` }
+    }), token, config.public.shellOrigin))
+}
+
 async function loadMembers() {
   try {
     members.value = unwrapResponse(await withRemoteRefresh(accessToken =>
@@ -398,6 +405,8 @@ onMounted(() => {
           <button class="primary" type="submit" :disabled="busy || !requestPeriod">{{ busy ? copy.generating : copy.generate }}</button>
         </form>
       </section>
+
+      <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :time-zone-id="timeZoneId" :load="timesheetGet" />
 
       <section class="card" aria-labelledby="history-heading">
         <div class="card-heading">
