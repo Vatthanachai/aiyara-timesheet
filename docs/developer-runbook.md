@@ -77,6 +77,16 @@ RustFS, tests signed upload/download, confirms the email notification, and
 checks the persisted Notification delivery outcome. Pass `-ProjectName` to the
 Phase 4 script when using a non-default Compose project.
 
+Phase 2–4 read the delivered email from the mail catcher's web port
+(`-MailDevUrl`, default `http://127.0.0.1:8080`) through `tests/MailInbox.ps1`:
+
+- MailDev (this repo's `maildev` profile) needs nothing more; the scripts read
+  its open `/email` list.
+- aiyara-maildev requires an API token for `/api/v1/emails`. Create one on its
+  API Tokens page and set `MAILDEV_API_TOKEN` in `.env` (or pass
+  `-MailDevToken`, or set the `MAILDEV_API_TOKEN` environment variable). Its SMTP
+  user credentials do not work for the REST API.
+
 ```powershell
 pwsh -NoProfile -File tests/phase1/Smoke.ps1
 pwsh -NoProfile -File tests/phase2/Smoke.ps1
@@ -123,10 +133,12 @@ the complete sequence.
    `-MailDevUrl` matches its web port. Avoid starting the optional MailDev
    profile when another instance owns those host ports (`docker ps` shows
    what is actually bound). If `tests/phase2/3/4/Smoke.ps1` throws
-   "did not return MailDev's email list API", something else (commonly an
-   unrelated local tool) answered on the configured port instead of MailDev —
-   pass the correct `-MailDevUrl`, or stop the conflicting service, rather
-   than re-running the same command.
+   "did not return MailDev's email list API" or "did not return valid JSON",
+   either the catcher is aiyara-maildev and no `MAILDEV_API_TOKEN` is set, or
+   something else answered on the configured port — set the token, pass the
+   correct `-MailDevUrl`, or stop the conflicting service, rather than
+   re-running the same command. "rejected the API token" means the token was
+   revoked or mistyped.
 6. If a messaging or gRPC contract changes, update the source in
    `src/Backend/contracts/Aiyara.Timesheet.Contracts` and its consuming
    producer/consumer tests before rebuilding.
