@@ -2,7 +2,10 @@ import { inject, type InjectionKey, type Ref } from 'vue'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 
 export type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null }
-export type Task = { id: string; name: string; status: string; projectId: string | null; categoryId: string | null }
+/** Kanban columns in board order; the Timesheet API accepts exactly these task statuses. */
+export const taskStatuses = ['todo', 'doing', 'done'] as const
+export type TaskStatus = typeof taskStatuses[number]
+export type Task = { id: string; name: string; status: TaskStatus; projectId: string | null; categoryId: string | null }
 export type Leave = { id: string; date: string; kind: string; notes: string | null }
 export type CatalogItem = { id: string; name: string }
 export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[] }
@@ -25,12 +28,16 @@ export function useTimesheetText(locale: Ref<Locale>) {
     title: 'บันทึกเวลาทำงาน', month: 'เดือน', task: 'งาน', date: 'วันที่', start: 'เริ่ม', end: 'สิ้นสุด', duration: 'ชั่วโมง', detail: 'รายละเอียด', notes: 'หมายเหตุ', project: 'โครงการ', category: 'หมวดหมู่', save: 'บันทึก', cancel: 'ยกเลิก', edit: 'แก้ไข', remove: 'ลบ', add: 'เพิ่มรายการ', tasks: 'งานส่วนตัว', leaves: 'วันลา', kind: 'ประเภท', readOnly: 'เดือนที่ผ่านมาอ่านได้อย่างเดียว', noEntries: 'ยังไม่มีรายการ', status: 'สถานะ', drop: 'ลากงานมาที่แบบฟอร์มเพื่อเริ่มบันทึก', chooseDay: 'เลือกวัน', use: 'ใช้', todo: 'ต้องทำ', doing: 'กำลังทำ', done: 'เสร็จ', annual: 'พักร้อน', sick: 'ลาป่วย', other: 'อื่น ๆ', holidays: 'วันหยุด', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
     subtitle: 'บันทึกและติดตามเวลาทำงานของคุณในที่เดียว', saved: 'บันทึกแล้ว', confirmDeleteEntry: 'ลบรายการนี้?',
     startFromSaved: 'เริ่มจากงานที่บันทึกไว้', taskHint: 'เพิ่มงานที่ทำบ่อยไว้ใช้ซ้ำได้',
-    planTimeOff: 'วางแผนวันหยุด', noLeavePlanned: 'ยังไม่มีวันลาในเดือนนี้'
+    planTimeOff: 'วางแผนวันหยุด', noLeavePlanned: 'ยังไม่มีวันลาในเดือนนี้',
+    view: 'มุมมอง', entriesView: 'รายการเวลา', board: 'บอร์ดงาน', boardHint: 'ลากการ์ดไปคอลัมน์อื่นเพื่อเปลี่ยนสถานะ',
+    newTask: 'เพิ่มงานใหม่', moveTo: 'ย้ายไป', logTime: 'บันทึกเวลา', emptyColumn: 'ไม่มีงาน'
   }, en: {
     title: 'Time entries', month: 'Month', task: 'Task', date: 'Date', start: 'Start', end: 'End', duration: 'Hours', detail: 'Detail', notes: 'Notes', project: 'Project', category: 'Category', save: 'Save', cancel: 'Cancel', edit: 'Edit', remove: 'Delete', add: 'Add entry', tasks: 'Personal tasks', leaves: 'Leave', kind: 'Kind', readOnly: 'Past months are read only', noEntries: 'No entries yet', status: 'Status', drop: 'Drag a task here to start an entry', chooseDay: 'Choose a day', use: 'Use', todo: 'To do', doing: 'Doing', done: 'Done', annual: 'Annual', sick: 'Sick', other: 'Other', holidays: 'Holidays', signIn: 'Please sign in through Aiyara Shell',
     subtitle: 'Log and review your work time in one place.', saved: 'Saved', confirmDeleteEntry: 'Delete this entry?',
     startFromSaved: 'Start from a saved task', taskHint: 'Save tasks here to reuse them.',
-    planTimeOff: 'Plan time off', noLeavePlanned: 'No leave planned this month.'
+    planTimeOff: 'Plan time off', noLeavePlanned: 'No leave planned this month.',
+    view: 'View', entriesView: 'Entries', board: 'Task board', boardHint: 'Drag a card to another column to change its status.',
+    newTask: 'New task', moveTo: 'Move to', logTime: 'Log time', emptyColumn: 'No tasks'
   } })
   const labels = useLocaleText(locale, { th: {
     hoursLogged: 'ชั่วโมงที่บันทึก', daysTracked: 'วันที่มีรายการ', leaveDays: 'วันลา',

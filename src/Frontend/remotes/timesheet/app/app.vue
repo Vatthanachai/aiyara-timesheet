@@ -2,7 +2,7 @@
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale } from '../../../shared/i18n'
-import { readDroppedTrayItem, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TrayItem } from './utils/timesheet'
+import { readDroppedTrayItem, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
 const config = useRuntimeConfig()
@@ -19,6 +19,7 @@ const notice = ref('')
 const editingId = ref<string | null>(null)
 const form = reactive<EntryForm>({ date: new Date().toISOString().slice(0, 10), startTime: '09:00', endTime: '17:00', taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
 const taskName = ref('')
+const view = ref<'entries' | 'board'>('entries')
 const leaveDate = ref(new Date().toISOString().slice(0, 10))
 const leaveKind = ref('annual')
 const currentMonth = ref('')
@@ -101,6 +102,10 @@ function prefill(task: TrayItem, date?: string) {
   form.taskName = task.name; form.personalTaskId = task.personalTaskId || ''
   form.projectId = task.projectId || ''; form.categoryId = task.categoryId || ''
 }
+function logTask(task: TrayItem) {
+  view.value = 'entries'
+  prefill(task)
+}
 function dropTask(event: DragEvent, date?: string) {
   const item = readDroppedTrayItem(event)
   if (item) prefill(item, date)
@@ -126,9 +131,12 @@ async function addTask() {
   try { await api('/tasks', { method: 'POST', body: { name: taskName.value, status: 'todo' } }); taskName.value = ''; await load() }
   catch (cause) { error.value = safeError(cause, locale.value) }
 }
-async function setStatus(task: Task, status: string) {
+async function setStatus(task: Task, status: TaskStatus) {
+  // Move the card immediately so a board drop does not snap back while the request runs; a rejection reloads the real state.
+  task.status = status
   try { await api(`/tasks/${task.id}`, { method: 'PUT', body: { name: task.name, status, projectId: task.projectId, categoryId: task.categoryId } }); await load() }
-  catch (cause) { error.value = safeError(cause, locale.value) }
+  // load() clears the error on success, so reload first and report the rejection after it.
+  catch (cause) { await load(); error.value = safeError(cause, locale.value) }
 }
 async function renameTask(task: Task) {
   try { await api(`/tasks/${task.id}`, { method: 'PUT', body: { name: task.name, status: task.status, projectId: task.projectId, categoryId: task.categoryId } }); await load() }
@@ -174,25 +182,35 @@ async function updateLeave(leave: Leave) {
 
       <MonthSummary :total-hours="totalHours" :entry-count="entries.length" :active-days="activeDays" :leave-count="leaves.length" />
 
-      <div class="work-layout">
-        <div class="main-column">
-          <MonthCalendar v-if="canEdit" v-model:selected="form.date" :month="month" :month-label="monthLabel" :locale="locale"
-            :entry-days="daysWithEntries" :leave-days="daysWithLeave" :holiday-days="daysWithHoliday" @drop="dropTask" />
-          <EntryComposer v-if="canEdit && !editingId" :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd"
-            @save="saveEntry" @cancel="resetForm()" @drop="dropTask" />
+      <div class="view-switch" role="group" :aria-label="text.view">
+        <button type="button" :aria-pressed="view === 'entries'" @click="view = 'entries'">{{ text.entriesView }}</button>
+        <button type="button" :aria-pressed="view === 'board'" @click="view = 'board'">{{ text.board }}</button>
+      </div>
+
+      <TaskBoard v-if="view === 'board'" v-model:task-name="taskName" :tasks="tasks" :catalog="catalog" :can-log="canEdit"
+        @add="addTask" @status="setStatus" @remove="removeTask" @log="logTask" />
+
+      <template v-else>
+        <div class="work-layout">
+          <div class="main-column">
+            <MonthCalendar v-if="canEdit" v-model:selected="form.date" :month="month" :month-label="monthLabel" :locale="locale"
+              :entry-days="daysWithEntries" :leave-days="daysWithLeave" :holiday-days="daysWithHoliday" @drop="dropTask" />
+            <EntryComposer v-if="canEdit && !editingId" :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd"
+              @save="saveEntry" @cancel="resetForm()" @drop="dropTask" />
+          </div>
+
+          <TaskTray v-model:task-name="taskName" :tasks="tasks" :catalog="catalog" @add="addTask" @status="setStatus"
+            @rename="renameTask" @remove="removeTask" @use="prefill" />
         </div>
 
-        <TaskTray v-model:task-name="taskName" :tasks="tasks" :catalog="catalog" @add="addTask" @status="setStatus"
-          @rename="renameTask" @remove="removeTask" @use="prefill" />
-      </div>
+        <EntriesTable :entries="entries" :catalog="catalog" :can-edit="canEdit" :editing-id="editingId" :form="form" :month-label="monthLabel"
+          :month-start="monthStart" :month-end="monthEnd" @edit="edit" @remove="removeEntry" @save="saveEntry" @cancel="resetForm()" />
 
-      <EntriesTable :entries="entries" :catalog="catalog" :can-edit="canEdit" :editing-id="editingId" :form="form" :month-label="monthLabel"
-        :month-start="monthStart" :month-end="monthEnd" @edit="edit" @remove="removeEntry" @save="saveEntry" @cancel="resetForm()" />
-
-      <div class="support-grid">
-        <LeavePanel v-model:leave-date="leaveDate" v-model:leave-kind="leaveKind" :leaves="leaves" :holidays="catalog.holidays" :month="month"
-          :can-edit="canEdit" :month-start="monthStart" :month-end="monthEnd" @add="addLeave" @update="updateLeave" @remove="removeLeave" />
-      </div>
+        <div class="support-grid">
+          <LeavePanel v-model:leave-date="leaveDate" v-model:leave-kind="leaveKind" :leaves="leaves" :holidays="catalog.holidays" :month="month"
+            :can-edit="canEdit" :month-start="monthStart" :month-end="monthEnd" @add="addLeave" @update="updateLeave" @remove="removeLeave" />
+        </div>
+      </template>
     </template>
   </main>
 </template>
