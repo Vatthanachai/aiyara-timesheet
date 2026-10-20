@@ -7,8 +7,10 @@ using PdfSharp.Pdf;
 
 namespace Aiyara.Report.Services;
 
+/// <summary>One work or leave row. Member names whose row it is in a report about several people
+/// (a member group); documents show a Member column only when some row has one.</summary>
 public sealed record ReportLine(DateOnly Date, string Start, string End, int DurationMinutes,
-    string Task, string Detail, string Notes, string Project, string Category, string Kind);
+    string Task, string Detail, string Notes, string Project, string Category, string Kind, string Member = "");
 
 public sealed record ReportDocumentData(string EmployeeName, string Department, string Period,
     IReadOnlyList<ReportLine> Lines, int LeaveDays);
@@ -29,7 +31,10 @@ public static class ReportDocumentRenderer
         sheet.Cell(6, 3).Value = "Work hours"; sheet.Cell(6, 4).Value = Math.Round(data.Lines.Where(x => x.Kind == "work").Sum(x => x.DurationMinutes) / 60m, 2);
         sheet.Cell(6, 5).Value = "Overtime days"; sheet.Cell(6, 6).Value = data.Lines.Where(x => x.Kind == "work")
             .GroupBy(x => x.Date).Count(group => group.Sum(x => x.DurationMinutes) > 480);
-        var headers = new[] { "Date", "Start", "End", "Hours", "Task", "Detail", "Notes", "Project", "Category" };
+        var showMember = data.Lines.Any(x => x.Member.Length > 0);
+        string[] headers = showMember
+            ? ["Date", "Member", "Start", "End", "Hours", "Task", "Detail", "Notes", "Project", "Category"]
+            : ["Date", "Start", "End", "Hours", "Task", "Detail", "Notes", "Project", "Category"];
         for (var column = 0; column < headers.Length; column++) sheet.Cell(7, column + 1).Value = headers[column];
         var header = sheet.Range(7, 1, 7, headers.Length);
         header.Style.Font.Bold = true;
@@ -37,15 +42,17 @@ public static class ReportDocumentRenderer
         var row = 8;
         foreach (var line in data.Lines)
         {
-            sheet.Cell(row, 1).Value = line.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            sheet.Cell(row, 2).Value = line.Start;
-            sheet.Cell(row, 3).Value = line.End;
-            sheet.Cell(row, 4).Value = Math.Round(line.DurationMinutes / 60m, 2);
-            sheet.Cell(row, 5).Value = line.Task;
-            sheet.Cell(row, 6).Value = line.Detail;
-            sheet.Cell(row, 7).Value = line.Notes;
-            sheet.Cell(row, 8).Value = line.Project;
-            sheet.Cell(row, 9).Value = line.Category;
+            var column = 1;
+            sheet.Cell(row, column++).Value = line.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            if (showMember) sheet.Cell(row, column++).Value = line.Member;
+            sheet.Cell(row, column++).Value = line.Start;
+            sheet.Cell(row, column++).Value = line.End;
+            sheet.Cell(row, column++).Value = Math.Round(line.DurationMinutes / 60m, 2);
+            sheet.Cell(row, column++).Value = line.Task;
+            sheet.Cell(row, column++).Value = line.Detail;
+            sheet.Cell(row, column++).Value = line.Notes;
+            sheet.Cell(row, column++).Value = line.Project;
+            sheet.Cell(row, column).Value = line.Category;
             row++;
         }
         sheet.Columns().AdjustToContents(8, 48);
@@ -80,8 +87,13 @@ public static class ReportDocumentRenderer
         gfx.DrawString($"Leave days: {data.LeaveDays}    Worked days: {workedDays}    Work hours: {hours:0.##}    Overtime days: {overtimeDays}",
             body, XBrushes.Black, left, 91);
         var y = 112d;
-        var widths = new[] { 42d, 76d, 290d, 82d };
-        var headers = new[] { "Date", "Time", "Task / activity", "Notes" };
+        var showMember = data.Lines.Any(x => x.Member.Length > 0);
+        // A Member column narrows Task so the table keeps the same width.
+        var widths = showMember ? new[] { 42d, 76d, 76d, 214d, 82d } : new[] { 42d, 76d, 290d, 82d };
+        var headers = showMember
+            ? new[] { "Date", "Member", "Time", "Task / activity", "Notes" }
+            : new[] { "Date", "Time", "Task / activity", "Notes" };
+        var descriptionChars = showMember ? 40d : 54d;
         double x = left;
         for (var i = 0; i < headers.Length; i++)
         {
@@ -90,11 +102,12 @@ public static class ReportDocumentRenderer
             x += widths[i];
         }
         y += 20;
-        foreach (var line in data.Lines.OrderBy(x => x.Date).ThenBy(x => x.Start))
+        foreach (var line in data.Lines.OrderBy(x => x.Date).ThenBy(x => x.Member).ThenBy(x => x.Start))
         {
             var description = string.Join(" · ", new[] { line.Task, line.Detail, line.Project, line.Category }
                 .Where(value => !string.IsNullOrWhiteSpace(value)));
-            var lines = Math.Max(1, (int)Math.Ceiling(description.Length / 54d));
+            var lines = Math.Max(1, (int)Math.Ceiling(Math.Max(description.Length / descriptionChars,
+                showMember ? line.Member.Length / 14d : 0)));
             var height = Math.Max(18, lines * 11 + 6);
             if (y + height > 770)
             {
@@ -104,8 +117,10 @@ public static class ReportDocumentRenderer
                 y = 45;
             }
             x = left;
-            var values = new[] { line.Date.Day.ToString(CultureInfo.InvariantCulture),
-                $"{line.Start} - {line.End}", description, line.Notes };
+            var day = line.Date.Day.ToString(CultureInfo.InvariantCulture);
+            var values = showMember
+                ? new[] { day, line.Member, $"{line.Start} - {line.End}", description, line.Notes }
+                : new[] { day, $"{line.Start} - {line.End}", description, line.Notes };
             for (var i = 0; i < values.Length; i++)
             {
                 if ((line.Date.Day & 1) == 0) gfx.DrawRectangle(pale, x, y, widths[i], height);
