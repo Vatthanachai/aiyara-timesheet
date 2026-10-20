@@ -61,7 +61,12 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
             entity.ToTable("report_schedules");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired();
-            entity.HasIndex(x => new { x.TenantId, x.ReportDefinitionId }).IsUnique();
+            entity.Property(x => x.SubjectGroupName).HasMaxLength(100);
+            // One whole-organization schedule per report, and one per report and group.
+            entity.HasIndex(x => new { x.TenantId, x.ReportDefinitionId }).IsUnique()
+                .HasFilter("\"SubjectGroupId\" IS NULL");
+            entity.HasIndex(x => new { x.TenantId, x.ReportDefinitionId, x.SubjectGroupId }).IsUnique()
+                .HasFilter("\"SubjectGroupId\" IS NOT NULL");
             entity.HasOne<ReportDefinition>().WithMany()
                 .HasForeignKey(x => new { x.TenantId, x.ReportDefinitionId })
                 .HasPrincipalKey(x => new { x.TenantId, x.Id })

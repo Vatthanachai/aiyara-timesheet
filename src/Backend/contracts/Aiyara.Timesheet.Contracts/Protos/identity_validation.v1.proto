@@ -10,6 +10,8 @@ import "google/protobuf/timestamp.proto";
 service IdentityValidationService {
   rpc ValidateAccessToken (ValidateAccessTokenRequest) returns (ValidateAccessTokenResponse);
   rpc LookupProfile (LookupProfileRequest) returns (LookupProfileResponse);
+  // A tenant's member group and the accounts in it now, for scheduled group reports.
+  rpc ListGroupMembers (ListGroupMembersRequest) returns (ListGroupMembersResponse);
 }
 
 message ValidateAccessTokenRequest {
@@ -46,4 +48,17 @@ message LookupProfileResponse {
   string last_name = 6;
   repeated string roles = 7;
   bool is_active = 8;
+}
+
+message ListGroupMembersRequest {
+  string tenant_id = 1;
+  string group_id = 2;
+  string correlation_id = 3;
+}
+
+// found is false when the tenant has no such group (for example it was deleted).
+message ListGroupMembersResponse {
+  bool found = 1;
+  string group_name = 2;
+  repeated string member_ids = 3;
 }

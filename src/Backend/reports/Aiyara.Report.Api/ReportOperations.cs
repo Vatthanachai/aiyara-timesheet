@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Aiyara.Report.Api;
 
 public sealed class ReportOperations(ReportingDbContext db, IConfiguration configuration,
-    IReportObjectStorage storage)
+    IReportObjectStorage storage, IReportGroupDirectory? groups = null)
 {
     public async Task<ServiceResponse> Definitions(ReportActor actor, CancellationToken ct) =>
         Ok(await db.ReportDefinitions.Where(x => x.IsEnabled)
@@ -266,6 +266,7 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         Ok(await db.ReportSchedules.Where(x => x.IsEnabled).Join(db.ReportDefinitions.Where(x => x.IsEnabled),
             schedule => schedule.ReportDefinitionId, definition => definition.Id,
             (schedule, definition) => new { schedule.Id, schedule.ReportDefinitionId,
+                schedule.SubjectGroupId, schedule.SubjectGroupName,
                 schedule.TimeZoneId, schedule.LocalTime, schedule.NextFireAtUtc,
                 schedule.LastFireAtUtc, schedule.IsEnabled, definition.Kind, definition.Format,
                 definition.Name }).OrderBy(x => x.Name).ToListAsync(ct));
@@ -278,14 +279,32 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         if (definition is null || definition.Kind == ReportKind.Performance ||
             !TimeZoneInfo.TryFindSystemTimeZoneById(body.TimeZoneId, out _))
             return Error(400, "VALIDATION_FAILED");
+        ReportGroup? group = null;
+        if (body.GroupId is { } groupId)
+        {
+            if (groups is null) return Error(503, "GROUPS_UNAVAILABLE");
+            group = await groups.FindAsync(actor.TenantId, groupId, ct);
+            if (group is null) return Error(400, "GROUP_NOT_FOUND");
+        }
         var next = ReportCalendar.NextFireUtc(definition.Kind, body.TimeZoneId,
             DateTimeOffset.UtcNow, body.LocalTime);
-        var schedule = new ReportSchedule { TenantId = actor.TenantId,
-            ReportDefinitionId = definition.Id, TimeZoneId = body.TimeZoneId,
-            LocalTime = body.LocalTime, NextFireAtUtc = next.UtcDateTime };
-        db.ReportSchedules.Add(schedule);
+        // A disabled schedule for the same report and group is enabled again with the new settings.
+        var schedule = await db.ReportSchedules.SingleOrDefaultAsync(x =>
+            x.ReportDefinitionId == definition.Id && x.SubjectGroupId == body.GroupId, ct);
+        if (schedule?.IsEnabled == true) return Error(409, "SCHEDULE_EXISTS");
+        if (schedule is null)
+        {
+            schedule = new ReportSchedule { TenantId = actor.TenantId, ReportDefinitionId = definition.Id,
+                SubjectGroupId = body.GroupId, TimeZoneId = body.TimeZoneId };
+            db.ReportSchedules.Add(schedule);
+        }
+        schedule.SubjectGroupName = group?.Name;
+        schedule.TimeZoneId = body.TimeZoneId;
+        schedule.LocalTime = body.LocalTime;
+        schedule.NextFireAtUtc = next.UtcDateTime;
+        schedule.IsEnabled = true;
         Audit(actor, "schedule.created", null,
-            new { schedule.Id, definition.Kind, schedule.NextFireAtUtc });
+            new { schedule.Id, definition.Kind, schedule.SubjectGroupId, schedule.SubjectGroupName, schedule.NextFireAtUtc });
         await db.SaveChangesAsync(ct);
         return Created(schedule, $"/api/v1/schedules/{schedule.Id}");
     }

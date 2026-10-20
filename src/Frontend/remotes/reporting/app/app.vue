@@ -19,6 +19,7 @@ type RunPage = { totalCount: number; page: number; pageSize: number; items: Run[
 type Schedule = {
   id: string; reportDefinitionId: string; timeZoneId: string; localTime: string
   nextFireAtUtc: string | null; lastFireAtUtc: string | null; kind: ReportKind; name: string
+  subjectGroupId?: string | null; subjectGroupName?: string | null
 }
 type Dashboard = { total: number; ready: number; queued: number; blocked: number; failed: number }
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; groupId?: string | null; groupName?: string | null }
@@ -66,6 +67,8 @@ const copy = useLocaleText(locale, { th: {
   schedules: 'สร้างรายงานอัตโนมัติ', timezone: 'เขตเวลา', localTime: 'เวลา', addSchedule: 'เพิ่มกำหนดการ',
   monthlyTime: 'รายงานรายเดือนสร้างเวลา 00:15 ของวันที่ 1 ทุกเดือน', nextRun: 'รอบถัดไป', lastRun: 'รอบล่าสุด',
   never: 'ยังไม่เคย', noSchedules: 'ยังไม่มีการสร้างรายงานอัตโนมัติ',
+  scheduleExists: 'มีกำหนดการของรายงานนี้สำหรับกลุ่มหรือทั้งองค์กรนี้อยู่แล้ว', groupNotFound: 'ไม่พบกลุ่มนี้ อาจถูกลบไปแล้ว กรุณาโหลดหน้าใหม่',
+  groupScheduleHint: 'รายงานกลุ่มอัตโนมัติจะใช้สมาชิกของกลุ่ม ณ เวลาที่สร้างรายงาน',
   retention: 'ระยะเวลาเก็บไฟล์', retentionYears: 'จำนวนปี', retentionHint: 'ไฟล์ที่เก่ากว่านี้จะถูกลบอัตโนมัติ'
 }, en: {
   title: 'Reports and documents', subtitle: 'Request timesheet reports, follow their progress, and download the files.',
@@ -91,6 +94,8 @@ const copy = useLocaleText(locale, { th: {
   schedules: 'Automatic reports', timezone: 'Time zone', localTime: 'Time', addSchedule: 'Add schedule',
   monthlyTime: 'Monthly reports run at 00:15 on the 1st of each month.', nextRun: 'Next run', lastRun: 'Last run',
   never: 'Never', noSchedules: 'No automatic reports yet.',
+  scheduleExists: 'This report is already scheduled for this group or the whole organization.', groupNotFound: 'This group no longer exists. Reload the page.',
+  groupScheduleHint: 'Automatic group reports cover whoever is in the group when each report is made.',
   retention: 'File retention', retentionYears: 'Years', retentionHint: 'Files older than this are deleted automatically.'
 } })
 const text = (key: string) => (copy.value as Record<string, string>)[key] ?? key
@@ -276,7 +281,7 @@ async function uploadSigned(run: Run, event: Event) {
 // ---- Settings (Tenant Admin) ---------------------------------------------------------------
 const definitionForm = reactive<{ kind: ReportKind; format: 'Pdf' | 'Xlsx'; name: string }>({ kind: 'Monthly', format: 'Pdf', name: '' })
 const definitionNames = reactive<Record<string, string>>({})
-const scheduleForm = reactive({ reportDefinitionId: '', timeZoneId: '', localTime: '00:15' })
+const scheduleForm = reactive({ reportDefinitionId: '', timeZoneId: '', localTime: '00:15', groupId: '' })
 const schedulableDefinitions = computed(() => definitions.value.filter(x => x.kind !== 'Performance'))
 const scheduleKind = computed(() => definitions.value.find(x => x.id === scheduleForm.reportDefinitionId)?.kind)
 const timeZones = computed(() => [...new Set([timeZoneId.value, 'Asia/Bangkok', 'Asia/Ho_Chi_Minh', 'Asia/Jakarta',
@@ -286,7 +291,11 @@ const timeZones = computed(() => [...new Set([timeZoneId.value, 'Asia/Bangkok', 
 async function settingsAction(action: () => Promise<unknown>, message: string) {
   error.value = ''
   try { await action(); notice.value = message; await loadDefinitionsAndSettings() }
-  catch (cause) { error.value = safeError(cause, locale.value) }
+  catch (cause) {
+    const code = (cause as { data?: { errorCode?: string } })?.data?.errorCode
+    error.value = code === 'SCHEDULE_EXISTS' ? copy.value.scheduleExists
+      : code === 'GROUP_NOT_FOUND' ? copy.value.groupNotFound : safeError(cause, locale.value)
+  }
 }
 const addDefinition = () => settingsAction(async () => {
   await api('/definitions', { method: 'POST', body: { ...definitionForm, name: definitionForm.name.trim() } })
@@ -299,7 +308,8 @@ const disableDefinition = (definition: Definition) =>
   settingsAction(() => api(`/definitions/${definition.id}`, { method: 'DELETE' }), copy.value.disabled)
 const addSchedule = () => settingsAction(() => api('/schedules', { method: 'POST', body: {
   reportDefinitionId: scheduleForm.reportDefinitionId, timeZoneId: scheduleForm.timeZoneId || timeZoneId.value,
-  localTime: `${scheduleKind.value === 'Monthly' ? '00:15' : scheduleForm.localTime}:00`
+  localTime: `${scheduleKind.value === 'Monthly' ? '00:15' : scheduleForm.localTime}:00`,
+  groupId: scheduleForm.groupId || null
 } }), copy.value.saved)
 const disableSchedule = (schedule: Schedule) =>
   settingsAction(() => api(`/schedules/${schedule.id}`, { method: 'DELETE' }), copy.value.disabled)
@@ -434,7 +444,7 @@ onMounted(() => {
             <label>{{ copy.to }}<input v-model="rangeTo" type="date" required :min="rangeFrom" /></label>
           </template>
           <label v-if="isAdmin">{{ copy.subject }}
-            <select v-model="subjectUserId">
+            <select v-model="subjectUserId" :aria-label="copy.subject">
               <option value="">{{ copy.wholeOrganization }}</option>
               <optgroup v-if="memberGroups.length" :label="copy.groups">
                 <option v-for="group in memberGroups" :key="group.id" :value="`${GROUP_PREFIX}${group.id}`">{{ group.name }}</option>
@@ -548,7 +558,7 @@ onMounted(() => {
         <p v-if="!schedules.length" class="muted">{{ copy.noSchedules }}</p>
         <ul v-else class="setting-list">
           <li v-for="schedule in schedules" :key="schedule.id">
-            <span class="grow"><strong>{{ schedule.name }}</strong> · {{ text(schedule.kind) }} · {{ schedule.timeZoneId }}</span>
+            <span class="grow"><strong>{{ schedule.name }}</strong> · {{ text(schedule.kind) }} · {{ schedule.subjectGroupName ? `${copy.memberGroup}: ${schedule.subjectGroupName}` : copy.wholeOrganization }} · {{ schedule.timeZoneId }}</span>
             <span class="muted">{{ copy.nextRun }}: {{ formatDateTime(schedule.nextFireAtUtc) }}</span>
             <span class="muted">{{ copy.lastRun }}: {{ schedule.lastFireAtUtc ? formatDateTime(schedule.lastFireAtUtc) : copy.never }}</span>
             <button type="button" class="secondary" @click="disableSchedule(schedule)">{{ copy.disable }}</button>
@@ -556,10 +566,15 @@ onMounted(() => {
         </ul>
         <form v-if="schedulableDefinitions.length" class="inline-form" @submit.prevent="addSchedule">
           <label class="grow">{{ copy.report }}<select v-model="scheduleForm.reportDefinitionId" required><option v-for="item in schedulableDefinitions" :key="item.id" :value="item.id">{{ item.name }} · {{ text(item.kind) }}</option></select></label>
+          <label v-if="memberGroups.length">{{ copy.subject }}<select v-model="scheduleForm.groupId" :aria-label="`${copy.schedules}: ${copy.subject}`">
+            <option value="">{{ copy.wholeOrganization }}</option>
+            <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ copy.memberGroup }}: {{ group.name }}</option>
+          </select></label>
           <label>{{ copy.timezone }}<select v-model="scheduleForm.timeZoneId"><option v-for="zone in timeZones" :key="zone" :value="zone">{{ zone }}</option></select></label>
           <label v-if="scheduleKind !== 'Monthly'">{{ copy.localTime }}<input v-model="scheduleForm.localTime" type="time" required /></label>
           <p v-else class="muted grow">{{ copy.monthlyTime }}</p>
           <button type="submit">{{ copy.addSchedule }}</button>
+          <p v-if="scheduleForm.groupId" class="muted grow">{{ copy.groupScheduleHint }}</p>
         </form>
 
         <h3>{{ copy.retention }}</h3>

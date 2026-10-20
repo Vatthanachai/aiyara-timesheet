@@ -25,6 +25,10 @@ public sealed class ReportSchedule : ITenantOwnedReportRecord
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid ReportDefinitionId { get; set; }
+    /// <summary>A member group schedule's group in Identity, and its name when last seen; null for a
+    /// whole-organization schedule.</summary>
+    public Guid? SubjectGroupId { get; set; }
+    public string? SubjectGroupName { get; set; }
     public required string TimeZoneId { get; set; }
     public TimeOnly LocalTime { get; set; } = new(0, 15);
     public DateTime? NextFireAtUtc { get; set; }

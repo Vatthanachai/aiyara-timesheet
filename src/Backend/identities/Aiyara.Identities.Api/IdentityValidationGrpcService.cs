@@ -1,5 +1,6 @@
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Models.Tenancy;
+using Aiyara.Identities.Services.Onboarding;
 using Aiyara.Timesheet.Component.Abstractions.Securities;
 using Aiyara.Timesheet.Contracts.Identity.V1;
 using Google.Protobuf.WellKnownTypes;
@@ -64,6 +65,18 @@ internal sealed class IdentityValidationGrpcService(
             SubjectId = subjectId.ToString(), Email = account.Email,
             FirstName = account.FirstName, LastName = account.LastName,
             IsActive = true, Roles = { membership.Role.ToString() } };
+    }
+
+    public override async Task<ListGroupMembersResponse> ListGroupMembers(
+        ListGroupMembersRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.TenantId, out var tenantId) ||
+            !Guid.TryParse(request.GroupId, out var groupId)) return new ListGroupMembersResponse();
+        var group = await MemberGroupDirectory.FindAsync(db, tenantScope, tenantId, groupId,
+            context.CancellationToken);
+        if (group is not { } found) return new ListGroupMembersResponse();
+        return new ListGroupMembersResponse { Found = true, GroupName = found.Name,
+            MemberIds = { found.MemberIds.Select(x => x.ToString()) } };
     }
 
     private static ValidateAccessTokenResponse Invalid(string reason) => new()

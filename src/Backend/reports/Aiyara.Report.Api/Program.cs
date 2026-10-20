@@ -21,6 +21,7 @@ builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
 builder.Services.AddSingleton(provider => new IdentityValidationService.IdentityValidationServiceClient(
     provider.GetRequiredService<GrpcChannel>()));
 builder.Services.AddScoped<IReportAccessTokenValidator, GrpcReportAccessTokenValidator>();
+builder.Services.AddSingleton<IReportGroupDirectory, GrpcReportGroupDirectory>();
 builder.Services.AddSingleton(ReportObjectStorage.CreateClient(builder.Configuration));
 builder.Services.AddSingleton<ReportObjectStorage>();
 builder.Services.AddSingleton<IReportObjectStorage>(provider => provider.GetRequiredService<ReportObjectStorage>());

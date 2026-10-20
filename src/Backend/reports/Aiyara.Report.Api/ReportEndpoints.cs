@@ -18,7 +18,9 @@ public sealed record DefinitionRequest(ReportKind Kind, ReportFormat Format, str
 public sealed record RunRequest(Guid DefinitionId, DateTimeOffset PeriodStartUtc,
     DateTimeOffset PeriodEndUtc, Guid? SubjectUserId, string? GroupName = null,
     IReadOnlyCollection<Guid>? GroupMemberIds = null);
-public sealed record ScheduleRequest(Guid ReportDefinitionId, string TimeZoneId, TimeOnly LocalTime);
+/// <summary>GroupId schedules the report for a member group instead of the whole organization.</summary>
+public sealed record ScheduleRequest(Guid ReportDefinitionId, string TimeZoneId, TimeOnly LocalTime,
+    Guid? GroupId = null);
 public sealed record RetentionRequest(int Years);
 /// <summary>SubjectUserIds, when given, keeps only runs about those members (at most
 /// <see cref="MaxSubjectUserIds"/>), so a caller can show one member group's reports; runs about
@@ -26,7 +28,7 @@ public sealed record RetentionRequest(int Years);
 public sealed record RunQuery(ReportRunStatus? Status, Guid? DefinitionId, int Page = 1, int PageSize = 20,
     IReadOnlyCollection<Guid>? SubjectUserIds = null)
 {
-    public const int MaxSubjectUserIds = 500;
+    public const int MaxSubjectUserIds = ReportGroupLimits.MaxMembers;
 }
 
 public sealed record ReportActor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)

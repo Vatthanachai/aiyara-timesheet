@@ -1777,7 +1777,9 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     renamed: [] as unknown[],
     memberCalls: 0,
     timesheetQueries: [] as string[],
-    regenerated: [] as string[]
+    regenerated: [] as string[],
+    scheduleRequests: [] as Record<string, unknown>[],
+    schedules: [] as Record<string, unknown>[]
   }
   const definitions = [
     { id: 'def-month', kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet' },
@@ -1851,7 +1853,19 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
       return ok({ id: 'run-regenerated' }, 202)
     }
     if (url.pathname.endsWith('/reports/dashboard')) return ok({ total: 4, ready: 1, queued: 1, blocked: 1, failed: 1 })
-    if (url.pathname.endsWith('/reports/schedules')) return ok([])
+    if (url.pathname.endsWith('/reports/schedules') && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      state.scheduleRequests.push(body)
+      if (state.schedules.some(x => x.subjectGroupId === body.groupId))
+        return route.fulfill({ status: 409, headers: cors, contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 409, statusMessage: 'Conflict', errorCode: 'SCHEDULE_EXISTS' }) })
+      state.schedules.push({ id: `schedule-${state.schedules.length + 1}`, reportDefinitionId: body.reportDefinitionId,
+        timeZoneId: body.timeZoneId, localTime: body.localTime, nextFireAtUtc: '2026-11-01T17:15:00Z', lastFireAtUtc: null,
+        kind: 'Monthly', name: 'Monthly timesheet', subjectGroupId: body.groupId,
+        subjectGroupName: body.groupId === 'g-out' ? 'Outsource' : null })
+      return ok(state.schedules.at(-1), 201)
+    }
+    if (url.pathname.endsWith('/reports/schedules')) return ok(state.schedules)
     if (url.pathname.endsWith('/reports/retention')) return ok({ years: 7 })
     if (url.pathname.endsWith('/reports/runs')) {
       if (request.method() === 'POST') {
@@ -1898,9 +1912,9 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   const year = new Date().getFullYear()
   await frame.locator('.request-form').getByLabel(/^Month/).selectOption('1')
   await frame.locator('.request-form').getByLabel(/^Year/).selectOption(String(year))
-  await expect(frame.getByLabel('Report on').locator('option'))
+  await expect(frame.getByLabel('Report on', { exact: true }).locator('option'))
     .toHaveText(['Whole organization', 'Outsource', 'Permanent staff', 'Anong Admin', 'Somchai Staff'])
-  await frame.getByLabel('Report on').selectOption({ label: 'Somchai Staff' })
+  await frame.getByLabel('Report on', { exact: true }).selectOption({ label: 'Somchai Staff' })
   await expect(frame.locator('.preview')).toHaveText(`Period: Jan 1, ${year} – Jan 31, ${year} (Asia/Bangkok)`)
   await frame.getByRole('button', { name: 'Generate report' }).click()
   await expect.poll(() => state.created).toEqual([{
@@ -1909,13 +1923,13 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   }])
 
   // A member group report sends the group's name and its current members.
-  await frame.getByLabel('Report on').selectOption({ label: 'Outsource' })
+  await frame.getByLabel('Report on', { exact: true }).selectOption({ label: 'Outsource' })
   await frame.getByRole('button', { name: 'Generate report' }).click()
   await expect.poll(() => state.created.at(-1)).toEqual({
     definitionId: 'def-month', subjectUserId: null, groupName: 'Outsource', groupMemberIds: ['member-somchai'],
     periodStartUtc: `${year - 1}-12-31T17:00:00.000Z`, periodEndUtc: `${year}-01-31T17:00:00.000Z`
   })
-  await frame.getByLabel('Report on').selectOption({ label: 'Whole organization' })
+  await frame.getByLabel('Report on', { exact: true }).selectOption({ label: 'Whole organization' })
 
   // Weekly report: any day picks its Monday-to-Sunday week.
   await frame.locator('.request-form select').first().selectOption('def-week')
@@ -1960,6 +1974,18 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await frame.locator('.setting-list').getByRole('button', { name: 'Save' }).first().click()
   await expect.poll(() => state.renamed).toEqual([{ kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet (signed)' }])
   await expect(frame.getByText('Monthly reports run at 00:15 on the 1st of each month.')).toBeVisible()
+
+  // Automatic reports can be scheduled for a member group, once per report and group.
+  const scheduleSubject = frame.getByLabel('Automatic reports: Report on')
+  await expect(scheduleSubject.locator('option')).toHaveText(['Whole organization', 'Group: Outsource', 'Group: Permanent staff'])
+  await scheduleSubject.selectOption({ label: 'Group: Outsource' })
+  await expect(frame.getByText('Automatic group reports cover whoever is in the group when each report is made.')).toBeVisible()
+  await frame.getByRole('button', { name: 'Add schedule' }).click()
+  await expect.poll(() => state.scheduleRequests.at(-1)).toMatchObject({ reportDefinitionId: 'def-month', groupId: 'g-out' })
+  await expect(frame.locator('.setting-list').filter({ hasText: 'Group: Outsource' })).toBeVisible()
+  await scheduleSubject.selectOption({ label: 'Group: Outsource' })
+  await frame.getByRole('button', { name: 'Add schedule' }).click()
+  await expect(frame.getByRole('alert')).toContainText('already scheduled for this group or the whole organization')
 })
 
 test('tenant admin reviews each member\'s monthly timesheet from Reports', async ({ page }) => {
@@ -2035,7 +2061,7 @@ test('employees request only their own reports and never load the member directo
 
   await expect(frame.locator('table')).toBeVisible()
   await expect(frame.getByRole('columnheader', { name: 'Person' })).toHaveCount(0)
-  await expect(frame.getByLabel('Report on')).toHaveCount(0)
+  await expect(frame.getByLabel('Report on', { exact: true })).toHaveCount(0)
   await expect(frame.getByRole('heading', { name: 'Report settings' })).toHaveCount(0)
   await frame.getByRole('button', { name: 'Generate report' }).click()
   await expect.poll(() => state.created.length).toBe(1)

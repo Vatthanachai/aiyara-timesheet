@@ -13,6 +13,8 @@ public sealed class ContractTests
         var methods = IdentityValidationService.Descriptor.Methods.Select(x => x.Name).ToArray();
         Assert.Contains("ValidateAccessToken", methods);
         Assert.Contains("LookupProfile", methods);
+        Assert.Contains("ListGroupMembers", methods);
+        Assert.Equal(3, ListGroupMembersResponse.Descriptor.FindFieldByName("member_ids").FieldNumber);
         Assert.Equal("aiyara.timesheet.identity.v1",
             ValidateAccessTokenRequest.Descriptor.File.Package);
         Assert.Equal(1, ValidateAccessTokenRequest.Descriptor.FindFieldByName("access_token").FieldNumber);
