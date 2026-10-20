@@ -1853,7 +1853,9 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
       }
       state.runQueries.push(url.searchParams)
       const status = url.searchParams.get('status')
-      const items = runs().filter(item => !status || item.status === status)
+      const subjects = url.searchParams.getAll('subjectUserId')
+      const items = runs().filter(item => (!status || item.status === status) &&
+        (!subjects.length || subjects.includes(item.subjectUserId ?? '')))
       return ok({ totalCount: items.length, page: 1, pageSize: 10, items })
     }
     return route.fulfill({ status: 404, headers: cors })
@@ -1907,6 +1909,20 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await expect.poll(() => state.runQueries.at(-1)?.get('status')).toBe('Failed')
   await expect(history.locator('tbody tr')).toHaveCount(1)
   await frame.locator('.filters').getByLabel('Status').selectOption('')
+
+  // A group filter asks for its members' reports; whole-organization reports drop out.
+  const groupFilter = frame.locator('.filters').getByLabel('Group', { exact: true })
+  await expect(groupFilter.locator('option')).toHaveText(['All groups', 'Outsource', 'Permanent staff', 'No group'])
+  await groupFilter.selectOption({ label: 'Outsource' })
+  await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual(['member-somchai'])
+  await expect(history.locator('tbody tr')).toHaveCount(1)
+  await expect(history.locator('tbody tr')).toContainText('Somchai Staff')
+  await groupFilter.selectOption({ label: 'No group' })
+  await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual(['member-new'])
+  await expect(frame.getByText('No reports match these filters.')).toBeVisible()
+  await groupFilter.selectOption({ label: 'All groups' })
+  await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual([])
+  await expect(history.locator('tbody tr')).toHaveCount(4)
 
   // While a report is queued the list refreshes itself.
   await expect(frame.getByText('Statuses refresh automatically')).toBeVisible()

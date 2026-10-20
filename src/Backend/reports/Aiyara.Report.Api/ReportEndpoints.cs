@@ -15,7 +15,14 @@ public sealed record RunRequest(Guid DefinitionId, DateTimeOffset PeriodStartUtc
     DateTimeOffset PeriodEndUtc, Guid? SubjectUserId);
 public sealed record ScheduleRequest(Guid ReportDefinitionId, string TimeZoneId, TimeOnly LocalTime);
 public sealed record RetentionRequest(int Years);
-public sealed record RunQuery(ReportRunStatus? Status, Guid? DefinitionId, int Page = 1, int PageSize = 20);
+/// <summary>SubjectUserIds, when given, keeps only runs about those members (at most
+/// <see cref="MaxSubjectUserIds"/>), so a caller can show one member group's reports; runs about
+/// the whole organization have no subject and are then left out.</summary>
+public sealed record RunQuery(ReportRunStatus? Status, Guid? DefinitionId, int Page = 1, int PageSize = 20,
+    IReadOnlyCollection<Guid>? SubjectUserIds = null)
+{
+    public const int MaxSubjectUserIds = 500;
+}
 
 public sealed record ReportActor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {

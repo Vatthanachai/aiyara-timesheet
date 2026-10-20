@@ -111,9 +111,15 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
     public async Task<ServiceResponse> Runs(ReportActor actor, RunQuery request, CancellationToken ct)
     {
         if (request.Status is { } requested && !Enum.IsDefined(requested)) return Error(400, "VALIDATION_FAILED");
+        if (request.SubjectUserIds is { Count: > RunQuery.MaxSubjectUserIds }) return Error(400, "VALIDATION_FAILED");
         var query = VisibleRuns(actor);
         if (request.Status is { } status) query = query.Where(x => x.Status == status);
         if (request.DefinitionId is { } definitionId) query = query.Where(x => x.ReportDefinitionId == definitionId);
+        if (request.SubjectUserIds is { } subjects)
+        {
+            var ids = subjects.Distinct().Cast<Guid?>().ToList();
+            query = query.Where(x => ids.Contains(x.SubjectUserId));
+        }
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var totalCount = await query.CountAsync(ct);
         var page = Math.Clamp(request.Page, 1, Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize)));

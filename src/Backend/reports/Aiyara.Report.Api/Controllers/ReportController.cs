@@ -55,12 +55,17 @@ public sealed class ReportController(ReportOperations operations) : BaseControll
     public Task<IActionResult> DeleteDefinition(Guid id, CancellationToken ct) =>
         WithActorAsync(actor => operations.DeleteDefinition(actor, id, ct), adminOnly: true);
 
+    /// <summary>Report history, newest first. Repeat <c>subjectUserId</c> to keep only runs about those
+    /// members, for example one member group.</summary>
     [HttpGet("runs")]
     [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     public Task<IActionResult> Runs([FromQuery] ReportRunStatus? status, [FromQuery] Guid? definitionId,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default) =>
-        WithActorAsync(actor => operations.Runs(actor, new RunQuery(status, definitionId, page, pageSize), ct));
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] Guid[]? subjectUserId = null,
+        CancellationToken ct = default) =>
+        WithActorAsync(actor => operations.Runs(actor, new RunQuery(status, definitionId, page, pageSize,
+            subjectUserId is { Length: > 0 } ? subjectUserId : null), ct));
 
     [HttpPost("runs")]
     [ProducesResponseType(typeof(ServiceOkResponse<ReportRun>), StatusCodes.Status202Accepted)]

@@ -72,6 +72,16 @@ public sealed class ReportApiWorkflowTests
             Assert.Equal(HttpStatusCode.Accepted, runResponse.StatusCode);
             using var runJson = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
             var runId = runJson.RootElement.GetProperty("result").GetProperty("id").GetGuid();
+            // A repeated subjectUserId filter binds, and leaves out this whole-organization run.
+            async Task<int> RunCount(string query)
+            {
+                using var response = await client.GetAsync($"/api/v1/runs{query}");
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                return json.RootElement.GetProperty("result").GetProperty("totalCount").GetInt32();
+            }
+            Assert.Equal(1, await RunCount(""));
+            Assert.Equal(0, await RunCount($"?subjectUserId={userId}&subjectUserId={Guid.NewGuid()}"));
 
             var generatedPdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("Employee",
                 "Team", "September 2026", [], 0));

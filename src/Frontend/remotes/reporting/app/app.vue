@@ -21,7 +21,7 @@ type Schedule = {
   nextFireAtUtc: string | null; lastFireAtUtc: string | null; kind: ReportKind; name: string
 }
 type Dashboard = { total: number; ready: number; queued: number; blocked: number; failed: number }
-type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string }
+type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; groupId?: string | null; groupName?: string | null }
 
 const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
@@ -53,6 +53,7 @@ const copy = useLocaleText(locale, { th: {
   noDefinitions: 'ยังไม่มีรูปแบบรายงาน', noDefinitionsAdmin: 'เพิ่มรูปแบบรายงานในส่วนตั้งค่าด้านล่างก่อน',
   noDefinitionsEmployee: 'กรุณาติดต่อผู้ดูแลองค์กรให้เพิ่มรูปแบบรายงาน',
   history: 'ประวัติรายงาน', status: 'สถานะ', allStatuses: 'ทุกสถานะ', allReports: 'ทุกรายงาน', person: 'บุคคล',
+  memberGroup: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม',
   requested: 'วันที่ขอ', completed: 'เสร็จเมื่อ', actions: 'การดำเนินการ', noRuns: 'ยังไม่มีรายงานตามเงื่อนไขนี้',
   Queued: 'รอสร้าง', Running: 'กำลังสร้าง', Succeeded: 'พร้อมดาวน์โหลด', Failed: 'สร้างไม่สำเร็จ',
   blockedReason: 'รอให้ล็อกเดือน {month} ก่อน', failedReason: 'ลองขอใหม่อีกครั้ง หากยังไม่สำเร็จให้ติดต่อผู้ดูแล',
@@ -77,6 +78,7 @@ const copy = useLocaleText(locale, { th: {
   noDefinitions: 'No report formats yet', noDefinitionsAdmin: 'Add a report format in the settings below first.',
   noDefinitionsEmployee: 'Ask your organization administrator to add a report format.',
   history: 'Report history', status: 'Status', allStatuses: 'All statuses', allReports: 'All reports', person: 'Person',
+  memberGroup: 'Group', allGroups: 'All groups', noGroup: 'No group',
   requested: 'Requested', completed: 'Completed', actions: 'Actions', noRuns: 'No reports match these filters.',
   Queued: 'Queued', Running: 'Generating', Succeeded: 'Ready', Failed: 'Failed',
   blockedReason: 'Waiting for {month} to be locked', failedReason: 'Request it again; contact an administrator if it keeps failing.',
@@ -157,7 +159,13 @@ async function requestReport() {
 }
 
 // ---- History --------------------------------------------------------------------------------
-const filters = reactive({ status: '', definitionId: '', page: 1 })
+/** group: '' is every report, NO_GROUP is reports about members in no group, else a group ID. */
+const NO_GROUP = '-'
+const filters = reactive({ status: '', definitionId: '', group: '', page: 1 })
+/** The groups directory members are in, by name. */
+const memberGroups = computed(() => [...new Map(members.value.filter(x => x.groupId)
+  .map(x => [x.groupId!, x.groupName ?? ''])).entries()]
+  .map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)))
 const pageCount = computed(() => Math.max(1, Math.ceil(history.value.totalCount / history.value.pageSize)))
 const memberNames = computed(() => new Map(members.value.map(member => [member.id,
   [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email])))
@@ -180,10 +188,15 @@ const formatDateTime = (value: string | null) => value
   : '—'
 
 async function loadHistory() {
-  history.value = await api<RunPage>('/runs', { query: {
-    status: filters.status || undefined, definitionId: filters.definitionId || undefined,
-    page: filters.page, pageSize: 10
-  } })
+  // A group filter becomes the group's current members; whole-organization reports have no member.
+  const subjectUserId = filters.group
+    ? members.value.filter(x => (x.groupId ?? NO_GROUP) === filters.group).map(x => x.id) : undefined
+  history.value = subjectUserId?.length === 0
+    ? { totalCount: 0, page: 1, pageSize: 10, items: [] }
+    : await api<RunPage>('/runs', { query: {
+      status: filters.status || undefined, definitionId: filters.definitionId || undefined,
+      subjectUserId, page: filters.page, pageSize: 10
+    } })
   schedulePoll()
 }
 async function loadDashboard() { dashboard.value = await api<Dashboard>('/dashboard') }
@@ -422,6 +435,13 @@ onMounted(() => {
               <select v-model="filters.definitionId" @change="applyFilters()">
                 <option value="">{{ copy.allReports }}</option>
                 <option v-for="item in definitions" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </label>
+            <label v-if="isAdmin && memberGroups.length">{{ copy.memberGroup }}
+              <select v-model="filters.group" :aria-label="copy.memberGroup" @change="applyFilters()">
+                <option value="">{{ copy.allGroups }}</option>
+                <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
+                <option :value="NO_GROUP">{{ copy.noGroup }}</option>
               </select>
             </label>
           </form>
