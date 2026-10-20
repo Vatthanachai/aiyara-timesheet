@@ -10,7 +10,7 @@ import {
 type RunStatus = 'Queued' | 'Running' | 'Succeeded' | 'Failed'
 type Definition = { id: string; kind: ReportKind; format: 'Pdf' | 'Xlsx'; name: string }
 type Run = {
-  id: string; definitionId: string; subjectUserId: string | null; status: RunStatus
+  id: string; definitionId: string; subjectUserId: string | null; subjectGroupName?: string | null; status: RunStatus
   statusReason: 'SOURCE_MONTH_NOT_LOCKED' | 'GENERATION_FAILED' | null; blockedMonth: string | null
   periodStartUtc: string; periodEndUtc: string; createdAtUtc: string; completedAtUtc: string | null
   signedVersion: number | null; kind: ReportKind; format: 'Pdf' | 'Xlsx'; name: string
@@ -47,7 +47,7 @@ const copy = useLocaleText(locale, { th: {
   signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell', loading: 'กำลังโหลด…',
   ready: 'พร้อมดาวน์โหลด', inProgress: 'กำลังสร้าง', attention: 'ต้องดำเนินการ', total: 'รายงานทั้งหมด',
   request: 'ขอรายงาน', report: 'รายงาน', period: 'ช่วงเวลา', week: 'สัปดาห์ที่มีวันที่', month: 'เดือน', year: 'ปี',
-  from: 'ตั้งแต่วันที่', to: 'ถึงวันที่', subject: 'รายงานของ', wholeOrganization: 'ทั้งองค์กร',
+  from: 'ตั้งแต่วันที่', to: 'ถึงวันที่', subject: 'รายงานของ', wholeOrganization: 'ทั้งองค์กร', groups: 'กลุ่ม', people: 'สมาชิก',
   periodPreview: 'ช่วงเวลา: {period} ({zone})', generate: 'สร้างรายงาน', generating: 'กำลังส่งคำขอ…',
   generated: 'ส่งคำขอสร้างรายงานแล้ว ระบบจะอัปเดตสถานะให้อัตโนมัติ',
   noDefinitions: 'ยังไม่มีรูปแบบรายงาน', noDefinitionsAdmin: 'เพิ่มรูปแบบรายงานในส่วนตั้งค่าด้านล่างก่อน',
@@ -72,7 +72,7 @@ const copy = useLocaleText(locale, { th: {
   signIn: 'Please sign in through Aiyara Shell', loading: 'Loading…',
   ready: 'Ready to download', inProgress: 'In progress', attention: 'Needs attention', total: 'All reports',
   request: 'Request a report', report: 'Report', period: 'Period', week: 'Week containing', month: 'Month', year: 'Year',
-  from: 'From', to: 'To', subject: 'Report on', wholeOrganization: 'Whole organization',
+  from: 'From', to: 'To', subject: 'Report on', wholeOrganization: 'Whole organization', groups: 'Groups', people: 'Members',
   periodPreview: 'Period: {period} ({zone})', generate: 'Generate report', generating: 'Sending request…',
   generated: 'Report requested. Its status updates automatically.',
   noDefinitions: 'No report formats yet', noDefinitionsAdmin: 'Add a report format in the settings below first.',
@@ -140,6 +140,15 @@ function resetPeriod() {
 }
 watch(selectedDefinitionId, () => resetPeriod())
 
+/** A member, a member group (sent as its name and current members), or the whole organization. */
+const GROUP_PREFIX = 'group:'
+function requestSubject() {
+  if (!isAdmin.value || !subjectUserId.value) return { subjectUserId: null }
+  if (!subjectUserId.value.startsWith(GROUP_PREFIX)) return { subjectUserId: subjectUserId.value }
+  const groupId = subjectUserId.value.slice(GROUP_PREFIX.length)
+  return { subjectUserId: null, groupName: memberGroups.value.find(x => x.id === groupId)?.name,
+    groupMemberIds: members.value.filter(x => x.groupId === groupId).map(x => x.id) }
+}
 async function requestReport() {
   if (!selectedDefinition.value || !requestPeriod.value) return
   busy.value = true
@@ -149,7 +158,7 @@ async function requestReport() {
       definitionId: selectedDefinition.value.id,
       periodStartUtc: zonedMidnight(requestPeriod.value.start, timeZoneId.value).toISOString(),
       periodEndUtc: zonedMidnight(requestPeriod.value.end, timeZoneId.value).toISOString(),
-      subjectUserId: isAdmin.value && subjectUserId.value ? subjectUserId.value : null
+      ...requestSubject()
     } })
     notice.value = copy.value.generated
     filters.page = 1
@@ -171,6 +180,7 @@ const memberNames = computed(() => new Map(members.value.map(member => [member.i
   [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email])))
 
 function personLabel(run: Run) {
+  if (run.subjectGroupName) return `${copy.value.memberGroup}: ${run.subjectGroupName}`
   if (!run.subjectUserId) return copy.value.wholeOrganization
   return memberNames.value.get(run.subjectUserId) ?? copy.value.formerMember
 }
@@ -409,7 +419,15 @@ onMounted(() => {
           <label v-if="isAdmin">{{ copy.subject }}
             <select v-model="subjectUserId">
               <option value="">{{ copy.wholeOrganization }}</option>
-              <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
+              <optgroup v-if="memberGroups.length" :label="copy.groups">
+                <option v-for="group in memberGroups" :key="group.id" :value="`${GROUP_PREFIX}${group.id}`">{{ group.name }}</option>
+              </optgroup>
+              <optgroup v-if="memberGroups.length" :label="copy.people">
+                <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
+              </optgroup>
+              <template v-else>
+                <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
+              </template>
             </select>
           </label>
           <p v-if="requestPeriod" class="preview">

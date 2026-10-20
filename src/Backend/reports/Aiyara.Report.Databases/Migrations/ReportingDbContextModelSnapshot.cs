@@ -204,6 +204,13 @@ namespace Aiyara.Report.Databases.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("SubjectGroupMemberIdsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SubjectGroupName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<Guid?>("SubjectUserId")
                         .HasColumnType("uuid");
 

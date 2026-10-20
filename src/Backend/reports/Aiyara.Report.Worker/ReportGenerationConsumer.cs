@@ -76,7 +76,7 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
         }
     }
 
-    private async Task ProcessAsync(MessageEnvelope<ReportGenerationRequestedV1> envelope,
+    internal async Task ProcessAsync(MessageEnvelope<ReportGenerationRequestedV1> envelope,
         CancellationToken cancellationToken)
     {
         using var scope = scopes.CreateScope();
@@ -97,6 +97,8 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
         var endLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.SpecifyKind(run.PeriodEndUtc.AddTicks(-1), DateTimeKind.Utc), zone));
         var snapshots = new List<string>();
+        var groupMembers = run.SubjectGroupMemberIdsJson is { } membersJson
+            ? JsonSerializer.Deserialize<HashSet<Guid>>(membersJson) : null;
         var http = clients.CreateClient("timesheet");
         for (var month = new DateOnly(startLocal.Year, startLocal.Month, 1);
              month <= new DateOnly(endLocal.Year, endLocal.Month, 1); month = month.AddMonths(1))
@@ -115,7 +117,9 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
             {
                 var owners = (await response.Content.ReadFromJsonAsync<SnapshotEnvelope<List<SnapshotPayload>>>(
                     cancellationToken: cancellationToken))?.Result ?? [];
-                snapshots.AddRange(owners.Select(x => x.PayloadJson));
+                // A group report reads the whole organization's month and keeps only its members.
+                snapshots.AddRange(owners.Where(x => groupMembers is null || groupMembers.Contains(x.OwnerId))
+                    .Select(x => x.PayloadJson));
             }
             else
             {
@@ -129,8 +133,10 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
             .Where(x => x.Date >= startLocal && x.Date <= endLocal)
             .OrderBy(x => x.Date).ThenBy(x => x.Start).ToArray();
         var payload = JsonSerializer.Serialize(new { tenantId = envelope.TenantId,
-            subjectUserId = run.SubjectUserId, run.PeriodStartUtc, run.PeriodEndUtc, sourceSnapshots = snapshots });
-        var employeeName = "Tenant summary";
+            subjectUserId = run.SubjectUserId, subjectGroupName = run.SubjectGroupName,
+            subjectGroupMemberIds = groupMembers, run.PeriodStartUtc, run.PeriodEndUtc, sourceSnapshots = snapshots });
+        var employeeName = groupMembers is null ? "Tenant summary" : $"Group summary ({groupMembers.Count} members)";
+        var department = run.SubjectGroupName ?? "";
         string? employeeEmail = null;
         if (run.SubjectUserId is { } owner)
         {
@@ -143,7 +149,7 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
                 ? $"{profile.FirstName} {profile.LastName}".Trim() : owner.ToString("D");
             if (profile.Found && profile.IsActive) employeeEmail = profile.Email;
         }
-        var data = new ReportDocumentData(employeeName, "",
+        var data = new ReportDocumentData(employeeName, department,
             $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}", lines,
             snapshots.Sum(ReportDocumentRenderer.CountLeaveDays));
         var bytes = definition.Format == ReportFormat.Pdf

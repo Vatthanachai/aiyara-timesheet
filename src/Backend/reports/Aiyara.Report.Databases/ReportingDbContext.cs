@@ -78,6 +78,7 @@ public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> opti
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired();
             entity.Property(x => x.FailureReason).HasMaxLength(1000);
+            entity.Property(x => x.SubjectGroupName).HasMaxLength(100);
             entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.SubjectUserId, x.CreatedAtUtc });
             entity.HasIndex(x => new { x.TenantId, x.Status, x.CreatedAtUtc });
