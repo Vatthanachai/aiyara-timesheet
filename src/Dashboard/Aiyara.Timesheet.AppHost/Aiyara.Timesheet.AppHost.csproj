@@ -9,6 +9,8 @@
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.JavaScript" />
     <PackageReference Include="Scalar.Aspire" />
+    <!-- Overrides Aspire.Hosting's vulnerable transitive 2.5.302. -->
+    <PackageReference Include="MessagePack" />
   </ItemGroup>
 
   <ItemGroup>
