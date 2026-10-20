@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { renderSVG } from 'uqr'
 
 const organizationCode = 'ACME123'
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
@@ -870,6 +871,12 @@ test('first platform admin sign in enrolls an authenticator and shows recovery c
 
   await expect(page.getByRole('heading', { name: 'Set up your authenticator' })).toBeVisible()
   await expect(page.getByText('JBSWY3DPEHPK3PXP')).toBeVisible()
+  const qr = page.getByRole('img', { name: 'QR code to add this account to an authenticator app' })
+  await expect(qr).toBeVisible()
+  expect(await qr.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+  // The QR carries the provisioning URI itself, drawn locally rather than by a remote QR service.
+  expect(decodeURIComponent((await qr.getAttribute('src'))!.replace(/^data:image\/svg\+xml;charset=utf-8,/, '')))
+    .toBe(renderSVG('otpauth://totp/Aiyara%20Timesheet:operator%40platform.test?secret=JBSWY3DPEHPK3PXP', { pixelSize: 6 }))
   await expect(page.getByRole('link', { name: 'Open in authenticator app' })).toHaveAttribute('href', /^otpauth:\/\/totp\//)
   await page.getByLabel('Authentication code').fill('654321')
   await page.getByRole('button', { name: 'Continue' }).click()

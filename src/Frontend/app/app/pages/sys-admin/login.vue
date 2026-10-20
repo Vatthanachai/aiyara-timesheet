@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { safeError } from '../../../../shared/api-response'
 import { useLocaleText } from '../../../../shared/i18n'
+import { renderSVG } from 'uqr'
 import type { MfaEnrollment, PlatformAdminLoginResult } from '../../composables/useSession'
 const { token, role, loginPlatformAdmin, acceptSession } = useSession()
 const { locale } = useLocale()
@@ -13,7 +14,8 @@ const text = useLocaleText(locale, {
     codeTitle: 'ยืนยันตัวตน', codeHint: 'กรอกรหัส 6 หลักจากแอปยืนยันตัวตน', code: 'รหัสยืนยัน',
     useRecovery: 'ใช้รหัสกู้คืนแทน', useAuthenticator: 'ใช้รหัสจากแอปแทน', recoveryCode: 'รหัสกู้คืน',
     enrollTitle: 'ตั้งค่าแอปยืนยันตัวตน',
-    enrollHint: 'เพิ่มบัญชีนี้ในแอปยืนยันตัวตน (เช่น Google Authenticator หรือ 1Password) ด้วยคีย์ด้านล่าง แล้วกรอกรหัส 6 หลักที่แอปแสดง',
+    enrollHint: 'สแกน QR ด้วยแอปยืนยันตัวตน (เช่น Google Authenticator หรือ 1Password) หรือกรอกคีย์ด้านล่าง แล้วกรอกรหัส 6 หลักที่แอปแสดง',
+    setupQr: 'QR สำหรับเพิ่มบัญชีในแอปยืนยันตัวตน',
     setupKey: 'คีย์ตั้งค่า', openInApp: 'เปิดในแอปยืนยันตัวตน',
     codesTitle: 'บันทึกรหัสกู้คืน',
     codesHint: 'ใช้รหัสเหล่านี้แทนแอปเมื่อเข้าถึงแอปไม่ได้ แต่ละรหัสใช้ได้ครั้งเดียว และจะไม่แสดงอีก เก็บไว้ในที่ปลอดภัย',
@@ -27,7 +29,8 @@ const text = useLocaleText(locale, {
     codeTitle: 'Verify it is you', codeHint: 'Enter the 6-digit code from your authenticator app.', code: 'Authentication code',
     useRecovery: 'Use a recovery code instead', useAuthenticator: 'Use an authenticator code instead', recoveryCode: 'Recovery code',
     enrollTitle: 'Set up your authenticator',
-    enrollHint: 'Add this account to an authenticator app (such as Google Authenticator or 1Password) with the key below, then enter the 6-digit code it shows.',
+    enrollHint: 'Scan the QR code with an authenticator app (such as Google Authenticator or 1Password), or enter the key below, then enter the 6-digit code it shows.',
+    setupQr: 'QR code to add this account to an authenticator app',
     setupKey: 'Setup key', openInApp: 'Open in authenticator app',
     codesTitle: 'Save your recovery codes',
     codesHint: 'Use one of these instead of your authenticator if you lose access to it. Each works once and they will not be shown again. Keep them somewhere safe.',
@@ -42,6 +45,10 @@ const password = ref('')
 const code = ref('')
 const useRecovery = ref(false)
 const enrollment = ref<MfaEnrollment | null>(null)
+// Drawn in the browser so the secret never reaches a third-party QR service.
+const enrollmentQr = computed(() => enrollment.value
+  ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderSVG(enrollment.value.provisioningUri, { pixelSize: 6 }))}`
+  : '')
 const issued = ref<PlatformAdminLoginResult | null>(null)
 const error = ref('')
 const pending = ref(false)
@@ -120,6 +127,7 @@ function startOver() {
     <template v-else-if="step === 'enroll'">
       <h2>{{ text.enrollTitle }}</h2>
       <p>{{ text.enrollHint }}</p>
+      <img class="setup-qr" :src="enrollmentQr" :alt="text.setupQr" />
       <p class="setup-key">{{ text.setupKey }}: <code>{{ enrollment?.secret }}</code></p>
       <a :href="enrollment?.provisioningUri">{{ text.openInApp }}</a>
       <label>{{ text.code }}<input ref="codeInput" v-model="code" required inputmode="numeric" pattern="[0-9 ]{6,7}"
@@ -147,6 +155,7 @@ function startOver() {
 </template>
 
 <style scoped>
+.setup-qr { background: white; border: 1px solid var(--color-border); border-radius: .5rem; height: auto; image-rendering: pixelated; max-width: 100%; padding: .5rem; width: 14rem; }
 .setup-key code, .recovery-codes code { font-size: 1rem; letter-spacing: .08em; overflow-wrap: anywhere; }
 .recovery-codes { display: grid; gap: .35rem; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); margin: 0; padding-left: 1.4rem; }
 </style>
