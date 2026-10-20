@@ -3,7 +3,7 @@ import { safeError } from '../../../../shared/api-response'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 import { zonedToday } from '../utils/reportPeriods'
 
-type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string }
+type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; groupId?: string | null; groupName?: string | null }
 type MemberSummary = { ownerId: string; entryCount: number; totalMinutes: number; leaveDays: number }
 type Summary = { year: number; month: number; locked: boolean; members: MemberSummary[] }
 type Entry = {
@@ -31,7 +31,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   monthClosed: 'ปิดรอบแล้ว', monthOpen: 'ยังไม่ปิดรอบ (ข้อมูลอาจเปลี่ยน)', totalHours: 'ชั่วโมงรวม', daysWorked: 'วันที่ทำงาน',
   date: 'วันที่', time: 'เวลา', task: 'งาน', project: 'โครงการ', category: 'หมวดหมู่', duration: 'ชั่วโมง',
   byProject: 'ชั่วโมงตามโครงการ', noProject: 'ไม่ระบุโครงการ', leave: 'วันลา', holidays: 'วันหยุดขององค์กร',
-  noEntries: 'ไม่มีรายการเวลาทำงานในเดือนนี้', noLeave: 'ไม่มีวันลา', noHolidays: 'ไม่มีวันหยุด', dayTotal: 'รวมวันนี้'
+  noEntries: 'ไม่มีรายการเวลาทำงานในเดือนนี้', noLeave: 'ไม่มีวันลา', noHolidays: 'ไม่มีวันหยุด', dayTotal: 'รวมวันนี้',
+  group: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม', byGroup: 'สรุปตามกลุ่ม', members: 'สมาชิก', noMembersInGroup: 'ไม่มีสมาชิกในกลุ่มนี้'
 }, en: {
   title: 'Member timesheets', hint: "Review each member's hours and leave by month, including the current open month.",
   month: 'Month', member: 'Member', entries: 'Entries', hours: 'Hours', leaveDays: 'Leave days', view: 'View timesheet',
@@ -39,12 +40,16 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   monthClosed: 'Month closed', monthOpen: 'Month open (may still change)', totalHours: 'Total hours', daysWorked: 'Days worked',
   date: 'Date', time: 'Time', task: 'Task', project: 'Project', category: 'Category', duration: 'Hours',
   byProject: 'Hours by project', noProject: 'No project', leave: 'Leave', holidays: 'Organization holidays',
-  noEntries: 'No time entries this month.', noLeave: 'No leave.', noHolidays: 'No holidays.', dayTotal: 'Day total'
+  noEntries: 'No time entries this month.', noLeave: 'No leave.', noHolidays: 'No holidays.', dayTotal: 'Day total',
+  group: 'Group', allGroups: 'All groups', noGroup: 'No group', byGroup: 'Totals by group', members: 'Members', noMembersInGroup: 'No members in this group.'
 } })
 
 const month = ref(zonedToday(props.timeZoneId).slice(0, 7))
 const summary = ref<Summary | null>(null)
 const selectedId = ref('')
+/** '' is every member; NO_GROUP is directory members in no group. */
+const NO_GROUP = '-'
+const groupFilter = ref('')
 const detail = ref<Detail | null>(null)
 const busy = ref(false)
 const error = ref('')
@@ -61,6 +66,30 @@ const rows = computed(() => {
   return ids.map(id => ({ id, member: memberById(id),
     totals: totals.get(id) ?? { ownerId: id, entryCount: 0, totalMinutes: 0, leaveDays: 0 } }))
     .sort((a, b) => b.totals.totalMinutes - a.totals.totalMinutes || memberName(a.member).localeCompare(memberName(b.member)))
+})
+/** The groups members are in, by name; former members have no group. */
+const groups = computed(() => [...new Map(props.members.filter(x => x.groupId)
+  .map(x => [x.groupId!, x.groupName ?? ''])).entries()]
+  .map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)))
+const groupKey = (member: Member | undefined) => member?.groupId ?? (member ? NO_GROUP : '')
+const visibleRows = computed(() => groupFilter.value
+  ? rows.value.filter(row => groupKey(row.member) === groupFilter.value) : rows.value)
+/** Hours, entries, and leave per group, busiest first, with members in no group last. */
+const groupTotals = computed(() => {
+  const names = new Map(groups.value.map(x => [x.id, x.name]))
+  const totals = new Map<string, { key: string; name: string; members: number; totalMinutes: number; entryCount: number; leaveDays: number }>()
+  for (const row of rows.value) {
+    const key = groupKey(row.member)
+    if (!key) continue
+    const total = totals.get(key) ?? { key, name: names.get(key) ?? copy.value.noGroup, members: 0, totalMinutes: 0, entryCount: 0, leaveDays: 0 }
+    total.members++
+    total.totalMinutes += row.totals.totalMinutes
+    total.entryCount += row.totals.entryCount
+    total.leaveDays += row.totals.leaveDays
+    totals.set(key, total)
+  }
+  return [...totals.values()].sort((a, b) => Number(a.key === NO_GROUP) - Number(b.key === NO_GROUP) ||
+    b.totalMinutes - a.totalMinutes || a.name.localeCompare(b.name))
 })
 const hours = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
 const formatDate = (value: string) => new Intl.DateTimeFormat(dateLocale.value,
@@ -116,7 +145,14 @@ onMounted(loadSummary)
         <h2 id="member-timesheets-heading">{{ copy.title }}</h2>
         <p class="muted">{{ copy.hint }}</p>
       </div>
-      <label>{{ copy.month }}<input v-model="month" type="month" required /></label>
+      <div class="member-filters">
+        <label v-if="groups.length">{{ copy.group }}<select v-model="groupFilter" :aria-label="copy.group">
+          <option value="">{{ copy.allGroups }}</option>
+          <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
+          <option :value="NO_GROUP">{{ copy.noGroup }}</option>
+        </select></label>
+        <label>{{ copy.month }}<input v-model="month" type="month" required /></label>
+      </div>
     </div>
     <p v-if="error" class="feedback feedback-error" role="alert">{{ error }}</p>
     <p v-if="busy && !summary" class="muted" role="status">{{ copy.loading }}</p>
@@ -172,6 +208,23 @@ onMounted(loadSummary)
     </template>
 
     <template v-else-if="summary">
+      <div v-if="groups.length && !groupFilter" class="table-wrap group-totals">
+        <table :aria-label="copy.byGroup">
+          <caption>{{ copy.byGroup }}</caption>
+          <thead><tr>
+            <th scope="col">{{ copy.group }}</th><th scope="col" class="number">{{ copy.members }}</th>
+            <th scope="col" class="number">{{ copy.hours }}</th><th scope="col" class="number">{{ copy.entries }}</th>
+            <th scope="col" class="number">{{ copy.leaveDays }}</th>
+          </tr></thead>
+          <tbody>
+            <tr v-for="group in groupTotals" :key="group.key">
+              <td><button type="button" class="link-button" @click="groupFilter = group.key">{{ group.name }}</button></td>
+              <td class="number">{{ group.members }}</td><td class="number">{{ hours(group.totalMinutes) }}</td>
+              <td class="number">{{ group.entryCount }}</td><td class="number">{{ group.leaveDays }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <p class="muted month-state"><span class="status" :data-status="summary.locked ? 'Succeeded' : 'Blocked'">{{ summary.locked ? copy.monthClosed : copy.monthOpen }}</span></p>
       <div class="table-wrap">
         <table class="member-table" :aria-label="copy.title">
@@ -181,8 +234,8 @@ onMounted(loadSummary)
             <th scope="col"><span class="sr-only">{{ copy.view }}</span></th>
           </tr></thead>
           <tbody>
-            <tr v-for="row in rows" :key="row.id">
-              <td><strong>{{ memberName(row.member) }}</strong><small v-if="row.member && memberName(row.member) !== row.member.email">{{ row.member.email }}</small></td>
+            <tr v-for="row in visibleRows" :key="row.id">
+              <td><strong>{{ memberName(row.member) }}</strong><small v-if="row.member && memberName(row.member) !== row.member.email">{{ row.member.email }}</small><small v-if="groups.length && !groupFilter && row.member">{{ row.member.groupName ?? copy.noGroup }}</small></td>
               <td class="number">{{ row.totals.entryCount || row.totals.leaveDays ? hours(row.totals.totalMinutes) : '—' }}</td>
               <td class="number">{{ row.totals.entryCount }}</td>
               <td class="number">{{ row.totals.leaveDays }}</td>
@@ -193,6 +246,7 @@ onMounted(loadSummary)
           </tbody>
         </table>
       </div>
+      <p v-if="!visibleRows.length" class="empty">{{ copy.noMembersInGroup }}</p>
     </template>
   </section>
 </template>
@@ -200,6 +254,11 @@ onMounted(loadSummary)
 <style scoped>
 .member-timesheets .card-heading p{margin:.3rem 0 0;max-width:36rem}
 .member-table{min-width:36rem}
+.member-filters{display:flex;flex-wrap:wrap;gap:.6rem}
+.group-totals{margin-bottom:1rem}
+.group-totals table{min-width:30rem}
+.group-totals caption{text-align:left;font-weight:600;padding-bottom:.4rem}
+.link-button{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
 .number{text-align:right;font-variant-numeric:tabular-nums}
 .number small{white-space:nowrap}
 .actions-cell{text-align:right}

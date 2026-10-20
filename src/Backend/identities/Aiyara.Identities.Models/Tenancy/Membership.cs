@@ -12,6 +12,7 @@ public sealed class Membership
     public Guid AccountId { get; set; }
     public TenantRole Role { get; set; }
     public MembershipStatus Status { get; set; }
+    public Guid? MemberGroupId { get; set; }
     public bool MustChangePassword { get; set; }
     public DateTime CreatedAtUtc { get; set; }
 }

@@ -197,6 +197,31 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.ToTable("invitations", (string)null);
                 });
 
+            modelBuilder.Entity("Aiyara.Identities.Models.Tenancy.MemberGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("member_groups", (string)null);
+                });
+
             modelBuilder.Entity("Aiyara.Identities.Models.Tenancy.Membership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -208,6 +233,9 @@ namespace Aiyara.Identities.Databases.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MemberGroupId")
+                        .HasColumnType("uuid");
 
                     b.Property<bool>("MustChangePassword")
                         .HasColumnType("boolean");
@@ -228,6 +256,8 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
+
+                    b.HasIndex("MemberGroupId");
 
                     b.HasIndex("TenantId", "AccountId")
                         .IsUnique();
@@ -490,6 +520,15 @@ namespace Aiyara.Identities.Databases.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Aiyara.Identities.Models.Tenancy.MemberGroup", b =>
+                {
+                    b.HasOne("Aiyara.Identities.Models.Tenancy.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Aiyara.Identities.Models.Tenancy.Membership", b =>
                 {
                     b.HasOne("Aiyara.Identities.Models.Tenancy.Account", null)
@@ -497,6 +536,11 @@ namespace Aiyara.Identities.Databases.Migrations
                         .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Aiyara.Identities.Models.Tenancy.MemberGroup", null)
+                        .WithMany()
+                        .HasForeignKey("MemberGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Aiyara.Identities.Models.Tenancy.Tenant", null)
                         .WithMany()

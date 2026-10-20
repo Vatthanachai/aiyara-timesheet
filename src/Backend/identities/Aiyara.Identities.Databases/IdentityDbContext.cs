@@ -10,6 +10,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<MemberGroup> MemberGroups => Set<MemberGroup>();
     public DbSet<OnboardingCapability> OnboardingCapabilities => Set<OnboardingCapability>();
     public DbSet<CredentialChallenge> CredentialChallenges => Set<CredentialChallenge>();
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
@@ -78,6 +79,18 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
             entity.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId);
+            entity.HasOne<MemberGroup>().WithMany().HasForeignKey(x => x.MemberGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<MemberGroup>(entity =>
+        {
+            entity.ToTable("member_groups");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => new { x.TenantId, x.Name }).IsUnique();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
             entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
         });
 
