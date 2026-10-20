@@ -45,6 +45,8 @@ account profiles, migrations, month snapshots, audit records, confirmed RabbitMQ
 outbox delivery, and the Shell plus three product remotes are implemented.
 Solution tests, frontend builds, Compose health, and Phase 2/3 Gateway smoke
 tests passed before the `develop` merge.
+The optional Kanban view (Task board with To do / Doing / Done columns) was
+added on 20 October 2026; see [[Project Status]].
 
 1. Implement profile fields (first name, last name, photo, job title), tenant holidays, leave entries, shared projects/categories, personal tasks, and optional Kanban status.
 2. Implement responsive table-first time entry: inline row editing, historical browsing, drag-in task tray, overnight time calculation, validation, and current-month-only mutation rules.

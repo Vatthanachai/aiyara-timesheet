@@ -363,6 +363,116 @@ test('timesheet task tray keeps a rejected task name, prefills the entry form, a
   await expect(timesheet.locator('.simple-list li input[type="date"]')).toHaveValue(`${currentMonth}-10`)
 })
 
+test('timesheet task board moves cards by button and drag, reverts a rejected move, and logs time', async ({ page }) => {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const corsHeaders = {
+    'access-control-allow-origin': 'http://127.0.0.1:3102',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const tasks = [
+    { id: 'task-1', name: 'Write release notes', status: 'todo', projectId: 'project-1', categoryId: null },
+    { id: 'task-2', name: 'Review designs', status: 'doing', projectId: null, categoryId: null }
+  ]
+  const updates: { id: string; status: string }[] = []
+  let rejectNextUpdate = false
+  const json = (body: unknown) => ({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk(body)) })
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: corsHeaders })
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/auth/sign-in')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(signInOk({
+        accessToken: 'board-token', refreshToken: 'board-refresh',
+        accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+        refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+        mustChangePassword: false, tenantId, role: 'Employee'
+      })) })
+      return
+    }
+    const taskUpdate = url.pathname.match(/\/api\/v1\/timesheets\/tasks\/([^/]+)$/)
+    if (taskUpdate && request.method() === 'PUT') {
+      if (rejectNextUpdate) {
+        rejectNextUpdate = false
+        await route.fulfill({ status: 400, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify({
+          statusCode: 400, statusMessage: 'Bad Request', errorCode: 'VALIDATION_FAILED'
+        }) })
+        return
+      }
+      const body = request.postDataJSON()
+      updates.push({ id: taskUpdate[1], status: body.status })
+      Object.assign(tasks.find(task => task.id === taskUpdate[1])!, body)
+      await route.fulfill(json(tasks.find(task => task.id === taskUpdate[1])))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/tasks')) {
+      await route.fulfill(json(tasks))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/leave') || url.pathname.endsWith('/api/v1/timesheets/entries')) {
+      await route.fulfill(json([]))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
+      await route.fulfill(json({ projects: [{ id: 'project-1', name: 'Website' }], categories: [], holidays: [] }))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/context')) {
+      await route.fulfill(json({ currentMonth, locked: false }))
+      return
+    }
+    await route.fulfill({ status: 404, headers: corsHeaders })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('employee@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+
+  const timesheet = page.frameLocator('iframe')
+  await timesheet.getByRole('button', { name: 'Task board' }).click()
+  const column = (name: string) => timesheet.getByRole('region', { name, exact: true })
+  const card = (name: string) => timesheet.locator('.board-card', { hasText: name })
+  await expect(column('To do').locator('.board-card')).toHaveText(/Write release notes\s*Website/)
+  await expect(column('Doing').locator('.board-card')).toContainText('Review designs')
+  await expect(column('Done')).toContainText('No tasks')
+
+  await card('Write release notes').getByRole('button', { name: 'Move to Doing' }).click()
+  await expect(column('Doing').locator('.board-card')).toHaveCount(2)
+  await expect.poll(() => updates).toEqual([{ id: 'task-1', status: 'doing' }])
+
+  await card('Review designs').dragTo(column('Done'))
+  await expect(column('Done').locator('.board-card')).toContainText('Review designs')
+  await expect.poll(() => updates.at(-1)).toEqual({ id: 'task-2', status: 'done' })
+
+  rejectNextUpdate = true
+  await card('Write release notes').getByRole('button', { name: 'Move to Done' }).click()
+  await expect(column('Doing').locator('.board-card')).toContainText('Write release notes')
+  // The reload that restores the card must not wipe the rejection message.
+  await expect(timesheet.locator('.feedback.error')).toBeVisible()
+  await page.waitForTimeout(500)
+  await expect(timesheet.locator('.feedback.error')).toBeVisible()
+  expect(updates).toHaveLength(2)
+
+  // The columns stack on a phone; the board must not make the page scroll sideways.
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await expect(card('Write release notes').getByRole('button', { name: 'Log time' })).toBeVisible()
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+
+  await card('Write release notes').getByRole('button', { name: 'Log time' }).click()
+  await expect(timesheet.locator('.entry-panel').getByLabel('Task', { exact: true })).toHaveValue('Write release notes')
+  await expect(timesheet.locator('.entry-panel').getByLabel('Project')).toHaveValue('project-1')
+})
+
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {
   // Shaped like Identity's real ServiceErrorResponse for AuthenticationFailure.InvalidCredentials
   // (IdentityController.Auth's catch maps it to errorCode "INVALIDCREDENTIALS"), not a generic
