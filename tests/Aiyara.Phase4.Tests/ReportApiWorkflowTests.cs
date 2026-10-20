@@ -82,6 +82,9 @@ public sealed class ReportApiWorkflowTests
             }
             Assert.Equal(1, await RunCount(""));
             Assert.Equal(0, await RunCount($"?subjectUserId={userId}&subjectUserId={Guid.NewGuid()}"));
+            // A queued run cannot be regenerated yet.
+            using var regenerateQueued = await client.PostAsync($"/api/v1/runs/{runId}/regenerate", null);
+            Assert.Equal(HttpStatusCode.Conflict, regenerateQueued.StatusCode);
 
             var generatedPdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("Employee",
                 "Team", "September 2026", [], 0));

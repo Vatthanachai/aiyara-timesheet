@@ -57,7 +57,7 @@ const copy = useLocaleText(locale, { th: {
   requested: 'วันที่ขอ', completed: 'เสร็จเมื่อ', actions: 'การดำเนินการ', noRuns: 'ยังไม่มีรายงานตามเงื่อนไขนี้',
   Queued: 'รอสร้าง', Running: 'กำลังสร้าง', Succeeded: 'พร้อมดาวน์โหลด', Failed: 'สร้างไม่สำเร็จ',
   blockedReason: 'รอให้ล็อกเดือน {month} ก่อน', failedReason: 'ลองขอใหม่อีกครั้ง หากยังไม่สำเร็จให้ติดต่อผู้ดูแล',
-  formerMember: 'สมาชิกเดิม', download: 'ดาวน์โหลด', signedBadge: 'เซ็นแล้ว v{n}', uploadSigned: 'อัปโหลด PDF ที่เซ็นแล้ว',
+  formerMember: 'สมาชิกเดิม', download: 'ดาวน์โหลด', regenerate: 'สร้างใหม่', regenerated: 'กำลังสร้างรายงานใหม่ จะแสดงเป็นรายการใหม่ในประวัติ', runInProgress: 'รายงานนี้ยังสร้างไม่เสร็จ', signedBadge: 'เซ็นแล้ว v{n}', uploadSigned: 'อัปโหลด PDF ที่เซ็นแล้ว',
   uploaded: 'อัปโหลดไฟล์ที่เซ็นแล้ว', previous: 'ก่อนหน้า', next: 'ถัดไป', pagination: 'แบ่งหน้า',
   autoRefresh: 'อัปเดตสถานะอัตโนมัติขณะมีรายงานที่กำลังสร้าง',
   settings: 'ตั้งค่ารายงาน', formats: 'รูปแบบรายงาน', name: 'ชื่อ', kind: 'ประเภท', format: 'ไฟล์',
@@ -82,7 +82,7 @@ const copy = useLocaleText(locale, { th: {
   requested: 'Requested', completed: 'Completed', actions: 'Actions', noRuns: 'No reports match these filters.',
   Queued: 'Queued', Running: 'Generating', Succeeded: 'Ready', Failed: 'Failed',
   blockedReason: 'Waiting for {month} to be locked', failedReason: 'Request it again; contact an administrator if it keeps failing.',
-  formerMember: 'Former member', download: 'Download', signedBadge: 'Signed v{n}', uploadSigned: 'Upload signed PDF',
+  formerMember: 'Former member', download: 'Download', regenerate: 'Regenerate', regenerated: 'Generating the report again; it appears as a new row in the history.', runInProgress: 'This report is still being generated.', signedBadge: 'Signed v{n}', uploadSigned: 'Upload signed PDF',
   uploaded: 'Signed PDF uploaded', previous: 'Previous', next: 'Next', pagination: 'Pagination',
   autoRefresh: 'Statuses refresh automatically while reports are being generated.',
   settings: 'Report settings', formats: 'Report formats', name: 'Name', kind: 'Type', format: 'File',
@@ -239,6 +239,23 @@ async function download(run: Run) {
     anchor.click()
     URL.revokeObjectURL(objectUrl)
   } catch (cause) { error.value = safeError(cause, locale.value) }
+}
+
+/** Queues a finished report again as a new run with the same report, period, and subject. */
+const regeneratingId = ref('')
+async function regenerate(run: Run) {
+  regeneratingId.value = run.id
+  error.value = ''
+  notice.value = ''
+  try {
+    await api(`/runs/${run.id}/regenerate`, { method: 'POST' })
+    notice.value = copy.value.regenerated
+    filters.page = 1
+    await Promise.all([loadHistory(), loadDashboard()])
+  } catch (cause) {
+    const code = (cause as { data?: { errorCode?: string } })?.data?.errorCode
+    error.value = code === 'RUN_IN_PROGRESS' ? copy.value.runInProgress : safeError(cause, locale.value)
+  } finally { regeneratingId.value = '' }
 }
 
 async function uploadSigned(run: Run, event: Event) {
@@ -491,6 +508,9 @@ onMounted(() => {
                 <td class="actions">
                   <span v-if="run.signedVersion" class="badge">{{ copy.signedBadge.replace('{n}', String(run.signedVersion)) }}</span>
                   <button v-if="run.status === 'Succeeded'" type="button" @click="download(run)">{{ copy.download }}</button>
+                  <button v-if="run.status === 'Succeeded' || run.status === 'Failed'" type="button"
+                    :disabled="regeneratingId === run.id" :aria-label="`${copy.regenerate}: ${run.name} ${formatPeriod(runPeriod(run), dateLocale)}`"
+                    @click="regenerate(run)">{{ copy.regenerate }}</button>
                   <label v-if="isAdmin && run.status === 'Succeeded' && run.kind === 'Monthly' && run.format === 'Pdf'" class="upload">
                     {{ copy.uploadSigned }}<input type="file" accept="application/pdf,.pdf" @change="uploadSigned(run, $event)" />
                   </label>

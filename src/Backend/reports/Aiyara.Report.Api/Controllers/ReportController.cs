@@ -76,6 +76,17 @@ public sealed class ReportController(ReportOperations operations) : BaseControll
     public Task<IActionResult> CreateRun([FromBody] RunRequest body, CancellationToken ct) =>
         WithActorAsync(actor => operations.CreateRun(actor, body, ct));
 
+    /// <summary>Generates a finished report again as a new run with the same report, period, and
+    /// subject (a member group keeps the members it was requested for). The original run and its
+    /// files stay. 409 RUN_IN_PROGRESS while the run is queued or generating.</summary>
+    [HttpPost("runs/{id:guid}/regenerate")]
+    [ProducesResponseType(typeof(ServiceOkResponse<ReportRun>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> Regenerate(Guid id, CancellationToken ct) =>
+        WithActorAsync(actor => operations.Regenerate(actor, id, ct));
+
     [HttpGet("runs/{id:guid}/download")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]

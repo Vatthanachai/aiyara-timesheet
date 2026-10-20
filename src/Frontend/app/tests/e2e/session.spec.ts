@@ -1776,7 +1776,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     created: [] as unknown[],
     renamed: [] as unknown[],
     memberCalls: 0,
-    timesheetQueries: [] as string[]
+    timesheetQueries: [] as string[],
+    regenerated: [] as string[]
   }
   const definitions = [
     { id: 'def-month', kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet' },
@@ -1843,6 +1844,11 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     if (url.pathname.match(/\/reports\/definitions\/[^/]+$/) && request.method() === 'PUT') {
       state.renamed.push(request.postDataJSON())
       return ok(definitions[0])
+    }
+    const regenerate = url.pathname.match(/\/reports\/runs\/([^/]+)\/regenerate$/)
+    if (regenerate && request.method() === 'POST') {
+      state.regenerated.push(regenerate[1]!)
+      return ok({ id: 'run-regenerated' }, 202)
     }
     if (url.pathname.endsWith('/reports/dashboard')) return ok({ total: 4, ready: 1, queued: 1, blocked: 1, failed: 1 })
     if (url.pathname.endsWith('/reports/schedules')) return ok([])
@@ -1935,6 +1941,13 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await groupFilter.selectOption({ label: 'All groups' })
   await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual([])
   await expect(history.locator('tbody tr')).toHaveCount(5)
+
+  // Finished reports can be generated again; queued ones cannot.
+  await expect(history.locator('tbody tr').filter({ hasText: 'Waiting for 2026-09' }).getByRole('button', { name: /Regenerate/ }))
+    .toHaveCount(0)
+  await history.locator('tbody tr').filter({ hasText: 'Request it again' }).getByRole('button', { name: /Regenerate/ }).click()
+  await expect(frame.getByText('Generating the report again; it appears as a new row in the history.')).toBeVisible()
+  expect(state.regenerated).toEqual(['run-failed'])
 
   // While a report is queued the list refreshes itself.
   await expect(frame.getByText('Statuses refresh automatically')).toBeVisible()
