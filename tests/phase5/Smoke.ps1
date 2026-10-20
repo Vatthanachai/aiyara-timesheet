@@ -167,7 +167,14 @@ for ($attempt = 0; $attempt -lt 24; $attempt++) {
 }
 if ($quartzMetrics.Count -eq 0) { throw 'Prometheus has no Quartz job execution metrics.' }
 
-$rustFsMetrics = @(Get-PrometheusQuery 'aiyara_rustfs_operations_total')
+# Report API and Worker export metrics periodically over OTLP, so storage calls made by a phase 4 run
+# that just finished can take one export interval to reach Prometheus.
+$rustFsMetrics = @()
+for ($attempt = 0; $attempt -lt 24; $attempt++) {
+    $rustFsMetrics = @(Get-PrometheusQuery 'aiyara_rustfs_operations_total')
+    if ($rustFsMetrics.Count -gt 0) { break }
+    Start-Sleep -Seconds 5
+}
 if ($rustFsMetrics.Count -eq 0) {
     throw 'Prometheus has no RustFS operation metrics. Run tests/phase4/Smoke.ps1 first to exercise report storage.'
 }
