@@ -13,6 +13,7 @@ public sealed record EntryRequest(DateOnly Date, TimeOnly StartTime, TimeOnly En
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,
     Guid? PersonalTaskId, string? Reason);
 public sealed record LeaveRequest(DateOnly Date, string Kind, string? Notes);
+public sealed record MemberMonthSummary(Guid OwnerId, int EntryCount, int TotalMinutes, int LeaveDays);
 
 public sealed record Actor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {

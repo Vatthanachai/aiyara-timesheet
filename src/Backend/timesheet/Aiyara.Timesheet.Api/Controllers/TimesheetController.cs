@@ -200,6 +200,24 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> Snapshot(int year, int month, [FromQuery] Guid? ownerId, CancellationToken ct) =>
         Execute(actor => operations.Snapshot(actor, year, month, ownerId, ct));
 
+    /// <summary>Tenant Admin only: hours, entry count, and leave days per member for a month.</summary>
+    [HttpGet("members/summary", Name = "GetMemberTimesheetSummaryV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> MemberSummary([FromQuery] int year, [FromQuery] int month, CancellationToken ct) =>
+        Execute(actor => operations.MemberSummary(actor, year, month, ct));
+
+    /// <summary>Tenant Admin only: one member's entries, leave, and the month's holidays.</summary>
+    [HttpGet("members/{ownerId:guid}/timesheet", Name = "GetMemberTimesheetV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> MemberTimesheet(Guid ownerId, [FromQuery] int year, [FromQuery] int month,
+        CancellationToken ct) => Execute(actor => operations.MemberTimesheet(actor, ownerId, year, month, ct));
+
     private async Task<IActionResult> Execute(Func<Actor, Task<ServiceResponse>> action)
     {
         if (!Actor.TryRead(HttpContext, out var actor)) return ReturnResponseWithHttpStatus(

@@ -317,6 +317,66 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             Ok(JsonSerializer.Deserialize<JsonElement>(snapshot.PayloadJson));
     }
 
+    /// <summary>Tenant Admin overview of one month: every member with entries or leave in it,
+    /// read live, so the current open month is included.</summary>
+    public async Task<ServiceResponse> MemberSummary(Actor actor, int year, int month, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        if (!ValidMonth(year, month)) return Error(400, "INVALID_DATE");
+        var entries = await db.TimeEntries.AsNoTracking().Where(x => !x.IsDeleted &&
+                x.Date.Year == year && x.Date.Month == month)
+            .GroupBy(x => x.OwnerId)
+            .Select(x => new { OwnerId = x.Key, EntryCount = x.Count(), TotalMinutes = x.Sum(e => e.DurationMinutes) })
+            .ToListAsync(ct);
+        var leaves = await db.LeaveEntries.AsNoTracking().Where(x => !x.IsDeleted &&
+                x.Date.Year == year && x.Date.Month == month)
+            .GroupBy(x => x.OwnerId)
+            .Select(x => new { OwnerId = x.Key, LeaveDays = x.Count() })
+            .ToListAsync(ct);
+        var members = entries.Select(x => x.OwnerId).Union(leaves.Select(x => x.OwnerId))
+            .Select(ownerId =>
+            {
+                var worked = entries.SingleOrDefault(x => x.OwnerId == ownerId);
+                return new MemberMonthSummary(ownerId, worked?.EntryCount ?? 0, worked?.TotalMinutes ?? 0,
+                    leaves.SingleOrDefault(x => x.OwnerId == ownerId)?.LeaveDays ?? 0);
+            })
+            .OrderByDescending(x => x.TotalMinutes).ToArray();
+        return Ok(new { year, month, locked = await IsLocked(year, month, ct), members });
+    }
+
+    /// <summary>Tenant Admin view of one member's month: entries with project and category names,
+    /// leave, and the month's holidays. Read-only; another tenant's member simply has no rows.</summary>
+    public async Task<ServiceResponse> MemberTimesheet(Actor actor, Guid ownerId, int year, int month,
+        CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        if (!ValidMonth(year, month)) return Error(400, "INVALID_DATE");
+        var projects = await db.Projects.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        var categories = await db.Categories.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        var entries = (await db.TimeEntries.AsNoTracking().Where(x => x.OwnerId == ownerId &&
+                !x.IsDeleted && x.Date.Year == year && x.Date.Month == month)
+            .OrderBy(x => x.Date).ThenBy(x => x.StartTime).ToListAsync(ct))
+            .Select(x => new
+            {
+                x.Id, x.Date, x.StartTime, x.EndTime, x.DurationMinutes, x.TaskName, x.Detail, x.Notes,
+                x.ProjectId,
+                ProjectName = x.ProjectId is { } projectId && projects.TryGetValue(projectId, out var project) ? project : null,
+                x.CategoryId,
+                CategoryName = x.CategoryId is { } categoryId && categories.TryGetValue(categoryId, out var category) ? category : null,
+                x.UpdatedAtUtc
+            }).ToArray();
+        var leaves = await db.LeaveEntries.AsNoTracking().Where(x => x.OwnerId == ownerId &&
+                !x.IsDeleted && x.Date.Year == year && x.Date.Month == month)
+            .OrderBy(x => x.Date).Select(x => new { x.Id, x.Date, x.Kind, x.Notes }).ToListAsync(ct);
+        var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
+                x.Date.Year == year && x.Date.Month == month)
+            .OrderBy(x => x.Date).Select(x => new { x.Date, x.Name }).ToListAsync(ct);
+        return Ok(new { ownerId, year, month, locked = await IsLocked(year, month, ct), entries, leaves, holidays });
+    }
+
+    private Task<bool> IsLocked(int year, int month, CancellationToken ct) =>
+        db.MonthLocks.AnyAsync(x => x.Year == year && x.Month == month, ct);
+
     private async Task<TenantRecord?> FindCatalog(Guid id, string kind, CancellationToken ct) =>
         kind == "project"
             ? await db.Projects.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct)

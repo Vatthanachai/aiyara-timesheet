@@ -1603,7 +1603,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     runQueries: [] as URLSearchParams[],
     created: [] as unknown[],
     renamed: [] as unknown[],
-    memberCalls: 0
+    memberCalls: 0,
+    timesheetQueries: [] as string[]
   }
   const definitions = [
     { id: 'def-month', kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet' },
@@ -1641,6 +1642,26 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
         { id: 'member-new', firstName: '', lastName: '', email: 'new@acme.test', role: 'Employee', status: 'PendingActivation' }
       ])
     }
+    if (url.pathname.includes('/timesheets/members/')) {
+      state.timesheetQueries.push(`${url.pathname.replace(/^.*\/timesheets/, '')}?${url.searchParams}`)
+      if (role !== 'TenantAdmin') return route.fulfill({ status: 403, headers: cors })
+      if (url.pathname.endsWith('/members/summary')) return ok({ year: 2026, month: 10, locked: false, members: [
+        { ownerId: 'member-somchai', entryCount: 3, totalMinutes: 450, leaveDays: 1 },
+        { ownerId: 'member-gone', entryCount: 1, totalMinutes: 60, leaveDays: 0 }
+      ] })
+      if (url.pathname.endsWith('/members/member-somchai/timesheet')) return ok({ ownerId: 'member-somchai', year: 2026, month: 10, locked: false,
+        entries: [
+          { id: 'e1', date: '2026-10-05', startTime: '09:00:00', endTime: '12:00:00', durationMinutes: 180, taskName: 'Design review',
+            detail: 'Checkout flow', notes: null, projectName: 'Apollo', categoryName: 'Design' },
+          { id: 'e2', date: '2026-10-05', startTime: '13:00:00', endTime: '15:30:00', durationMinutes: 150, taskName: 'Pairing',
+            detail: null, notes: null, projectName: 'Apollo', categoryName: null },
+          { id: 'e3', date: '2026-10-06', startTime: '22:00:00', endTime: '00:00:00', durationMinutes: 120, taskName: 'Night support',
+            detail: null, notes: 'On call', projectName: null, categoryName: 'Support' }
+        ],
+        leaves: [{ id: 'l1', date: '2026-10-09', kind: 'Vacation', notes: null }],
+        holidays: [{ date: '2026-10-13', name: 'Memorial day' }] })
+      return ok({ ownerId: 'x', year: 2026, month: 10, locked: true, entries: [], leaves: [], holidays: [] })
+    }
     if (url.pathname.endsWith('/reports/context')) return ok({ isAdmin: role === 'TenantAdmin', timeZoneId: 'Asia/Bangkok' })
     if (url.pathname.endsWith('/reports/definitions')) return ok(definitions)
     if (url.pathname.match(/\/reports\/definitions\/[^/]+$/) && request.method() === 'PUT') {
@@ -1677,8 +1698,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
 test('reporting shows names and reasons, requests a member report by calendar period, and refreshes progress', async ({ page }) => {
   const { frame, state } = await openReporting(page, 'TenantAdmin')
 
-  await expect(frame.locator('.summary')).toContainText('Needs attention2')
-  const history = frame.locator('table')
+  await expect(frame.locator('.summary').first()).toContainText('Needs attention2')
+  const history = frame.getByRole('region', { name: 'Report history' }).locator('table')
   await expect(history).toContainText('Somchai Staff')
   await expect(history).toContainText('Former member')
   await expect(history).toContainText('Whole organization')
@@ -1725,6 +1746,52 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await expect(frame.getByText('Monthly reports run at 00:15 on the 1st of each month.')).toBeVisible()
 })
 
+test('tenant admin reviews each member\'s monthly timesheet from Reports', async ({ page }) => {
+  const { frame, state } = await openReporting(page, 'TenantAdmin')
+  const section = frame.getByRole('region', { name: 'Member timesheets' })
+  const table = section.getByRole('table', { name: 'Member timesheets' })
+
+  await expect(table.locator('tbody tr')).toHaveCount(4)
+  // Busiest first; members with no entries show zero, and departed members keep their hours.
+  await expect(table.locator('tbody tr').nth(0)).toContainText('Somchai Staff')
+  await expect(table.locator('tbody tr').nth(0)).toContainText('7:30')
+  await expect(table.locator('tbody tr').nth(1)).toContainText('Former member')
+  await expect(table.locator('tbody tr').nth(1)).toContainText('1:00')
+  await expect(table.locator('tbody tr').filter({ hasText: 'new@acme.test' })).toContainText('—')
+  await expect(section).toContainText('Month open (may still change)')
+  const month = await section.getByLabel('Month').inputValue()
+  const [year, monthNumber] = month.split('-').map(Number)
+  expect(state.timesheetQueries[0]).toBe(`/members/summary?year=${year}&month=${monthNumber}`)
+
+  await section.getByRole('button', { name: 'View timesheet: Somchai Staff' }).click()
+  await expect(section.getByRole('heading', { name: /Somchai Staff · / })).toBeVisible()
+  await expect(section.locator('.member-totals')).toContainText('Total hours7:30')
+  await expect(section.locator('.member-totals')).toContainText('Days worked2')
+  await expect(section.locator('.member-totals')).toContainText('Leave days1')
+  const entries = section.getByRole('table', { name: 'Entries: Somchai Staff' })
+  await expect(entries.locator('tbody tr')).toHaveCount(3)
+  await expect(entries.locator('tbody tr').nth(0)).toContainText('09:00–12:00')
+  await expect(entries.locator('tbody tr').nth(0)).toContainText('Checkout flow')
+  await expect(entries.locator('tbody tr').nth(1)).toContainText('Day total 5:30')
+  await expect(entries.locator('tbody tr').nth(2)).toContainText('22:00–00:00')
+  await expect(entries.locator('tbody tr').nth(2)).toContainText('On call')
+  await expect(section).toContainText('Apollo5:30')
+  await expect(section).toContainText('No project2:00')
+  await expect(section).toContainText('Vacation')
+  await expect(section).toContainText('Memorial day')
+
+  // Changing the month reloads the open member; going back shows everyone again.
+  await section.getByLabel('Month').fill('2026-09')
+  await expect.poll(() => state.timesheetQueries.at(-1)).toBe('/members/member-somchai/timesheet?year=2026&month=9')
+  await section.getByRole('button', { name: /All members/ }).click()
+  await expect(table.locator('tbody tr')).toHaveCount(4)
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+})
+
 test('employees request only their own reports and never load the member directory', async ({ page }) => {
   const { frame, state } = await openReporting(page, 'Employee')
 
@@ -1736,6 +1803,8 @@ test('employees request only their own reports and never load the member directo
   await expect.poll(() => state.created.length).toBe(1)
   expect((state.created[0] as { subjectUserId: unknown }).subjectUserId).toBeNull()
   expect(state.memberCalls).toBe(0)
+  await expect(frame.getByRole('region', { name: 'Member timesheets' })).toHaveCount(0)
+  expect(state.timesheetQueries).toEqual([])
 
   // Only the history table may scroll sideways on a phone; the page itself must not.
   for (const width of [375, 320]) {
