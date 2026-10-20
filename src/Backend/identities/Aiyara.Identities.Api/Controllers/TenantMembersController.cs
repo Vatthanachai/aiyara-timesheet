@@ -109,6 +109,65 @@ public sealed class TenantMembersController(TenantMemberService members,
         return new ServiceOkResponse<object?>(null, StatusCodes.Status202Accepted);
     });
 
+    /// <summary>Puts a member, the caller included, in a group, or in none with a null groupId.</summary>
+    [HttpPut("{accountId:guid}/group", Name = "SetTenantMemberGroupV1")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    public Task<IActionResult> SetGroup(Guid accountId, [FromBody] SetTenantMemberGroupRequest request,
+        CancellationToken ct) => Run(async actor =>
+    {
+        await members.SetGroupAsync(actor.TenantId, actor.UserId, actor.SessionVersion, accountId,
+            request, ct);
+        return new ServiceOkResponse<object?>(null, StatusCodes.Status204NoContent);
+    });
+
+    /// <summary>The organization's member groups, by name, with how many members each has.</summary>
+    [HttpGet("groups", Name = "ListTenantMemberGroupsV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<IReadOnlyList<TenantMemberGroupEntry>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> Groups(CancellationToken ct) => Run(async actor =>
+        new ServiceOkResponse<IReadOnlyList<TenantMemberGroupEntry>>(await members.ListGroupsAsync(
+            actor.TenantId, actor.UserId, actor.SessionVersion, ct)));
+
+    [HttpPost("groups", Name = "CreateTenantMemberGroupV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<TenantMemberGroupEntry>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CreateGroup([FromBody] SaveTenantMemberGroupRequest request,
+        CancellationToken ct) => Run(async actor =>
+        new ServiceOkResponse<TenantMemberGroupEntry>(await members.CreateGroupAsync(actor.TenantId,
+            actor.UserId, actor.SessionVersion, request, ct), StatusCodes.Status201Created));
+
+    [HttpPut("groups/{groupId:guid}", Name = "RenameTenantMemberGroupV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<TenantMemberGroupEntry>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> RenameGroup(Guid groupId, [FromBody] SaveTenantMemberGroupRequest request,
+        CancellationToken ct) => Run(async actor =>
+        new ServiceOkResponse<TenantMemberGroupEntry>(await members.RenameGroupAsync(actor.TenantId,
+            actor.UserId, actor.SessionVersion, groupId, request, ct)));
+
+    /// <summary>Deletes a group with no members; otherwise 409 GROUP_IN_USE.</summary>
+    [HttpDelete("groups/{groupId:guid}", Name = "DeleteTenantMemberGroupV1")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> DeleteGroup(Guid groupId, CancellationToken ct) => Run(async actor =>
+    {
+        await members.DeleteGroupAsync(actor.TenantId, actor.UserId, actor.SessionVersion, groupId, ct);
+        return new ServiceOkResponse<object?>(null, StatusCodes.Status204NoContent);
+    });
+
     /// <summary>Runs the action for a TenantAdmin token; the service then re-checks the account,
     /// membership, session version, and password age in the database.</summary>
     private async Task<IActionResult> Run(Func<PasetoTokenClaims, Task<ServiceResponse>> action)
@@ -130,6 +189,8 @@ public sealed class TenantMembersController(TenantMemberService members,
                 TenantMemberFailure.Conflict => Error(StatusCodes.Status409Conflict, "CONFLICT"),
                 TenantMemberFailure.LastAdministrator => Error(StatusCodes.Status409Conflict, "LAST_ADMINISTRATOR"),
                 TenantMemberFailure.SelfChange => Error(StatusCodes.Status409Conflict, "CANNOT_CHANGE_SELF"),
+                TenantMemberFailure.GroupNameTaken => Error(StatusCodes.Status409Conflict, "GROUP_NAME_TAKEN"),
+                TenantMemberFailure.GroupInUse => Error(StatusCodes.Status409Conflict, "GROUP_IN_USE"),
                 TenantMemberFailure.RateLimited => Error(StatusCodes.Status429TooManyRequests, "RATE_LIMITED"),
                 TenantMemberFailure.Unavailable => Error(StatusCodes.Status503ServiceUnavailable, "ACTIVATION_DELIVERY_UNAVAILABLE"),
                 _ => Error(StatusCodes.Status400BadRequest, "VALIDATION_FAILED")

@@ -12,7 +12,8 @@ namespace Aiyara.Identities.Services.Onboarding;
 /// <see cref="TenantMemberFailure.NotFound"/>. Members are deactivated, never deleted. An admin
 /// cannot change their own role or status, and no change leaves the organization without an
 /// active TenantAdmin. Role and status changes end the member's sessions everywhere, and every
-/// change is written to the organization audit log.</summary>
+/// change is written to the organization audit log. Member groups only classify members, so an
+/// admin may put anyone in a group, themselves included, and sessions are left alone.</summary>
 public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenantScope,
     OnboardingService onboarding, PlatformOrganizationService organizations,
     AuthenticationService? authentication = null)
@@ -24,13 +25,98 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
         var members = await db.Memberships.AsNoTracking()
             .Join(db.Accounts.AsNoTracking(), member => member.AccountId, person => person.Id,
                 (member, person) => new { person.Id, person.FirstName, person.LastName, person.Email,
-                    member.Role, member.Status })
+                    member.Role, member.Status, member.MemberGroupId })
             // Members who have not set a name yet (pending invitations) sort after named ones.
             .OrderBy(x => x.FirstName == "").ThenBy(x => x.FirstName).ThenBy(x => x.LastName)
             .ThenBy(x => x.Email)
             .ToListAsync(cancellationToken);
+        var groups = await db.MemberGroups.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name,
+            cancellationToken);
         return members.Select(x => new TenantMemberEntry(x.Id, x.Email, x.FirstName, x.LastName,
-            x.Role.ToString(), x.Status.ToString(), x.Id == actorAccountId)).ToArray();
+            x.Role.ToString(), x.Status.ToString(), x.Id == actorAccountId, x.MemberGroupId,
+            x.MemberGroupId is { } groupId ? groups[groupId] : null)).ToArray();
+    }
+
+    public async Task<IReadOnlyList<TenantMemberGroupEntry>> ListGroupsAsync(Guid tenantId,
+        Guid actorAccountId, long actorSessionVersion, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+        var groups = await db.MemberGroups.AsNoTracking()
+            .Select(x => new { x.Id, x.Name,
+                MemberCount = db.Memberships.Count(member => member.MemberGroupId == x.Id) })
+            .ToListAsync(cancellationToken);
+        return groups.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(x => new TenantMemberGroupEntry(x.Id, x.Name, x.MemberCount)).ToArray();
+    }
+
+    public async Task<TenantMemberGroupEntry> CreateGroupAsync(Guid tenantId, Guid actorAccountId,
+        long actorSessionVersion, SaveTenantMemberGroupRequest request, CancellationToken cancellationToken)
+    {
+        var name = GroupName(request);
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+        await EnsureGroupNameFreeAsync(name, null, cancellationToken);
+        var group = new MemberGroup { Id = IdentityGuid.New(), TenantId = tenantId, Name = name,
+            CreatedAtUtc = DateTime.UtcNow };
+        db.MemberGroups.Add(group);
+        organizations.AddAudit(tenantId, actorAccountId, "member.group_created", null, null,
+            JsonSerializer.Serialize(new { group.Name }));
+        await SaveGroupAsync(cancellationToken);
+        return new TenantMemberGroupEntry(group.Id, group.Name, 0);
+    }
+
+    public async Task<TenantMemberGroupEntry> RenameGroupAsync(Guid tenantId, Guid actorAccountId,
+        long actorSessionVersion, Guid groupId, SaveTenantMemberGroupRequest request,
+        CancellationToken cancellationToken)
+    {
+        var name = GroupName(request);
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+        var group = await FindGroupAsync(groupId, cancellationToken);
+        var memberCount = await db.Memberships.CountAsync(x => x.MemberGroupId == groupId, cancellationToken);
+        if (group.Name == name) return new TenantMemberGroupEntry(group.Id, group.Name, memberCount);
+        await EnsureGroupNameFreeAsync(name, groupId, cancellationToken);
+        var before = JsonSerializer.Serialize(new { group.Name });
+        group.Name = name;
+        organizations.AddAudit(tenantId, actorAccountId, "member.group_renamed", null, before,
+            JsonSerializer.Serialize(new { group.Name }));
+        await SaveGroupAsync(cancellationToken);
+        return new TenantMemberGroupEntry(group.Id, group.Name, memberCount);
+    }
+
+    /// <summary>Deletes a group that no member belongs to; its members are moved out first.</summary>
+    public async Task DeleteGroupAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
+        Guid groupId, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+        var group = await FindGroupAsync(groupId, cancellationToken);
+        if (await db.Memberships.AnyAsync(x => x.MemberGroupId == groupId, cancellationToken))
+            throw new TenantMemberException(TenantMemberFailure.GroupInUse);
+        db.MemberGroups.Remove(group);
+        organizations.AddAudit(tenantId, actorAccountId, "member.group_deleted", null,
+            JsonSerializer.Serialize(new { group.Name }), null);
+        // A member put in the group meanwhile trips the foreign key.
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException) { throw new TenantMemberException(TenantMemberFailure.GroupInUse); }
+    }
+
+    /// <summary>Puts any member, the caller included, in a group or in none.</summary>
+    public async Task SetGroupAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
+        Guid accountId, SetTenantMemberGroupRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+        var membership = await db.Memberships.SingleOrDefaultAsync(x => x.AccountId == accountId,
+            cancellationToken) ?? throw new TenantMemberException(TenantMemberFailure.NotFound);
+        var group = request.GroupId is { } groupId ? await FindGroupAsync(groupId, cancellationToken) : null;
+        if (membership.MemberGroupId == group?.Id) return;
+        var account = await db.Accounts.SingleAsync(x => x.Id == accountId, cancellationToken);
+        var before = await db.MemberGroups.Where(x => x.Id == membership.MemberGroupId)
+            .Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
+        membership.MemberGroupId = group?.Id;
+        organizations.AddAudit(tenantId, actorAccountId, "member.group_changed", null,
+            JsonSerializer.Serialize(new { account.Email, Group = before }),
+            JsonSerializer.Serialize(new { account.Email, Group = group?.Name }));
+        // The group may have been deleted meanwhile.
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException) { throw new TenantMemberException(TenantMemberFailure.NotFound); }
     }
 
     public async Task<IReadOnlyList<TenantInvitationEntry>> ListInvitationsAsync(Guid tenantId,
@@ -165,6 +251,32 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
             throw new TenantMemberException(TenantMemberFailure.Unauthorized);
     }
 
+    private static string GroupName(SaveTenantMemberGroupRequest request) =>
+        request.Name?.Trim() is { Length: > 0 and <= 100 } name
+            ? name : throw new TenantMemberException(TenantMemberFailure.InvalidInput);
+
+    private async Task<MemberGroup> FindGroupAsync(Guid groupId, CancellationToken cancellationToken) =>
+        await db.MemberGroups.SingleOrDefaultAsync(x => x.Id == groupId, cancellationToken)
+        ?? throw new TenantMemberException(TenantMemberFailure.NotFound);
+
+    /// <summary>Group names are unique in the organization ignoring case, so "Outsource" and
+    /// "outsource" cannot both exist.</summary>
+    private async Task EnsureGroupNameFreeAsync(string name, Guid? exceptGroupId,
+        CancellationToken cancellationToken)
+    {
+        var lowered = name.ToLower();
+        if (await db.MemberGroups.AnyAsync(x => x.Id != exceptGroupId && x.Name.ToLower() == lowered,
+                cancellationToken))
+            throw new TenantMemberException(TenantMemberFailure.GroupNameTaken);
+    }
+
+    /// <summary>Saves a new or renamed group; the unique index catches a concurrent duplicate.</summary>
+    private async Task SaveGroupAsync(CancellationToken cancellationToken)
+    {
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException) { throw new TenantMemberException(TenantMemberFailure.GroupNameTaken); }
+    }
+
     private async Task<Invitation> PendingInvitationAsync(Guid invitationId, DateTime now,
         CancellationToken cancellationToken) =>
         await db.Invitations.SingleOrDefaultAsync(x => x.Id == invitationId &&
@@ -218,7 +330,8 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
 
 public enum TenantMemberFailure
 {
-    Unauthorized, NotFound, InvalidInput, Conflict, LastAdministrator, SelfChange, Unavailable, RateLimited
+    Unauthorized, NotFound, InvalidInput, Conflict, LastAdministrator, SelfChange, Unavailable, RateLimited,
+    GroupNameTaken, GroupInUse
 }
 
 public sealed class TenantMemberException(TenantMemberFailure failure) : Exception(failure.ToString())

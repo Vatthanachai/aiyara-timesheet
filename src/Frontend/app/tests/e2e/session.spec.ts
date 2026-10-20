@@ -1097,6 +1097,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
     }
     if (url.pathname.endsWith('/identity/members')) return ok([])
     if (url.pathname.endsWith('/identity/members/invitations')) return ok([])
+    if (url.pathname.endsWith('/identity/members/groups')) return ok([])
     if (url.pathname.endsWith('/identity/organization')) return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null })
     if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'admin@example.test', firstName: '', lastName: '', photoUrl: null })
     return route.fulfill({ status: 404, headers: cors })
@@ -1146,10 +1147,11 @@ test('tenant admin manages members and invitations from the Members panel', asyn
   }
   // A small stateful stand-in for Identity's member routes.
   const members = [
-    { id: 'a1', firstName: 'Ada', lastName: 'Admin', email: 'admin@example.test', role: 'TenantAdmin', status: 'Active', isCurrentUser: true },
-    { id: 'a2', firstName: 'Zoe', lastName: 'Staff', email: 'zoe@example.test', role: 'Employee', status: 'Active', isCurrentUser: false },
-    { id: 'a3', firstName: '', lastName: '', email: 'new.hire@example.test', role: 'Employee', status: 'PendingActivation', isCurrentUser: false }
+    { id: 'a1', firstName: 'Ada', lastName: 'Admin', email: 'admin@example.test', role: 'TenantAdmin', status: 'Active', isCurrentUser: true, groupId: null as string | null },
+    { id: 'a2', firstName: 'Zoe', lastName: 'Staff', email: 'zoe@example.test', role: 'Employee', status: 'Active', isCurrentUser: false, groupId: null as string | null },
+    { id: 'a3', firstName: '', lastName: '', email: 'new.hire@example.test', role: 'Employee', status: 'PendingActivation', isCurrentUser: false, groupId: null as string | null }
   ]
+  const groups: { id: string; name: string }[] = []
   const invitations = [{ id: 'i1', email: 'later@example.test', role: 'Employee', invitedByEmail: 'admin@example.test',
     createdAtUtc: '2026-10-20T08:00:00Z', expiresAtUtc: '2026-10-27T08:00:00Z' }]
   const calls: string[] = []
@@ -1172,8 +1174,10 @@ test('tenant admin manages members and invitations from the Members panel', asyn
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/profile/me') return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
-    if (path === '/identity/members') return ok(members)
+    if (path === '/identity/members') return ok(members.map(x => ({ ...x, groupName: groups.find(g => g.id === x.groupId)?.name ?? null })))
     if (path === '/identity/members/invitations') return ok(invitations)
+    if (path === '/identity/members/groups' && request.method() === 'GET')
+      return ok(groups.map(g => ({ ...g, memberCount: members.filter(x => x.groupId === g.id).length })))
     if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null })
     if (request.method() !== 'GET') calls.push(`${request.method()} ${path} ${request.postData() ?? ''}`.trim())
     if (path === `/auth/tenants/${tenantId}/invitations`) {
@@ -1183,7 +1187,27 @@ test('tenant admin manages members and invitations from the Members panel', asyn
         createdAtUtc: '2026-10-20T09:00:00Z', expiresAtUtc: '2026-10-27T09:00:00Z' })
       return ok({ invitationId: 'i2', tenantId, expiresAtUtc: '2026-10-27T09:00:00Z', code: 'secret-code' }, 201)
     }
+    if (path === '/identity/members/groups') {
+      const name = request.postDataJSON().name
+      if (groups.some(g => g.name.toLowerCase() === name.toLowerCase())) return fail(409, 'GROUP_NAME_TAKEN')
+      groups.push({ id: `g${groups.length + 1}`, name })
+      return ok({ id: `g${groups.length}`, name, memberCount: 0 }, 201)
+    }
+    const group = groups.find(g => path === `/identity/members/groups/${g.id}`)
+    if (group && request.method() === 'DELETE') {
+      if (members.some(x => x.groupId === group.id)) return fail(409, 'GROUP_IN_USE')
+      groups.splice(groups.indexOf(group), 1)
+      return route.fulfill({ status: 204, headers: cors })
+    }
+    if (group) {
+      group.name = request.postDataJSON().name
+      return ok({ ...group, memberCount: members.filter(x => x.groupId === group.id).length })
+    }
     const member = members.find(x => path.startsWith(`/identity/members/${x.id}/`))
+    if (member && path.endsWith('/group')) {
+      member.groupId = request.postDataJSON().groupId
+      return route.fulfill({ status: 204, headers: cors })
+    }
     if (member && path.endsWith('/role')) {
       if (refuseNextRoleChange) { refuseNextRoleChange = false; return fail(409, 'LAST_ADMINISTRATOR') }
       member.role = request.postDataJSON().role
@@ -1281,6 +1305,40 @@ test('tenant admin manages members and invitations from the Members panel', asyn
     'DELETE /identity/members/invitations/i1'
   ]))
 
+  // Member groups: add, refuse a duplicate name, assign (yourself too), refuse deleting a used group, rename, clear.
+  const groupList = frame.getByRole('list', { name: 'Member groups' })
+  await expect(frame.getByText('No groups yet')).toBeVisible()
+  await frame.getByPlaceholder('Group name').fill('Outsource')
+  await frame.getByRole('button', { name: 'Add group' }).click()
+  await expect(frame.getByText('Added the group Outsource.')).toBeVisible()
+  await expect(frame.getByPlaceholder('Group name')).toHaveValue('')
+  await expect(groupList.getByRole('listitem')).toHaveCount(1)
+  await expect(groupList.getByRole('listitem')).toContainText('Members: 0')
+  await frame.getByPlaceholder('Group name').fill('outsource')
+  await frame.getByRole('button', { name: 'Add group' }).click()
+  await expect(frame.getByRole('alert')).toContainText('A group with this name already exists.')
+  await expect(frame.getByPlaceholder('Group name')).toHaveValue('outsource')
+  await frame.getByLabel('Group: zoe@example.test').selectOption({ label: 'Outsource' })
+  await expect(frame.getByText('Moved zoe@example.test to a new group.')).toBeVisible()
+  await expect(frame.getByLabel('Group: zoe@example.test')).toHaveValue('g1')
+  await frame.getByLabel('Group: admin@example.test').selectOption({ label: 'Outsource' })
+  await expect(frame.getByText('Moved admin@example.test to a new group.')).toBeVisible()
+  await expect(groupList.getByRole('listitem')).toContainText('Members: 2')
+  await frame.getByRole('button', { name: 'Delete: Outsource' }).click()
+  await expect(frame.getByRole('alert')).toContainText('This group still has members.')
+  await groupList.getByLabel('Group name').fill('Outsourced')
+  await groupList.getByRole('button', { name: 'Save' }).click()
+  await expect(frame.getByText('Renamed the group to Outsourced.')).toBeVisible()
+  await frame.getByLabel('Group: zoe@example.test').selectOption({ label: 'No group' })
+  await expect(frame.getByLabel('Group: zoe@example.test')).toHaveValue('')
+  expect(calls).toEqual(expect.arrayContaining([
+    'POST /identity/members/groups {"name":"Outsource"}',
+    'PUT /identity/members/a2/group {"groupId":"g1"}',
+    'PUT /identity/members/a1/group {"groupId":"g1"}',
+    'PUT /identity/members/groups/g1 {"name":"Outsourced"}',
+    'PUT /identity/members/a2/group {"groupId":null}'
+  ]))
+
   for (const width of [375, 320]) {
     await page.setViewportSize({ width, height: 820 })
     await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
@@ -1313,7 +1371,7 @@ test('tenant admin renames the organization and sets its logo, and the Shell hea
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/profile/me') return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
-    if (path === '/identity/members' || path === '/identity/members/invitations') return ok([])
+    if (path === '/identity/members' || path === '/identity/members/invitations' || path === '/identity/members/groups') return ok([])
     if (path === '/identity/organization') {
       if (request.method() === 'PUT') {
         changes.push(`rename ${request.postDataJSON().name}`)
@@ -1741,9 +1799,12 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     if (url.pathname.endsWith('/identity/members')) {
       state.memberCalls++
       return ok([
-        { id: 'member-anong', firstName: 'Anong', lastName: 'Admin', email: 'admin@acme.test', role: 'TenantAdmin', status: 'Active' },
-        { id: 'member-somchai', firstName: 'Somchai', lastName: 'Staff', email: 'somchai@acme.test', role: 'Employee', status: 'Active' },
-        { id: 'member-new', firstName: '', lastName: '', email: 'new@acme.test', role: 'Employee', status: 'PendingActivation' }
+        { id: 'member-anong', firstName: 'Anong', lastName: 'Admin', email: 'admin@acme.test', role: 'TenantAdmin', status: 'Active',
+          groupId: 'g-staff', groupName: 'Permanent staff' },
+        { id: 'member-somchai', firstName: 'Somchai', lastName: 'Staff', email: 'somchai@acme.test', role: 'Employee', status: 'Active',
+          groupId: 'g-out', groupName: 'Outsource' },
+        { id: 'member-new', firstName: '', lastName: '', email: 'new@acme.test', role: 'Employee', status: 'PendingActivation',
+          groupId: null, groupName: null }
       ])
     }
     if (url.pathname.includes('/timesheets/members/')) {
@@ -1866,6 +1927,28 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   const month = await section.getByLabel('Month').inputValue()
   const [year, monthNumber] = month.split('-').map(Number)
   expect(state.timesheetQueries[0]).toBe(`/members/summary?year=${year}&month=${monthNumber}`)
+
+  // Totals by group: busiest first, members in no group last, former members left out.
+  const byGroup = section.getByRole('table', { name: 'Totals by group' })
+  await expect(byGroup.locator('tbody tr')).toHaveCount(3)
+  await expect(byGroup.locator('tbody tr').nth(0)).toContainText('Outsource17:3031')
+  await expect(byGroup.locator('tbody tr').nth(1)).toContainText('Permanent staff10:0000')
+  await expect(byGroup.locator('tbody tr').nth(2)).toContainText('No group10:0000')
+  await expect(table.locator('tbody tr').filter({ hasText: 'Somchai Staff' })).toContainText('Outsource')
+  // Filtering by a group shows only its members and hides the group totals.
+  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'Outsource' })
+  await expect(table.locator('tbody tr')).toHaveCount(1)
+  await expect(table.locator('tbody tr')).toContainText('Somchai Staff')
+  await expect(byGroup).toHaveCount(0)
+  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'No group' })
+  await expect(table.locator('tbody tr')).toHaveCount(1)
+  await expect(table.locator('tbody tr')).toContainText('new@acme.test')
+  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'All groups' })
+  await byGroup.getByRole('button', { name: 'Permanent staff' }).click()
+  await expect(table.locator('tbody tr')).toHaveCount(1)
+  await expect(table.locator('tbody tr')).toContainText('Anong Admin')
+  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'All groups' })
+  await expect(table.locator('tbody tr')).toHaveCount(4)
 
   await section.getByRole('button', { name: 'View timesheet: Somchai Staff' }).click()
   await expect(section.getByRole('heading', { name: /Somchai Staff · / })).toBeVisible()

@@ -128,6 +128,151 @@ public sealed class TenantMemberManagementTests
     }
 
     [Fact]
+    public async Task Groups_are_created_renamed_and_listed_by_name_with_member_counts()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var employee = await fixture.AddMemberAsync(fixture.TenantId, "zoe@acme.test", TenantRole.Employee);
+
+        var outsource = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("  Outsource  "), default);
+        await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("contract"), default);
+        await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, employee,
+            new SetTenantMemberGroupRequest(outsource.Id), default);
+        var renamed = await fixture.Members.RenameGroupAsync(fixture.TenantId, fixture.AdminId, 0, outsource.Id,
+            new SaveTenantMemberGroupRequest("Outsourced"), default);
+
+        Assert.Equal(("Outsourced", 1), (renamed.Name, renamed.MemberCount));
+        var groups = await fixture.Members.ListGroupsAsync(fixture.TenantId, fixture.AdminId, 0, default);
+        Assert.Equal([("contract", 0), ("Outsourced", 1)], groups.Select(x => (x.Name, x.MemberCount)));
+        var member = Assert.Single(await fixture.Members.ListMembersAsync(fixture.TenantId, fixture.AdminId, 0, default),
+            x => x.Id == employee);
+        Assert.Equal((outsource.Id, "Outsourced"), (member.GroupId, member.GroupName));
+        Assert.Equal(2, await fixture.Audits("member.group_created").CountAsync());
+        var audit = await fixture.Audits("member.group_renamed").SingleAsync();
+        Assert.Contains("\"Outsource\"", audit.BeforeJson);
+        Assert.Contains("\"Outsourced\"", audit.AfterJson);
+    }
+
+    [Fact]
+    public async Task Group_names_must_be_present_short_and_unique_ignoring_case()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var outsource = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Outsource"), default);
+        var contract = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Contract"), default);
+        // Another organization may use the same name.
+        var other = await fixture.CreateTenantAsync("Globex", "globex", "owner@globex.test");
+        var otherAdmin = await fixture.ActivateOwnerAsync(other.TenantId);
+        await fixture.Members.CreateGroupAsync(other.TenantId, otherAdmin, 0,
+            new SaveTenantMemberGroupRequest("Outsource"), default);
+
+        async Task<TenantMemberFailure> Create(string name) => (await Assert.ThrowsAsync<TenantMemberException>(() =>
+            fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+                new SaveTenantMemberGroupRequest(name), default))).Failure;
+
+        Assert.Equal(TenantMemberFailure.InvalidInput, await Create("   "));
+        Assert.Equal(TenantMemberFailure.InvalidInput, await Create(new string('x', 101)));
+        Assert.Equal(TenantMemberFailure.GroupNameTaken, await Create("OUTSOURCE"));
+        Assert.Equal(TenantMemberFailure.GroupNameTaken, (await Assert.ThrowsAsync<TenantMemberException>(() =>
+            fixture.Members.RenameGroupAsync(fixture.TenantId, fixture.AdminId, 0, contract.Id,
+                new SaveTenantMemberGroupRequest("outsource"), default))).Failure);
+        // Changing only the case of a group's own name is allowed.
+        Assert.Equal("OUTSOURCE", (await fixture.Members.RenameGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            outsource.Id, new SaveTenantMemberGroupRequest("OUTSOURCE"), default)).Name);
+    }
+
+    [Fact]
+    public async Task An_admin_may_set_anyones_group_including_their_own_without_ending_sessions()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var employee = await fixture.AddMemberAsync(fixture.TenantId, "zoe@acme.test", TenantRole.Employee);
+        await fixture.AddRefreshSessionAsync(employee);
+        var staff = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Permanent staff"), default);
+
+        await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, fixture.AdminId,
+            new SetTenantMemberGroupRequest(staff.Id), default);
+        await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, employee,
+            new SetTenantMemberGroupRequest(staff.Id), default);
+        await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, employee,
+            new SetTenantMemberGroupRequest(staff.Id), default);
+
+        Assert.Equal(staff.Id, (await fixture.Membership(fixture.AdminId)).MemberGroupId);
+        Assert.Equal(TenantRole.TenantAdmin, (await fixture.Membership(fixture.AdminId)).Role);
+        Assert.Equal(0, (await fixture.Db.Accounts.SingleAsync(x => x.Id == employee)).SessionVersion);
+        Assert.All(await fixture.Db.RefreshSessions.IgnoreQueryFilters().Where(x => x.AccountId == employee).ToListAsync(),
+            x => Assert.Null(x.RevokedAtUtc));
+        // Setting the group a member already has is not audited again.
+        Assert.Equal(2, await fixture.Audits("member.group_changed").CountAsync());
+
+        await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, employee,
+            new SetTenantMemberGroupRequest(null), default);
+        Assert.Null((await fixture.Membership(employee)).MemberGroupId);
+        var cleared = await fixture.Audits("member.group_changed").OrderBy(x => x.CreatedAtUtc).LastAsync();
+        Assert.Contains("\"Permanent staff\"", cleared.BeforeJson);
+        Assert.Contains("\"Group\":null", cleared.AfterJson);
+    }
+
+    [Fact]
+    public async Task A_group_with_members_cannot_be_deleted_until_they_are_moved_out()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var employee = await fixture.AddMemberAsync(fixture.TenantId, "zoe@acme.test", TenantRole.Employee);
+        var outsource = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Outsource"), default);
+        await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, employee,
+            new SetTenantMemberGroupRequest(outsource.Id), default);
+
+        var inUse = await Assert.ThrowsAsync<TenantMemberException>(() =>
+            fixture.Members.DeleteGroupAsync(fixture.TenantId, fixture.AdminId, 0, outsource.Id, default));
+        Assert.Equal(TenantMemberFailure.GroupInUse, inUse.Failure);
+
+        await fixture.Members.SetGroupAsync(fixture.TenantId, fixture.AdminId, 0, employee,
+            new SetTenantMemberGroupRequest(null), default);
+        await fixture.Members.DeleteGroupAsync(fixture.TenantId, fixture.AdminId, 0, outsource.Id, default);
+
+        Assert.Empty(await fixture.Members.ListGroupsAsync(fixture.TenantId, fixture.AdminId, 0, default));
+        Assert.Equal(1, await fixture.Audits("member.group_deleted").CountAsync());
+    }
+
+    [Fact]
+    public async Task Another_organizations_groups_are_invisible_and_cannot_be_assigned()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var employee = await fixture.AddMemberAsync(fixture.TenantId, "zoe@acme.test", TenantRole.Employee);
+        var other = await fixture.CreateTenantAsync("Globex", "globex", "owner@globex.test");
+        var otherAdmin = await fixture.ActivateOwnerAsync(other.TenantId);
+        var outsider = await fixture.AddMemberAsync(other.TenantId, "spy@globex.test", TenantRole.Employee);
+        var foreign = await fixture.Members.CreateGroupAsync(other.TenantId, otherAdmin, 0,
+            new SaveTenantMemberGroupRequest("Globex staff"), default);
+        var own = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Acme staff"), default);
+
+        Assert.Equal(["Acme staff"], (await fixture.Members.ListGroupsAsync(fixture.TenantId, fixture.AdminId, 0, default))
+            .Select(x => x.Name));
+        var failures = new[]
+        {
+            await Assert.ThrowsAsync<TenantMemberException>(() => fixture.Members.SetGroupAsync(fixture.TenantId,
+                fixture.AdminId, 0, employee, new SetTenantMemberGroupRequest(foreign.Id), default)),
+            await Assert.ThrowsAsync<TenantMemberException>(() => fixture.Members.SetGroupAsync(fixture.TenantId,
+                fixture.AdminId, 0, outsider, new SetTenantMemberGroupRequest(own.Id), default)),
+            await Assert.ThrowsAsync<TenantMemberException>(() => fixture.Members.RenameGroupAsync(fixture.TenantId,
+                fixture.AdminId, 0, foreign.Id, new SaveTenantMemberGroupRequest("Mine"), default)),
+            await Assert.ThrowsAsync<TenantMemberException>(() => fixture.Members.DeleteGroupAsync(fixture.TenantId,
+                fixture.AdminId, 0, foreign.Id, default))
+        };
+        Assert.All(failures, x => Assert.Equal(TenantMemberFailure.NotFound, x.Failure));
+        Assert.Null((await fixture.Membership(employee)).MemberGroupId);
+        Assert.Null((await fixture.Membership(outsider)).MemberGroupId);
+
+        var byEmployee = await Assert.ThrowsAsync<TenantMemberException>(() => fixture.Members.CreateGroupAsync(
+            fixture.TenantId, employee, 0, new SaveTenantMemberGroupRequest("Sneaky"), default));
+        Assert.Equal(TenantMemberFailure.Unauthorized, byEmployee.Failure);
+    }
+
+    [Fact]
     public async Task Changing_a_role_ends_the_members_sessions_and_is_audited()
     {
         await using var fixture = await Fixture.CreateAsync();

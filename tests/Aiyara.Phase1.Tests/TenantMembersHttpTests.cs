@@ -92,6 +92,44 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, staleAdmin.StatusCode);
     }
 
+    [Fact]
+    public async Task Member_groups_answer_with_the_documented_status_codes()
+    {
+        var admin = Token(adminId, acme, "TenantAdmin");
+
+        using var created = await Send(HttpMethod.Post, "/api/v1/members/groups", admin, new { name = "Outsource" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var createdJson = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var groupId = createdJson.RootElement.GetProperty("result").GetProperty("id").GetGuid();
+        using var duplicate = await Send(HttpMethod.Post, "/api/v1/members/groups", admin, new { name = "outsource" });
+        using var blank = await Send(HttpMethod.Post, "/api/v1/members/groups", admin, new { name = " " });
+        using var assigned = await Send(HttpMethod.Put, $"/api/v1/members/{employeeId}/group", admin, new { groupId });
+        using var self = await Send(HttpMethod.Put, $"/api/v1/members/{adminId}/group", admin, new { groupId });
+        using var outsider = await Send(HttpMethod.Put, $"/api/v1/members/{outsiderId}/group", admin, new { groupId });
+        using var inUse = await Send(HttpMethod.Delete, $"/api/v1/members/groups/{groupId}", admin);
+        using var byEmployee = await Send(HttpMethod.Get, "/api/v1/members/groups", Token(employeeId, acme, "Employee"));
+        using var groups = await Send(HttpMethod.Get, "/api/v1/members/groups", admin);
+        using var directory = await Get(admin);
+
+        Assert.Equal((HttpStatusCode.Conflict, "GROUP_NAME_TAKEN"), (duplicate.StatusCode, await ErrorCode(duplicate)));
+        Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, assigned.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, self.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, outsider.StatusCode);
+        Assert.Equal((HttpStatusCode.Conflict, "GROUP_IN_USE"), (inUse.StatusCode, await ErrorCode(inUse)));
+        Assert.Equal(HttpStatusCode.Forbidden, byEmployee.StatusCode);
+        using var groupsJson = JsonDocument.Parse(await groups.Content.ReadAsStringAsync());
+        var group = Assert.Single(groupsJson.RootElement.GetProperty("result").EnumerateArray());
+        Assert.Equal(("Outsource", 2), (group.GetProperty("name").GetString(), group.GetProperty("memberCount").GetInt32()));
+        using var directoryJson = JsonDocument.Parse(await directory.Content.ReadAsStringAsync());
+        Assert.Equal(["Outsource", "Outsource", null], directoryJson.RootElement.GetProperty("result").EnumerateArray()
+            .Select(x => x.GetProperty("groupName").GetString()));
+
+        // A group change is not a permission change, so the admin's own token keeps working.
+        using var cleared = await Send(HttpMethod.Put, $"/api/v1/members/{adminId}/group", admin, new { groupId = (Guid?)null });
+        Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
+    }
+
     public async Task InitializeAsync()
     {
         await connection.OpenAsync();
