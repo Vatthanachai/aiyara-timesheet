@@ -1090,6 +1090,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
       return ok({ minimumLength: 14, expiryDays: 90, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: false })
     }
     if (url.pathname.endsWith('/identity/members')) return ok([])
+    if (url.pathname.endsWith('/identity/members/invitations')) return ok([])
     if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'admin@example.test', firstName: '', lastName: '', photoUrl: null })
     return route.fulfill({ status: 404, headers: cors })
   })
@@ -1119,38 +1120,66 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   expect(policyCalls).toBe(1)
 })
 
-test('tenant admin sees the member directory and invites a member by email and role', async ({ page }) => {
+test('tenant admin manages members and invitations from the Members panel', async ({ page }) => {
   const cors = {
     'access-control-allow-origin': 'http://127.0.0.1:3104',
     'access-control-allow-headers': 'authorization,content-type',
     'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
   }
-  const invitations: { authorization?: string; body: unknown }[] = []
+  // A small stateful stand-in for Identity's member routes.
+  const members = [
+    { id: 'a1', firstName: 'Ada', lastName: 'Admin', email: 'admin@example.test', role: 'TenantAdmin', status: 'Active', isCurrentUser: true },
+    { id: 'a2', firstName: 'Zoe', lastName: 'Staff', email: 'zoe@example.test', role: 'Employee', status: 'Active', isCurrentUser: false },
+    { id: 'a3', firstName: '', lastName: '', email: 'new.hire@example.test', role: 'Employee', status: 'PendingActivation', isCurrentUser: false }
+  ]
+  const invitations = [{ id: 'i1', email: 'later@example.test', role: 'Employee', invitedByEmail: 'admin@example.test',
+    createdAtUtc: '2026-10-20T08:00:00Z', expiresAtUtc: '2026-10-27T08:00:00Z' }]
+  const calls: string[] = []
+  let refuseNextRoleChange = false
   await page.route('**/api/v1/**', route => {
     const request = route.request()
     const url = new URL(request.url())
     const ok = (result: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json',
       body: JSON.stringify({ ...apiOk(result), statusCode: status }) })
+    const fail = (status: number, errorCode: string) => route.fulfill({ status, headers: cors, contentType: 'application/json',
+      body: JSON.stringify({ statusCode: status, statusMessage: 'Error', errorCode }) })
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
-    if (url.pathname.endsWith('/auth/sign-in')) return ok({ session: {
+    const path = url.pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
       accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
-    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [], categories: [], holidays: [] })
-    if (url.pathname.endsWith(`/identity/tenants/${tenantId}/password-policy`))
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [] })
+    if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
-    if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
-    if (url.pathname.endsWith('/identity/members')) return ok([
-      { id: 'a1', firstName: 'Ada', lastName: 'Admin', email: 'admin@example.test', role: 'TenantAdmin', status: 'Active' },
-      { id: 'a2', firstName: '', lastName: '', email: 'new.hire@example.test', role: 'Employee', status: 'PendingActivation' }
-    ])
-    if (url.pathname.endsWith(`/auth/tenants/${tenantId}/invitations`) && request.method() === 'POST') {
+    if (path === '/identity/profile/me') return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
+    if (path === '/identity/members') return ok(members)
+    if (path === '/identity/members/invitations') return ok(invitations)
+    if (request.method() !== 'GET') calls.push(`${request.method()} ${path} ${request.postData() ?? ''}`.trim())
+    if (path === `/auth/tenants/${tenantId}/invitations`) {
       const body = request.postDataJSON()
-      invitations.push({ authorization: request.headers().authorization, body })
-      if (body.email === 'taken@example.test') return route.fulfill({ status: 409, headers: cors, contentType: 'application/json',
-        body: JSON.stringify({ statusCode: 409, statusMessage: 'Conflict', errorCode: 'CONFLICT' }) })
-      return ok({ invitationId: 'i1', tenantId, expiresAtUtc: new Date().toISOString(), code: 'secret-code' }, 201)
+      if (body.email === 'taken@example.test') return fail(409, 'CONFLICT')
+      invitations.unshift({ id: 'i2', email: body.email, role: body.role, invitedByEmail: 'admin@example.test',
+        createdAtUtc: '2026-10-20T09:00:00Z', expiresAtUtc: '2026-10-27T09:00:00Z' })
+      return ok({ invitationId: 'i2', tenantId, expiresAtUtc: '2026-10-27T09:00:00Z', code: 'secret-code' }, 201)
+    }
+    const member = members.find(x => path.startsWith(`/identity/members/${x.id}/`))
+    if (member && path.endsWith('/role')) {
+      if (refuseNextRoleChange) { refuseNextRoleChange = false; return fail(409, 'LAST_ADMINISTRATOR') }
+      member.role = request.postDataJSON().role
+      return route.fulfill({ status: 204, headers: cors })
+    }
+    if (member && path.endsWith('/status')) {
+      member.status = request.postDataJSON().active ? 'Active' : 'Deactivated'
+      return route.fulfill({ status: 204, headers: cors })
+    }
+    if (member && path.endsWith('/activation')) return ok(null, 202)
+    const invitation = invitations.find(x => path.startsWith(`/identity/members/invitations/${x.id}`))
+    if (invitation && path.endsWith('/resend')) return ok({ invitationId: 'i9', expiresAtUtc: '2026-10-28T08:00:00Z' }, 202)
+    if (invitation && request.method() === 'DELETE') {
+      invitations.splice(invitations.indexOf(invitation), 1)
+      return route.fulfill({ status: 204, headers: cors })
     }
     return route.fulfill({ status: 404, headers: cors })
   })
@@ -1163,28 +1192,75 @@ test('tenant admin sees the member directory and invites a member by email and r
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
 
   const frame = page.frameLocator('iframe')
-  const members = frame.getByRole('list', { name: 'Members' })
-  await expect(members.getByRole('listitem')).toHaveCount(2)
-  await expect(members.getByRole('listitem').first()).toContainText('Ada Admin')
-  await expect(members.getByRole('listitem').first()).toContainText('You')
-  await expect(members.getByRole('listitem').first()).toContainText('Organization admin')
-  await expect(members.getByRole('listitem').nth(1)).toContainText('new.hire@example.test')
-  await expect(members.getByRole('listitem').nth(1)).toContainText('Pending activation')
-  await expect(members.getByRole('listitem').nth(1)).not.toContainText('You')
+  const directory = frame.getByRole('list', { name: 'Members' })
+  const row = (email: string) => directory.getByRole('listitem').filter({ hasText: email })
+  await expect(directory.getByRole('listitem')).toHaveCount(3)
+  await expect(row('admin@example.test')).toContainText('Ada Admin')
+  await expect(row('admin@example.test')).toContainText('You')
+  await expect(row('admin@example.test')).toContainText('Organization admin')
+  // Your own row has no actions.
+  await expect(row('admin@example.test').getByRole('button')).toHaveCount(0)
+  await expect(row('new.hire@example.test')).toContainText('Pending activation')
+  await expect(row('new.hire@example.test')).not.toContainText('You')
 
+  // Invite: the new invitation appears under pending invitations; its code is never shown.
   await frame.getByLabel('Invitee email').fill(' colleague@example.test ')
   await frame.getByLabel('Role').selectOption('TenantAdmin')
   await frame.getByRole('button', { name: 'Send invitation' }).click()
-  await expect(frame.getByRole('status')).toHaveText('Invitation sent to colleague@example.test. They appear here once they accept it.')
-  expect(invitations[0]).toEqual({ authorization: 'Bearer admin-token', body: { email: 'colleague@example.test', role: 'TenantAdmin' } })
+  await expect(frame.getByText('Invitation sent to colleague@example.test.')).toBeVisible()
+  expect(calls.at(-1)).toBe(`POST /auth/tenants/${tenantId}/invitations {"email":"colleague@example.test","role":"TenantAdmin"}`)
+  const pending = frame.getByRole('list', { name: 'Pending invitations' })
+  await expect(pending.getByRole('listitem')).toHaveCount(2)
+  await expect(pending.getByRole('listitem').first()).toContainText('colleague@example.test')
+  await expect(pending.getByRole('listitem').first()).toContainText('Organization admin')
+  await expect(pending.getByRole('listitem').first()).toContainText('Invited by admin@example.test')
   await expect(frame.getByLabel('Invitee email')).toHaveValue('')
   await expect(frame.getByLabel('Role')).toHaveValue('Employee')
-
   await frame.getByLabel('Invitee email').fill('taken@example.test')
   await frame.getByRole('button', { name: 'Send invitation' }).click()
   await expect(frame.getByRole('alert')).toContainText('already belongs to a member of this organization')
-  // The response's code is shown to no one: only the invitee receives it by email.
   await expect(frame.locator('body')).not.toContainText('secret-code')
+
+  // Role changes, including the server refusing to remove the last active admin.
+  await frame.getByRole('button', { name: 'Make admin: zoe@example.test' }).click()
+  await expect(frame.getByText('Changed the role of zoe@example.test.')).toBeVisible()
+  await expect(row('zoe@example.test')).toContainText('Organization admin')
+  refuseNextRoleChange = true
+  await frame.getByRole('button', { name: 'Make employee: zoe@example.test' }).click()
+  await expect(frame.getByRole('alert')).toContainText('The organization needs at least one active admin.')
+  await expect(row('zoe@example.test')).toContainText('Organization admin')
+
+  // Deactivation needs a second click; cancelling sends nothing.
+  const before = calls.length
+  await frame.getByRole('button', { name: 'Deactivate: zoe@example.test' }).click()
+  await frame.getByRole('button', { name: 'Cancel' }).click()
+  expect(calls.length).toBe(before)
+  await frame.getByRole('button', { name: 'Deactivate: zoe@example.test' }).click()
+  await frame.getByRole('button', { name: 'Confirm deactivation: zoe@example.test' }).click()
+  await expect(frame.getByText('Deactivated zoe@example.test and signed them out everywhere.')).toBeVisible()
+  await expect(row('zoe@example.test')).toContainText('Deactivated')
+  await expect(row('zoe@example.test').getByRole('button', { name: /Make/ })).toHaveCount(0)
+  await frame.getByRole('button', { name: 'Reactivate: zoe@example.test' }).click()
+  await expect(frame.getByText('Reactivated zoe@example.test.')).toBeVisible()
+  await expect(row('zoe@example.test')).toContainText('Active')
+
+  // Pending members can get a new activation email; pending invitations can be re-sent or revoked.
+  await expect(row('zoe@example.test').getByRole('button', { name: /Resend activation/ })).toHaveCount(0)
+  await frame.getByRole('button', { name: 'Resend activation: new.hire@example.test' }).click()
+  await expect(frame.getByText('Sent a new activation code to new.hire@example.test.')).toBeVisible()
+  await frame.getByRole('button', { name: 'Resend: later@example.test' }).click()
+  await expect(frame.getByText('Sent a new invitation to later@example.test; the old code no longer works.')).toBeVisible()
+  await frame.getByRole('button', { name: 'Revoke: later@example.test' }).click()
+  await expect(frame.getByText('Revoked the invitation for later@example.test.')).toBeVisible()
+  await expect(pending.getByRole('listitem')).toHaveCount(1)
+  expect(calls).toEqual(expect.arrayContaining([
+    'PUT /identity/members/a2/role {"role":"TenantAdmin"}',
+    'PUT /identity/members/a2/status {"active":false}',
+    'PUT /identity/members/a2/status {"active":true}',
+    'POST /identity/members/a3/activation',
+    'POST /identity/members/invitations/i1/resend',
+    'DELETE /identity/members/invitations/i1'
+  ]))
 
   for (const width of [375, 320]) {
     await page.setViewportSize({ width, height: 820 })
