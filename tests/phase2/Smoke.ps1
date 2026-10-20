@@ -86,6 +86,12 @@ $inviteMailCode = Get-Code $employeeEmail 'Your Aiyara Timesheet invitation'
 if ($inviteMailCode -ne $invitationData.code) {
     throw 'Invitation email did not match the issued invitation.'
 }
+# With FRONTEND_PUBLIC_URL set, the email links to the page that accepts the code, without the code.
+$inviteMail = Find-MailMessage $MailDevUrl $MailDevToken $employeeEmail 'Your Aiyara Timesheet invitation'
+$pageLine = [regex]::Match($inviteMail.Text, '(?m)^\S[^\r\n]*page:\s*(\S+)')
+if ($pageLine.Success -and $pageLine.Groups[1].Value -notmatch '/accept-invitation$') {
+    throw "Invitation email links to $($pageLine.Groups[1].Value) instead of the invitation page."
+}
 Expect-Status (Send-Json '/api/v1/invitations/accept' @{
     code = $inviteMailCode
 }) 200 'invitation acceptance'

@@ -34,16 +34,14 @@ internal static class EmailTemplates
         };
 
         var safeCode = WebUtility.HtmlEncode(code);
-        // Invitations are accepted during signup, so only activation and reset link to a page.
+        // The code stays out of the link, so it is never kept in browser history or proxy logs.
         var (pagePath, pageLabel, pageButton) = template switch
         {
             "activation" => ("/activate", "Activation page", "Open the activation page"),
-            "password-reset" => ("/reset-password", "Reset page", "Open the reset page"),
-            _ => (null, null, null)
+            "invitation" => ("/accept-invitation", "Invitation page", "Open the invitation page"),
+            _ => ("/reset-password", "Reset page", "Open the reset page")
         };
-        var pageUrl = frontendUrl is not null && pagePath is not null
-            ? new Uri(frontendUrl, pagePath)
-            : null;
+        var pageUrl = frontendUrl is not null ? new Uri(frontendUrl, pagePath) : null;
         var actionText = pageUrl is not null
             ? $"\n{pageLabel}: {pageUrl.AbsoluteUri}"
             : string.Empty;

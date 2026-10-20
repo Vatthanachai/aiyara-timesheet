@@ -19,6 +19,7 @@
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
 - [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (draft, awaiting decisions).
 - [[Reporting Workspace Plan]] — reporting remote gaps and the R1–R3 delivery plan.
+- [[Tenant Member Management Plan]] — how a Tenant Admin invites and manages members (phases A–C).
 
 ## Repository Facts
 

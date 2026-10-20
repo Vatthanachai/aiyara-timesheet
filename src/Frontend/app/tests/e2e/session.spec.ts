@@ -1089,6 +1089,8 @@ test('administration asks the Shell for its session and keeps unsaved edits when
       policyCalls++
       return ok({ minimumLength: 14, expiryDays: 90, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: false })
     }
+    if (url.pathname.endsWith('/identity/members')) return ok([])
+    if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'admin@example.test', firstName: '', lastName: '', photoUrl: null })
     return route.fulfill({ status: 404, headers: cors })
   })
 
@@ -1115,6 +1117,108 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   await expect(frame.getByRole('spinbutton', { name: 'ความยาวขั้นต่ำ' })).toHaveValue('20')
   expect(catalogCalls).toBe(1)
   expect(policyCalls).toBe(1)
+})
+
+test('tenant admin sees the member directory and invites a member by email and role', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const invitations: { authorization?: string; body: unknown }[] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const ok = (result: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json',
+      body: JSON.stringify({ ...apiOk(result), statusCode: status }) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    if (url.pathname.endsWith('/auth/sign-in')) return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [], categories: [], holidays: [] })
+    if (url.pathname.endsWith(`/identity/tenants/${tenantId}/password-policy`))
+      return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
+    if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
+    if (url.pathname.endsWith('/identity/members')) return ok([
+      { id: 'a1', firstName: 'Ada', lastName: 'Admin', email: 'admin@example.test', role: 'TenantAdmin', status: 'Active' },
+      { id: 'a2', firstName: '', lastName: '', email: 'new.hire@example.test', role: 'Employee', status: 'PendingActivation' }
+    ])
+    if (url.pathname.endsWith(`/auth/tenants/${tenantId}/invitations`) && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      invitations.push({ authorization: request.headers().authorization, body })
+      if (body.email === 'taken@example.test') return route.fulfill({ status: 409, headers: cors, contentType: 'application/json',
+        body: JSON.stringify({ statusCode: 409, statusMessage: 'Conflict', errorCode: 'CONFLICT' }) })
+      return ok({ invitationId: 'i1', tenantId, expiresAtUtc: new Date().toISOString(), code: 'secret-code' }, 201)
+    }
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+
+  const frame = page.frameLocator('iframe')
+  const members = frame.getByRole('list', { name: 'Members' })
+  await expect(members.getByRole('listitem')).toHaveCount(2)
+  await expect(members.getByRole('listitem').first()).toContainText('Ada Admin')
+  await expect(members.getByRole('listitem').first()).toContainText('You')
+  await expect(members.getByRole('listitem').first()).toContainText('Organization admin')
+  await expect(members.getByRole('listitem').nth(1)).toContainText('new.hire@example.test')
+  await expect(members.getByRole('listitem').nth(1)).toContainText('Pending activation')
+  await expect(members.getByRole('listitem').nth(1)).not.toContainText('You')
+
+  await frame.getByLabel('Invitee email').fill(' colleague@example.test ')
+  await frame.getByLabel('Role').selectOption('TenantAdmin')
+  await frame.getByRole('button', { name: 'Send invitation' }).click()
+  await expect(frame.getByRole('status')).toHaveText('Invitation sent to colleague@example.test. They appear here once they accept it.')
+  expect(invitations[0]).toEqual({ authorization: 'Bearer admin-token', body: { email: 'colleague@example.test', role: 'TenantAdmin' } })
+  await expect(frame.getByLabel('Invitee email')).toHaveValue('')
+  await expect(frame.getByLabel('Role')).toHaveValue('Employee')
+
+  await frame.getByLabel('Invitee email').fill('taken@example.test')
+  await frame.getByRole('button', { name: 'Send invitation' }).click()
+  await expect(frame.getByRole('alert')).toContainText('already belongs to a member of this organization')
+  // The response's code is shown to no one: only the invitee receives it by email.
+  await expect(frame.locator('body')).not.toContainText('secret-code')
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 820 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+})
+
+test('invitation page accepts a code and points to activation, and explains a bad code', async ({ page }) => {
+  const codes: unknown[] = []
+  await page.route('**/api/v1/invitations/accept', route => {
+    const body = route.request().postDataJSON()
+    codes.push(body)
+    if (body.code === 'expired-code') return route.fulfill({ status: 400, contentType: 'application/json',
+      body: JSON.stringify({ statusCode: 400, statusMessage: 'Bad Request', errorCode: 'INVALIDINVITATION' }) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(apiOk({
+      tenantId, accountId: 'a2', membershipId: 'm2', role: 'Employee', status: 'PendingActivation' })) })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByRole('link', { name: 'Have an invitation code?' }).click()
+  await expect(page.getByRole('heading', { name: 'Accept your invitation' })).toBeVisible()
+  await waitForHydration(page)
+
+  await page.getByLabel('Invitation code from email').fill('expired-code')
+  await page.getByRole('button', { name: 'Accept invitation' }).click()
+  await expect(page.getByRole('alert')).toContainText('invalid, already used, or expired')
+
+  await page.getByLabel('Invitation code from email').fill('  fresh-code  ')
+  await page.getByRole('button', { name: 'Accept invitation' }).click()
+  await expect(page.getByRole('heading', { name: 'Invitation accepted' })).toBeVisible()
+  expect(codes).toEqual([{ code: 'expired-code' }, { code: 'fresh-code' }])
+  await page.getByRole('link', { name: 'Go to activation' }).click()
+  await expect(page).toHaveURL(/\/activate$/)
 })
 
 test('platform admin creates an organization through the authenticated platform route', async ({ page }) => {
