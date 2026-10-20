@@ -96,7 +96,8 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
             DateTime.SpecifyKind(run.PeriodStartUtc, DateTimeKind.Utc), zone));
         var endLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.SpecifyKind(run.PeriodEndUtc.AddTicks(-1), DateTimeKind.Utc), zone));
-        var snapshots = new List<string>();
+        // Each snapshot with its owner; only group reports need the owner, to name each row.
+        var snapshots = new List<(Guid? Owner, string Json)>();
         var groupMembers = run.SubjectGroupMemberIdsJson is { } membersJson
             ? JsonSerializer.Deserialize<HashSet<Guid>>(membersJson) : null;
         var http = clients.CreateClient("timesheet");
@@ -119,22 +120,29 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
                     cancellationToken: cancellationToken))?.Result ?? [];
                 // A group report reads the whole organization's month and keeps only its members.
                 snapshots.AddRange(owners.Where(x => groupMembers is null || groupMembers.Contains(x.OwnerId))
-                    .Select(x => x.PayloadJson));
+                    .Select(x => ((Guid?)x.OwnerId, x.PayloadJson)));
             }
             else
             {
                 var snapshot = await response.Content.ReadFromJsonAsync<SnapshotEnvelope<JsonElement>>(
                     cancellationToken: cancellationToken);
-                snapshots.Add(snapshot?.Result.GetRawText() ?? throw new JsonException("Missing snapshot result."));
+                snapshots.Add((run.SubjectUserId, snapshot?.Result.GetRawText()
+                    ?? throw new JsonException("Missing snapshot result.")));
             }
         }
 
-        var lines = snapshots.SelectMany(ReportDocumentRenderer.ReadSnapshot)
+        var memberNames = new Dictionary<Guid, string>();
+        if (groupMembers is not null)
+            foreach (var member in snapshots.Select(x => x.Owner!.Value).Distinct())
+                memberNames[member] = await MemberNameAsync(envelope.TenantId, member, run.Id, cancellationToken);
+        var lines = snapshots.SelectMany(snapshot => ReportDocumentRenderer.ReadSnapshot(snapshot.Json)
+                .Select(line => groupMembers is null ? line : line with { Member = memberNames[snapshot.Owner!.Value] }))
             .Where(x => x.Date >= startLocal && x.Date <= endLocal)
-            .OrderBy(x => x.Date).ThenBy(x => x.Start).ToArray();
+            .OrderBy(x => x.Date).ThenBy(x => x.Member).ThenBy(x => x.Start).ToArray();
         var payload = JsonSerializer.Serialize(new { tenantId = envelope.TenantId,
             subjectUserId = run.SubjectUserId, subjectGroupName = run.SubjectGroupName,
-            subjectGroupMemberIds = groupMembers, run.PeriodStartUtc, run.PeriodEndUtc, sourceSnapshots = snapshots });
+            subjectGroupMemberIds = groupMembers, run.PeriodStartUtc, run.PeriodEndUtc,
+            sourceSnapshots = snapshots.Select(x => x.Json) });
         var employeeName = groupMembers is null ? "Tenant summary" : $"Group summary ({groupMembers.Count} members)";
         var department = run.SubjectGroupName ?? "";
         string? employeeEmail = null;
@@ -151,7 +159,7 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
         }
         var data = new ReportDocumentData(employeeName, department,
             $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}", lines,
-            snapshots.Sum(ReportDocumentRenderer.CountLeaveDays));
+            snapshots.Sum(x => ReportDocumentRenderer.CountLeaveDays(x.Json)));
         var bytes = definition.Format == ReportFormat.Pdf
             ? ReportDocumentRenderer.RenderPdf(data) : ReportDocumentRenderer.RenderXlsx(data);
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
@@ -195,6 +203,20 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
                     run.Id, error.GetType().Name);
             }
         }
+    }
+
+    /// <summary>A group member's name from Identity, else their email, else their account ID (for
+    /// someone who has since left the organization).</summary>
+    private async Task<string> MemberNameAsync(Guid tenantId, Guid accountId, Guid runId,
+        CancellationToken cancellationToken)
+    {
+        var profile = await identity.LookupProfileAsync(new LookupProfileRequest
+        {
+            SubjectId = accountId.ToString(), TenantId = tenantId.ToString(), CorrelationId = runId.ToString()
+        }, cancellationToken: cancellationToken);
+        if (!profile.Found) return accountId.ToString("D");
+        var name = $"{profile.FirstName} {profile.LastName}".Trim();
+        return name.Length > 0 ? name : profile.Email;
     }
 
     private sealed record SnapshotPayload(Guid OwnerId, string PayloadJson, DateTime CreatedAtUtc);

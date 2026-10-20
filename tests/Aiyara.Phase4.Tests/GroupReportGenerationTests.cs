@@ -7,7 +7,7 @@ using Aiyara.Report.Services;
 using Aiyara.Report.Worker;
 using Aiyara.Timesheet.Contracts.Identity.V1;
 using Aiyara.Timesheet.Contracts.Messaging.V1;
-using Grpc.Net.Client;
+using Grpc.Core;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -52,10 +52,14 @@ public sealed class GroupReportGenerationTests
 
         var timesheet = new SnapshotHandler(new[] { (ada, "Ada task"), (ben, "Ben task"), (outsider, "Outsider task") });
         var storage = new MemoryStorage();
-        using var channel = GrpcChannel.ForAddress("http://127.0.0.1:1");
+        // Ada has a name, Ben only an email; the outsider is never looked up.
+        var identity = new Profiles(new()
+        {
+            [ada] = new LookupProfileResponse { Found = true, FirstName = "Ada", LastName = "Lovelace", Email = "ada@acme.test" },
+            [ben] = new LookupProfileResponse { Found = true, Email = "ben@acme.test" }
+        });
         var consumer = new ReportGenerationConsumer(provider.GetRequiredService<IServiceScopeFactory>(),
-            new ConfigurationBuilder().Build(), storage, new Clients(timesheet),
-            new IdentityValidationService.IdentityValidationServiceClient(channel),
+            new ConfigurationBuilder().Build(), storage, new Clients(timesheet), identity,
             NullLogger<ReportGenerationConsumer>.Instance);
 
         await consumer.ProcessAsync(new MessageEnvelope<ReportGenerationRequestedV1>(Guid.NewGuid(), Guid.NewGuid(),
@@ -79,6 +83,11 @@ public sealed class GroupReportGenerationTests
         Assert.Contains("Group summary (2 members)", document);
         Assert.Contains("Outsource", document);
         Assert.DoesNotContain("Outsider task", document);
+        // Each row names its member.
+        Assert.Contains("Member", document);
+        Assert.Contains("Ada Lovelace", document);
+        Assert.Contains("ben@acme.test", document);
+        Assert.Equal(new[] { ada, ben }.Order(), identity.LookedUp.Order());
     }
 
     /// <summary>The text of every part of an .xlsx package.</summary>
@@ -116,6 +125,23 @@ public sealed class GroupReportGenerationTests
             {
                 Content = new StringContent(JsonSerializer.Serialize(new { result }), Encoding.UTF8, "application/json")
             });
+        }
+    }
+
+    /// <summary>Answers profile lookups from a dictionary instead of calling Identity.</summary>
+    private sealed class Profiles(Dictionary<Guid, LookupProfileResponse> profiles)
+        : IdentityValidationService.IdentityValidationServiceClient
+    {
+        public List<Guid> LookedUp { get; } = [];
+
+        public override AsyncUnaryCall<LookupProfileResponse> LookupProfileAsync(LookupProfileRequest request,
+            Metadata? headers = null, DateTime? deadline = null, CancellationToken cancellationToken = default)
+        {
+            var id = Guid.Parse(request.SubjectId);
+            LookedUp.Add(id);
+            return new AsyncUnaryCall<LookupProfileResponse>(
+                Task.FromResult(profiles.GetValueOrDefault(id) ?? new LookupProfileResponse { Found = false }),
+                Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => [], () => { });
         }
     }
 

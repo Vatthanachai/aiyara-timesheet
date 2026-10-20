@@ -125,6 +125,33 @@ public sealed class ReportFoundationTests
     }
 
     [Fact]
+    public void Documents_show_a_member_column_only_when_rows_name_members()
+    {
+        ReportLine Line(string member) => new(new DateOnly(2026, 10, 1), "09:00", "10:00", 60,
+            "Review", "", "", "", "", "work", member);
+        static string Sheet(byte[] xlsx)
+        {
+            using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(xlsx));
+            return string.Concat(archive.Entries.Select(entry =>
+            {
+                using var reader = new StreamReader(entry.Open());
+                return reader.ReadToEnd();
+            }));
+        }
+
+        var group = Sheet(ReportDocumentRenderer.RenderXlsx(new ReportDocumentData("Group summary (2 members)",
+            "Outsource", "October", [Line("Ada Lovelace"), Line("สมชาย ใจดี")], 0)));
+        var single = Sheet(ReportDocumentRenderer.RenderXlsx(new ReportDocumentData("Ada", "", "October", [Line("")], 0)));
+        var pdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("Group summary (2 members)",
+            "Outsource", "October", [Line("Ada Lovelace"), Line("สมชาย ใจดี")], 0));
+
+        Assert.Contains(">Member<", group);
+        Assert.Contains("สมชาย ใจดี", group);
+        Assert.DoesNotContain(">Member<", single);
+        Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
+    }
+
+    [Fact]
     public void Pdf_renderer_embeds_thai_document_content()
     {
         var pdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("พนักงาน", "ทีม", "ตุลาคม",
