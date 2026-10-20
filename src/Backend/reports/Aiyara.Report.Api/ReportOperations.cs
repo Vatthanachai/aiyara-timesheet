@@ -186,6 +186,32 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         return Accepted(run, $"/api/v1/runs/{run.Id}");
     }
 
+    /// <summary>Queues a finished run's report again as a new run. Employees may regenerate only
+    /// their own runs; another tenant's or an invisible run is not found.</summary>
+    public async Task<ServiceResponse> Regenerate(ReportActor actor, Guid id, CancellationToken ct)
+    {
+        var source = await VisibleRuns(actor).SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (source is null) return Error(404, "NOT_FOUND");
+        if (source.Status is not (ReportRunStatus.Succeeded or ReportRunStatus.Failed))
+            return Error(409, "RUN_IN_PROGRESS");
+        var definition = await db.ReportDefinitions.SingleOrDefaultAsync(x =>
+            x.Id == source.ReportDefinitionId && x.IsEnabled, ct);
+        if (definition is null) return Error(404, "NOT_FOUND");
+        await storage.EnsureBucketAsync(ct);
+        var run = new ReportRun { TenantId = actor.TenantId, ReportDefinitionId = definition.Id,
+            SubjectUserId = source.SubjectUserId, SubjectGroupName = source.SubjectGroupName,
+            SubjectGroupMemberIdsJson = source.SubjectGroupMemberIdsJson, RequestedBy = actor.UserId,
+            TimeZoneId = source.TimeZoneId, IdempotencyKey = $"regenerate:{source.Id:N}:{Guid.NewGuid():N}",
+            PeriodStartUtc = source.PeriodStartUtc, PeriodEndUtc = source.PeriodEndUtc, CreatedAtUtc = DateTime.UtcNow };
+        db.ReportRuns.Add(run);
+        Audit(actor, "run.regenerated", run.Id, new { SourceRunId = source.Id, definition.Kind, definition.Format,
+            run.SubjectUserId, run.SubjectGroupName, run.PeriodStartUtc, run.PeriodEndUtc });
+        await db.SaveChangesAsync(ct);
+        try { await ReportCommandPublisher.PublishAsync(configuration, actor.TenantId, run, definition, ct); }
+        catch (Exception) { /* Scheduled recovery republishes queued runs. */ }
+        return Accepted(run, $"/api/v1/runs/{run.Id}");
+    }
+
     public async Task<ServiceResponse> Download(ReportActor actor, Guid id, CancellationToken ct)
     {
         var run = await db.ReportRuns.SingleOrDefaultAsync(x => x.Id == id, ct);

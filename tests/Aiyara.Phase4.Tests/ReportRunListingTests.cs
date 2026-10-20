@@ -146,6 +146,54 @@ public sealed class ReportRunListingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Regenerating_a_finished_run_queues_a_new_run_with_the_same_report_and_subject()
+    {
+        var first = await operations.Regenerate(Admin, succeeded.Id, default);
+        var second = await operations.Regenerate(Admin, succeeded.Id, default);
+        var retried = await operations.Regenerate(Admin, failed.Id, default);
+
+        Assert.Equal((202, 202, 202), (first.StatusCode, second.StatusCode, retried.StatusCode));
+        db.ChangeTracker.Clear();
+        var copyId = Result(first, 202).GetProperty("id").GetGuid();
+        var copy = await db.ReportRuns.SingleAsync(x => x.Id == copyId);
+        Assert.Equal((succeeded.ReportDefinitionId, succeeded.SubjectUserId, succeeded.PeriodStartUtc, succeeded.PeriodEndUtc),
+            (copy.ReportDefinitionId, copy.SubjectUserId, copy.PeriodStartUtc, copy.PeriodEndUtc));
+        Assert.Equal((ReportRunStatus.Queued, adminId), (copy.Status, copy.RequestedBy));
+        // Every regeneration is its own run; the original stays as it was.
+        Assert.NotEqual(copyId, Result(second, 202).GetProperty("id").GetGuid());
+        Assert.Equal(ReportRunStatus.Succeeded, (await db.ReportRuns.SingleAsync(x => x.Id == succeeded.Id)).Status);
+        Assert.Equal(3, await db.Audits.CountAsync(x => x.Action == "run.regenerated"));
+        Assert.Contains(succeeded.Id.ToString(), (await db.Audits.SingleAsync(x => x.ReportRunId == copyId)).DetailsJson);
+    }
+
+    [Fact]
+    public async Task Regenerating_keeps_a_group_snapshot_and_refuses_unfinished_invisible_or_disabled_runs()
+    {
+        var group = Run(weekly, ReportRunStatus.Succeeded, null, DateTime.UtcNow, null);
+        group.SubjectGroupName = "Outsource";
+        group.SubjectGroupMemberIdsJson = JsonSerializer.Serialize(new[] { employeeId });
+        db.ReportRuns.Add(group);
+        await db.SaveChangesAsync();
+
+        var regenerated = await operations.Regenerate(Admin, group.Id, default);
+        var queued = await operations.Regenerate(Admin, blocked.Id, default);
+        var unknown = await operations.Regenerate(Admin, Guid.NewGuid(), default);
+        var notTheirs = await operations.Regenerate(Employee, failed.Id, default);
+        var own = await operations.Regenerate(Employee, succeeded.Id, default);
+        await db.ReportDefinitions.Where(x => x.Id == monthly.Id).ExecuteUpdateAsync(x => x.SetProperty(d => d.IsEnabled, false));
+        var disabled = await operations.Regenerate(Admin, failed.Id, default);
+
+        db.ChangeTracker.Clear();
+        var copy = await db.ReportRuns.SingleAsync(x => x.Id == Result(regenerated, 202).GetProperty("id").GetGuid());
+        Assert.Equal(("Outsource", group.SubjectGroupMemberIdsJson), (copy.SubjectGroupName, copy.SubjectGroupMemberIdsJson));
+        Assert.Equal((409, "RUN_IN_PROGRESS"), (queued.StatusCode, ErrorCode(queued)));
+        Assert.Equal((404, "NOT_FOUND"), (unknown.StatusCode, ErrorCode(unknown)));
+        Assert.Equal((404, "NOT_FOUND"), (notTheirs.StatusCode, ErrorCode(notTheirs)));
+        Assert.Equal(202, own.StatusCode);
+        Assert.Equal((404, "NOT_FOUND"), (disabled.StatusCode, ErrorCode(disabled)));
+    }
+
+    [Fact]
     public async Task Employees_see_only_their_own_runs()
     {
         var page = await RunsAsync(Employee, new RunQuery(null, null));
