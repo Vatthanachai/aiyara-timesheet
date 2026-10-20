@@ -25,6 +25,7 @@ builder.Services.AddScoped<PlatformOrganizationService>();
 builder.Services.AddScoped<PlatformConsoleService>();
 builder.Services.AddScoped<PlatformAdminRosterService>();
 builder.Services.AddScoped<PlatformSecurityService>();
+builder.Services.AddScoped<TenantMemberService>();
 // Fails at startup without a valid key, so second factors are never stored unencrypted.
 builder.Services.AddSingleton<IMfaSecretProtector>(
     new AesGcmMfaSecretProtector(builder.Configuration["Mfa:EncryptionKey"]));
