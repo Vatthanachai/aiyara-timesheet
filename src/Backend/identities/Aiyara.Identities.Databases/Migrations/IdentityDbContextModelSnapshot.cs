@@ -172,6 +172,9 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.Property<Guid>("InvitedByAccountId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("MemberGroupId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -188,6 +191,8 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("InvitedByAccountId");
+
+                    b.HasIndex("MemberGroupId");
 
                     b.HasIndex("TenantId");
 
@@ -512,6 +517,11 @@ namespace Aiyara.Identities.Databases.Migrations
                         .HasForeignKey("InvitedByAccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Aiyara.Identities.Models.Tenancy.MemberGroup", null)
+                        .WithMany()
+                        .HasForeignKey("MemberGroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Aiyara.Identities.Models.Tenancy.Tenant", null)
                         .WithMany()

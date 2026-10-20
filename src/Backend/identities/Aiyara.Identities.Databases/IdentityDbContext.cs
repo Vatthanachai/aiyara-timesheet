@@ -104,6 +104,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(40);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
             entity.HasOne<Account>().WithMany().HasForeignKey(x => x.InvitedByAccountId);
+            entity.HasOne<MemberGroup>().WithMany().HasForeignKey(x => x.MemberGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
             entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);
         });
 

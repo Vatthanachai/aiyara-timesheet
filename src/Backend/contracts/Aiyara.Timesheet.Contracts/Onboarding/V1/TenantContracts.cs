@@ -22,7 +22,9 @@ public sealed record AcceptInvitationRequest(string Code)
     public override string ToString() => "AcceptInvitationRequest { Code = [REDACTED] }";
 }
 
-public sealed record IssueInvitationRequest(string Email, string Role);
+/// <summary>GroupId optionally puts the invitee in one of the organization's member groups when
+/// they accept.</summary>
+public sealed record IssueInvitationRequest(string Email, string Role, Guid? GroupId = null);
 
 public sealed record IssueInvitationResponse(Guid InvitationId, Guid TenantId,
     DateTime ExpiresAtUtc, string Code)

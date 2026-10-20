@@ -14,14 +14,17 @@ public sealed record TenantMemberEntry(
     Guid? GroupId,
     string? GroupName);
 
-/// <summary>An invitation that has been neither accepted nor revoked and has not expired.</summary>
+/// <summary>An invitation that has been neither accepted nor revoked and has not expired.
+/// GroupId and GroupName are the group the invitee joins, or null.</summary>
 public sealed record TenantInvitationEntry(
     Guid Id,
     string Email,
     string Role,
     string? InvitedByEmail,
     DateTime CreatedAtUtc,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc,
+    Guid? GroupId,
+    string? GroupName);
 
 public sealed record ChangeTenantMemberRoleRequest(string Role);
 

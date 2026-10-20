@@ -273,6 +273,57 @@ public sealed class TenantMemberManagementTests
     }
 
     [Fact]
+    public async Task An_invitation_carries_its_group_through_resend_and_acceptance()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var outsource = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Outsource"), default);
+
+        var issued = await fixture.Onboarding.IssueInvitationAuthorizedAsync(fixture.TenantId, fixture.AdminId, 0,
+            new IssueInvitationRequest("new@acme.test", "Employee", outsource.Id), default);
+        var pending = Assert.Single(await fixture.Members.ListInvitationsAsync(fixture.TenantId, fixture.AdminId, 0, default));
+        Assert.Equal((outsource.Id, "Outsource"), (pending.GroupId, pending.GroupName));
+        Assert.Contains("\"Outsource\"", (await fixture.Audits("member.invited").SingleAsync()).AfterJson);
+
+        var (_, resent) = await fixture.Members.ResendInvitationAsync(fixture.TenantId, fixture.AdminId, 0,
+            issued.InvitationId, default);
+        Assert.Equal(outsource.Id,
+            Assert.Single(await fixture.Members.ListInvitationsAsync(fixture.TenantId, fixture.AdminId, 0, default)).GroupId);
+
+        var accepted = await fixture.Onboarding.AcceptInvitationAsync(new AcceptInvitationRequest(resent.Code), default);
+        Assert.Equal(outsource.Id, (await fixture.Membership(accepted.AccountId)).MemberGroupId);
+        Assert.Equal(1, Assert.Single(await fixture.Members.ListGroupsAsync(fixture.TenantId, fixture.AdminId, 0, default))
+            .MemberCount);
+    }
+
+    [Fact]
+    public async Task An_invitation_refuses_another_organizations_group_and_survives_its_group_being_deleted()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var other = await fixture.CreateTenantAsync("Globex", "globex", "owner@globex.test");
+        var otherAdmin = await fixture.ActivateOwnerAsync(other.TenantId);
+        var foreign = await fixture.Members.CreateGroupAsync(other.TenantId, otherAdmin, 0,
+            new SaveTenantMemberGroupRequest("Globex staff"), default);
+        var contract = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Contract"), default);
+
+        var refused = await Assert.ThrowsAsync<OnboardingException>(() => fixture.Onboarding.IssueInvitationAuthorizedAsync(
+            fixture.TenantId, fixture.AdminId, 0, new IssueInvitationRequest("new@acme.test", "Employee", foreign.Id), default));
+        Assert.Equal(OnboardingFailure.InvalidInput, refused.Failure);
+        Assert.Empty(await fixture.Members.ListInvitationsAsync(fixture.TenantId, fixture.AdminId, 0, default));
+
+        var issued = await fixture.Onboarding.IssueInvitationAuthorizedAsync(fixture.TenantId, fixture.AdminId, 0,
+            new IssueInvitationRequest("new@acme.test", "Employee", contract.Id), default);
+        // A pending invitation does not hold its group; the invitee then joins in no group.
+        await fixture.Members.DeleteGroupAsync(fixture.TenantId, fixture.AdminId, 0, contract.Id, default);
+        fixture.Db.ChangeTracker.Clear();
+        var pending = Assert.Single(await fixture.Members.ListInvitationsAsync(fixture.TenantId, fixture.AdminId, 0, default));
+        Assert.Null(pending.GroupId);
+        var accepted = await fixture.Onboarding.AcceptInvitationAsync(new AcceptInvitationRequest(issued.Code), default);
+        Assert.Null((await fixture.Membership(accepted.AccountId)).MemberGroupId);
+    }
+
+    [Fact]
     public async Task Changing_a_role_ends_the_members_sessions_and_is_audited()
     {
         await using var fixture = await Fixture.CreateAsync();
