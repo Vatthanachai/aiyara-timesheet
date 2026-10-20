@@ -69,6 +69,28 @@ the metric series, a trace received by Jaeger, and dashboard provisioning:
 pwsh -NoProfile -File tests/phase5/Smoke.ps1
 ```
 
+### Running an API with `dotnet run`
+
+Each API's `.http` file targets its `http` launch profile (Identity 5027,
+Gateway 5255, Report 5160, Timesheet 5198). Identity, Report, and Timesheet stop
+at startup without their connection strings and keys (for example
+`Mfa:EncryptionKey` or `ConnectionStrings:ReportingDb`), and Gateway reports
+`/health` 503 until it can reach Identity gRPC. `tests/local/HttpFiles.ps1`
+starts each API that way with the settings Compose gives its container, mapped
+to the host's published PostgreSQL, Redis, RabbitMQ, and RustFS ports, keeps
+Identity running for the others' gRPC (`-IdentityGrpcPort`, default 18082), and
+calls every request in the four `.http` files. Run it from the repository root
+with Compose up and the solution built; logs go to `aiyara-http-files` in the
+temp directory:
+
+```powershell
+dotnet build Aiyara.Timesheet.slnx
+pwsh -NoProfile -File tests/local/HttpFiles.ps1
+```
+
+The local Identity shares the Compose databases but skips the Platform Admin
+bootstrap. Stop any API you started from an IDE on those ports first.
+
 ## Test workflows
 
 Run the focused end-to-end smoke tests with Compose running. Phase 1–4 smoke
