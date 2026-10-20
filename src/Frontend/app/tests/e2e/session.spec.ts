@@ -1065,6 +1065,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   }
   let catalogCalls = 0
   let policyCalls = 0
+  const policySaves: unknown[] = []
   await page.addInitScript(() => {
     if (window !== window.top) return
     const seen: string[] = []
@@ -1088,6 +1089,11 @@ test('administration asks the Shell for its session and keeps unsaved edits when
     if (url.pathname.endsWith(`/identity/tenants/${tenantId}/password-policy`)) {
       policyCalls++
       return ok({ minimumLength: 14, expiryDays: 90, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: false })
+    }
+    if (url.pathname.endsWith(`/auth/tenants/${tenantId}/password-policy`) && request.method() === 'PUT') {
+      policySaves.push(request.postDataJSON())
+      return route.fulfill({ status: 400, headers: cors, contentType: 'application/json',
+        body: JSON.stringify({ statusCode: 400, statusMessage: 'Bad Request', errorCode: 'INVALIDINPUT' }) })
     }
     if (url.pathname.endsWith('/identity/members')) return ok([])
     if (url.pathname.endsWith('/identity/members/invitations')) return ok([])
@@ -1119,6 +1125,17 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   await expect(frame.getByRole('spinbutton', { name: 'ความยาวขั้นต่ำ' })).toHaveValue('20')
   expect(catalogCalls).toBe(1)
   expect(policyCalls).toBe(1)
+
+  // The field accepts only what Identity accepts (12–128), and a rejected save says why.
+  const thaiMinimum = frame.getByRole('spinbutton', { name: 'ความยาวขั้นต่ำ' })
+  await thaiMinimum.fill('8')
+  await frame.getByRole('button', { name: 'บันทึกนโยบาย' }).click()
+  expect(await thaiMinimum.evaluate(input => (input as HTMLInputElement).validity.rangeUnderflow)).toBe(true)
+  expect(policySaves).toEqual([])
+  await thaiMinimum.fill('13')
+  await frame.getByRole('button', { name: 'บันทึกนโยบาย' }).click()
+  await expect(frame.getByRole('alert')).toContainText('ความยาวขั้นต่ำต้องอยู่ระหว่าง 12–128 ตัวอักษร')
+  expect(policySaves).toHaveLength(1)
 })
 
 test('tenant admin manages members and invitations from the Members panel', async ({ page }) => {
