@@ -116,7 +116,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         var membership = new Membership
         {
             Id = IdentityGuid.New(), TenantId = invitation.TenantId, AccountId = account.Id,
-            Role = invitation.Role,
+            Role = invitation.Role, MemberGroupId = invitation.MemberGroupId,
             Status = account.PasswordHash is null ? MembershipStatus.PendingActivation : MembershipStatus.Active,
             CreatedAtUtc = now
         };
@@ -159,11 +159,17 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
             throw new OnboardingException(OnboardingFailure.Conflict, "Account is already a tenant member.");
         }
 
+        // The query filter limits this to the tenant's own groups.
+        var group = request.GroupId is { } groupId
+            ? await db.MemberGroups.SingleOrDefaultAsync(x => x.Id == groupId, cancellationToken)
+              ?? throw new OnboardingException(OnboardingFailure.InvalidInput, "Unknown member group.")
+            : null;
+
         var now = DateTime.UtcNow;
-        var (invitation, code) = await ReplaceInvitationAsync(tenantId, email, role, actorAccountId, now,
-            cancellationToken);
+        var (invitation, code) = await ReplaceInvitationAsync(tenantId, email, role, group?.Id,
+            actorAccountId, now, cancellationToken);
         PlatformOrganizationService.Audit(db, tenantId, actorAccountId, "member.invited", null, null,
-            JsonSerializer.Serialize(new { Email = email, Role = role.ToString() }), now);
+            JsonSerializer.Serialize(new { Email = email, Role = role.ToString(), Group = group?.Name }), now);
         await db.SaveChangesAsync(cancellationToken);
         return new IssueInvitationResponse(invitation.Id, tenantId, invitation.ExpiresAtUtc, code);
     }
@@ -171,7 +177,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
     /// <summary>Adds a 7-day invitation and expires the email's older pending invitations in the
     /// tenant, so only the newest code works. Does not save.</summary>
     internal async Task<(Invitation Invitation, string Code)> ReplaceInvitationAsync(Guid tenantId,
-        string email, TenantRole role, Guid actorAccountId, DateTime now,
+        string email, TenantRole role, Guid? memberGroupId, Guid actorAccountId, DateTime now,
         CancellationToken cancellationToken)
     {
         tenantScope.TenantId = tenantId;
@@ -182,7 +188,7 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         var invitation = new Invitation
         {
             Id = IdentityGuid.New(), TenantId = tenantId, Email = email,
-            TokenHash = InvitationCode.Hash(code), Role = role,
+            TokenHash = InvitationCode.Hash(code), Role = role, MemberGroupId = memberGroupId,
             InvitedByAccountId = actorAccountId,
             CreatedAtUtc = now,
             ExpiresAtUtc = now.AddDays(7)

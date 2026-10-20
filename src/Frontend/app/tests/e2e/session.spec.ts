@@ -1153,7 +1153,7 @@ test('tenant admin manages members and invitations from the Members panel', asyn
   ]
   const groups: { id: string; name: string }[] = []
   const invitations = [{ id: 'i1', email: 'later@example.test', role: 'Employee', invitedByEmail: 'admin@example.test',
-    createdAtUtc: '2026-10-20T08:00:00Z', expiresAtUtc: '2026-10-27T08:00:00Z' }]
+    createdAtUtc: '2026-10-20T08:00:00Z', expiresAtUtc: '2026-10-27T08:00:00Z', groupName: null as string | null }]
   const calls: string[] = []
   let refuseNextRoleChange = false
   await page.route('**/api/v1/**', route => {
@@ -1184,7 +1184,8 @@ test('tenant admin manages members and invitations from the Members panel', asyn
       const body = request.postDataJSON()
       if (body.email === 'taken@example.test') return fail(409, 'CONFLICT')
       invitations.unshift({ id: 'i2', email: body.email, role: body.role, invitedByEmail: 'admin@example.test',
-        createdAtUtc: '2026-10-20T09:00:00Z', expiresAtUtc: '2026-10-27T09:00:00Z' })
+        createdAtUtc: '2026-10-20T09:00:00Z', expiresAtUtc: '2026-10-27T09:00:00Z',
+        groupName: groups.find(g => g.id === body.groupId)?.name ?? null })
       return ok({ invitationId: 'i2', tenantId, expiresAtUtc: '2026-10-27T09:00:00Z', code: 'secret-code' }, 201)
     }
     if (path === '/identity/members/groups') {
@@ -1331,12 +1332,21 @@ test('tenant admin manages members and invitations from the Members panel', asyn
   await expect(frame.getByText('Renamed the group to Outsourced.')).toBeVisible()
   await frame.getByLabel('Group: zoe@example.test').selectOption({ label: 'No group' })
   await expect(frame.getByLabel('Group: zoe@example.test')).toHaveValue('')
+
+  // Once groups exist the invite form offers them, and the pending invitation shows its group.
+  await frame.getByLabel('Invitee email').fill('contractor@example.test')
+  await frame.locator('.invite-form').getByLabel('Group', { exact: true }).selectOption({ label: 'Outsourced' })
+  await frame.getByRole('button', { name: 'Send invitation' }).click()
+  await expect(frame.getByText('Invitation sent to contractor@example.test.')).toBeVisible()
+  await expect(pending.getByRole('listitem').filter({ hasText: 'contractor@example.test' })).toContainText('Outsourced')
+  await expect(frame.locator('.invite-form').getByLabel('Group', { exact: true })).toHaveValue('')
   expect(calls).toEqual(expect.arrayContaining([
     'POST /identity/members/groups {"name":"Outsource"}',
     'PUT /identity/members/a2/group {"groupId":"g1"}',
     'PUT /identity/members/a1/group {"groupId":"g1"}',
     'PUT /identity/members/groups/g1 {"name":"Outsourced"}',
-    'PUT /identity/members/a2/group {"groupId":null}'
+    'PUT /identity/members/a2/group {"groupId":null}',
+    `POST /auth/tenants/${tenantId}/invitations {"email":"contractor@example.test","role":"Employee","groupId":"g1"}`
   ]))
 
   for (const width of [375, 320]) {

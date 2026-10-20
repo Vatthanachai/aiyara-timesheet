@@ -82,7 +82,8 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
         return new TenantMemberGroupEntry(group.Id, group.Name, memberCount);
     }
 
-    /// <summary>Deletes a group that no member belongs to; its members are moved out first.</summary>
+    /// <summary>Deletes a group that no member belongs to; its members are moved out first. Pending
+    /// invitations to the group stay valid and join without a group.</summary>
     public async Task DeleteGroupAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
         Guid groupId, CancellationToken cancellationToken)
     {
@@ -131,12 +132,15 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
             .SelectMany(x => x.inviters.DefaultIfEmpty(), (x, inviter) => new
             {
                 x.invitation.Id, x.invitation.Email, x.invitation.Role, InvitedByEmail = inviter == null ? null : inviter.Email,
-                x.invitation.CreatedAtUtc, x.invitation.ExpiresAtUtc
+                x.invitation.CreatedAtUtc, x.invitation.ExpiresAtUtc, x.invitation.MemberGroupId
             })
             .ToListAsync(cancellationToken);
+        var groups = await db.MemberGroups.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name,
+            cancellationToken);
         return invitations.OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => new TenantInvitationEntry(x.Id, x.Email, x.Role.ToString(), x.InvitedByEmail,
-                x.CreatedAtUtc, x.ExpiresAtUtc)).ToArray();
+                x.CreatedAtUtc, x.ExpiresAtUtc, x.MemberGroupId,
+                x.MemberGroupId is { } groupId ? groups.GetValueOrDefault(groupId) : null)).ToArray();
     }
 
     /// <summary>Replaces a pending invitation with a new code for the same email and role. The
@@ -149,7 +153,7 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
         var now = DateTime.UtcNow;
         var current = await PendingInvitationAsync(invitationId, now, cancellationToken);
         var (invitation, code) = await onboarding.ReplaceInvitationAsync(tenantId, current.Email,
-            current.Role, actorAccountId, now, cancellationToken);
+            current.Role, current.MemberGroupId, actorAccountId, now, cancellationToken);
         organizations.AddAudit(tenantId, actorAccountId, "member.invitation_resent", null, null,
             JsonSerializer.Serialize(new { current.Email, Role = current.Role.ToString() }), now);
         await db.SaveChangesAsync(cancellationToken);

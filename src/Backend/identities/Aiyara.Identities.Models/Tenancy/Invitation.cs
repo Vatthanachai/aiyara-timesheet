@@ -7,6 +7,8 @@ public sealed class Invitation
     public required string Email { get; set; }
     public required string TokenHash { get; set; }
     public TenantRole Role { get; set; } = TenantRole.Employee;
+    /// <summary>The member group the invitee joins on acceptance; cleared if the group is deleted.</summary>
+    public Guid? MemberGroupId { get; set; }
     public Guid InvitedByAccountId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime ExpiresAtUtc { get; set; }
