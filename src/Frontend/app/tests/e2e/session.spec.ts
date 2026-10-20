@@ -549,6 +549,69 @@ test('activation submits the email code and new password then links to sign in',
   await expect(page.getByRole('link', { name: 'Go to sign in' })).toHaveAttribute('href', '/')
 })
 
+test('forgot password sends only the email and points to the reset page from both sign in pages', async ({ page }) => {
+  const forgotRequests: unknown[] = []
+  await page.route('**/api/v1/auth/password/forgot', async route => {
+    forgotRequests.push(route.request().postDataJSON())
+    await route.fulfill({ status: 202 })
+  })
+
+  await page.goto('/sys-admin/login')
+  await waitForHydration(page)
+  await expect(page.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password')
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByRole('link', { name: 'Forgot password?' }).click()
+  await expect(page).toHaveURL(/\/forgot-password$/)
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('  person@example.test ')
+  await page.getByRole('button', { name: 'Send reset code' }).click()
+
+  await expect(page.locator('section[role="status"]')).toContainText('Check your email')
+  expect(forgotRequests).toEqual([{ email: 'person@example.test' }])
+  await page.getByRole('link', { name: 'I have a code' }).click()
+  await expect(page).toHaveURL(/\/reset-password$/)
+})
+
+test('reset password explains a weak password and a bad code, then confirms the change', async ({ page }) => {
+  const resetRequests: unknown[] = []
+  // Shaped like Identity's real responses: a policy failure is AuthenticationFailure.InvalidInput (400)
+  // and an unknown, used, or expired code is InvalidCredentials (401).
+  const responses = [
+    { status: 400, contentType: 'application/json', body: JSON.stringify({
+      statusCode: 400, statusMessage: 'The request could not be completed.', errorCode: 'INVALIDINPUT' }) },
+    { status: 401, contentType: 'application/json', body: JSON.stringify({
+      statusCode: 401, statusMessage: 'The request could not be completed.', errorCode: 'INVALIDCREDENTIALS' }) },
+    { status: 204 }
+  ]
+  await page.route('**/api/v1/auth/password/reset', async route => {
+    resetRequests.push(route.request().postDataJSON())
+    await route.fulfill(responses[resetRequests.length - 1])
+  })
+
+  await page.goto('/reset-password')
+  await waitForHydration(page)
+  await page.getByLabel('Reset code from email').fill(' reset-code-from-email ')
+  await page.getByLabel('New password', { exact: true }).fill('New-Strong-Password-123!')
+  await page.getByLabel('Confirm new password').fill('Different-Password-123!')
+  await page.getByRole('button', { name: 'Set new password' }).click()
+  await expect(page.getByRole('alert')).toHaveText('The passwords do not match.')
+  expect(resetRequests).toHaveLength(0)
+
+  await page.getByLabel('Confirm new password').fill('New-Strong-Password-123!')
+  await page.getByRole('button', { name: 'Set new password' }).click()
+  await expect(page.getByRole('alert')).toHaveText('The new password does not meet your organizations’ requirements.')
+  await page.getByRole('button', { name: 'Set new password' }).click()
+  await expect(page.getByRole('alert')).toHaveText('This reset code is not valid or has expired. Request a new one.')
+  await page.getByRole('button', { name: 'Set new password' }).click()
+
+  await expect(page.locator('section[role="status"]')).toContainText('Password updated')
+  expect(resetRequests[0]).toEqual({ code: 'reset-code-from-email', password: 'New-Strong-Password-123!' })
+  await expect(page.getByRole('link', { name: 'Go to sign in' })).toHaveAttribute('href', '/')
+  await expect(page.getByRole('link', { name: 'System administrator sign in' })).toHaveAttribute('href', '/sys-admin/login')
+})
+
 test('organization admin can sign up and sees the organization code without displaying onboarding key', async ({ page }) => {
   let signupRequest: unknown
   let activationRequest: unknown

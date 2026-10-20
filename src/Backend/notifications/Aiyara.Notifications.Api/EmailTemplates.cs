@@ -9,7 +9,7 @@ internal static class EmailTemplates
     private const string Muted = "#5b6b82";
     private const string BrandColor = "#2457a7";
 
-    public static EmailContent Credential(string template, string code, Uri? activationUrl)
+    public static EmailContent Credential(string template, string code, Uri? frontendUrl)
     {
         var content = template switch
         {
@@ -34,15 +34,25 @@ internal static class EmailTemplates
         };
 
         var safeCode = WebUtility.HtmlEncode(code);
-        var actionText = template == "activation" && activationUrl is not null
-            ? $"\nActivation page: {activationUrl.AbsoluteUri}"
+        // Invitations are accepted during signup, so only activation and reset link to a page.
+        var (pagePath, pageLabel, pageButton) = template switch
+        {
+            "activation" => ("/activate", "Activation page", "Open the activation page"),
+            "password-reset" => ("/reset-password", "Reset page", "Open the reset page"),
+            _ => (null, null, null)
+        };
+        var pageUrl = frontendUrl is not null && pagePath is not null
+            ? new Uri(frontendUrl, pagePath)
+            : null;
+        var actionText = pageUrl is not null
+            ? $"\n{pageLabel}: {pageUrl.AbsoluteUri}"
             : string.Empty;
         var text = $"{content.Title}\n\n{content.Description}\n\n" +
             $"{content.CodeLabel}: {code}\n{content.Expiry}{actionText}\n\n{content.SecurityNote}\n\n{Brand}";
-        var actionHtml = template == "activation" && activationUrl is not null
+        var actionHtml = pageUrl is not null
             ? $"""
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:22px"><tr><td style="background:{BrandColor};border-radius:8px">
-                <a href="{WebUtility.HtmlEncode(activationUrl.AbsoluteUri)}" style="display:inline-block;padding:12px 20px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none">Open the activation page</a>
+                <a href="{WebUtility.HtmlEncode(pageUrl.AbsoluteUri)}" style="display:inline-block;padding:12px 20px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none">{pageButton}</a>
               </td></tr></table>
               """
             : string.Empty;
