@@ -1,12 +1,12 @@
 # Tenant Member Management Plan
 
-> Drafted 20 October 2026 from a code audit of `develop` at `ee61a7b`, and approved the same day for implementation. Covers how an organization's Tenant Admin invites and manages its members. The Platform Admin side is in [[Platform Admin Console Plan]].
+> Drafted 20 October 2026 from a code audit of `develop` at `ee61a7b`, approved, and fully implemented the same day (phases A–C). Covers how an organization's Tenant Admin invites and manages its members. The Platform Admin side is in [[Platform Admin Console Plan]].
 
 ## Implementation Progress
 
 - **Phase A** (invitation UI on existing APIs): implemented on `feature/member-invitations-ui`. The Shell has `/accept-invitation` (linked from sign-in and from the invitation email), and the Administration remote has a Members panel with the directory and an invite form. The panel marks your own row by comparing `profile/me` with the directory, until Phase B returns that flag. The Close month form now wraps at 320 px, which the new narrow-width check found.
 - **Phase B** (member management APIs): implemented on `feature/member-management-api`. `TenantMemberService` and `TenantMembersController` (`api/v1/members`, which replaces `ProfileController.Members` and adds `isCurrentUser`); the Tenant Admin check moved into `TenantAdministrators.IsActiveAdminAsync`, shared with the existing invitation route, and now also requires an active tenant. A wrong role answers 403 as before; an unknown or stale admin answers 401. The `.http` files stay anonymous-only, because `tests/local/HttpFiles.ps1` expects every request in them to answer 200.
-- **Phase C** (member management UI): not started.
+- **Phase C** (member management UI): implemented on `feature/member-management-ui`. The Members panel shows actions on every row but your own (Make admin / Make employee, Resend activation for pending members, Deactivate with a confirming second click, Reactivate) and a Pending invitations list (expiry, inviter, Resend, Revoke). After every action the lists reload, so a refused or partly applied action still shows the real state. The panel now uses the directory's `isCurrentUser` instead of comparing `profile/me`.
 
 ## Audit: What Exists On `develop`
 
@@ -59,9 +59,9 @@ Branch `feature/member-management-api`. Identity gets a `TenantMembersController
 
 Branch `feature/member-management-ui`.
 
-- [ ] C1. Members panel actions: change role, deactivate and reactivate (with confirmation), re-send activation to pending members. Your own row has no actions.
-- [ ] C2. Pending invitations list with resend and revoke.
-- [ ] C3. Error messages for `LAST_ADMINISTRATOR`, `CANNOT_CHANGE_SELF`, and conflicts; Playwright coverage including narrow widths. Docs: [[Security And Tenant Model]], [[Project Status]].
+- [x] C1. Members panel actions: change role, deactivate and reactivate (with confirmation), re-send activation to pending members. Your own row has no actions.
+- [x] C2. Pending invitations list with resend and revoke.
+- [x] C3. Error messages for `LAST_ADMINISTRATOR`, `CANNOT_CHANGE_SELF`, and conflicts; Playwright coverage including narrow widths. Docs: [[Security And Tenant Model]], [[Project Status]].
 
 ## Out Of Scope
 
