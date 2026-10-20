@@ -123,8 +123,7 @@ public sealed class AuthenticationFlowTests
             new CompleteCredentialChallenge(activation, "Correct-Password-123!"), default);
         var login = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
             "admin@beta.test", "Correct-Password-123!"), default);
-        await fixture.Auth.RequestPasswordResetAsync(
-            new RequestCredentialEmail(tenant.TenantId, "admin@beta.test"), default);
+        await fixture.Auth.RequestPasswordResetAsync(new PasswordResetRequest("admin@beta.test"), default);
         var reset = fixture.Notifications.Messages.Last().Code;
         await fixture.Auth.CompletePasswordResetAsync(
             new CompleteCredentialChallenge(reset, "New-Correct-Password-456!"), default);
@@ -157,8 +156,7 @@ public sealed class AuthenticationFlowTests
         var login = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
             account.Email, "Correct-Password-123!"), default);
         Assert.True(login.MustChangePassword);
-        await fixture.Auth.RequestPasswordResetAsync(
-            new RequestCredentialEmail(tenant.TenantId, account.Email), default);
+        await fixture.Auth.RequestPasswordResetAsync(new PasswordResetRequest(account.Email), default);
         var configuredTenant = await fixture.Db.Tenants.SingleAsync();
         Assert.True(PasswordPolicy.IsSatisfied(configuredTenant,
             fixture.Notifications.Messages.Last().Code));
@@ -167,6 +165,62 @@ public sealed class AuthenticationFlowTests
         var changed = await fixture.Auth.LoginAsync(new LoginRequest(tenant.TenantId,
             account.Email, "New-Correct-Password-456789!"), default);
         Assert.False(changed.MustChangePassword);
+    }
+
+    [Fact]
+    public async Task Password_reset_by_email_must_satisfy_every_active_organization_policy()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        const string email = "shared-policy@example.test";
+        var lenient = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Lenient", "lenient", email), default);
+        var strict = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Strict", "strict", email), default);
+        foreach (var tenantId in new[] { lenient.TenantId, strict.TenantId })
+        {
+            await fixture.Auth.RequestActivationAsync(
+                new RequestCredentialEmail(tenantId, email), default);
+            await fixture.Auth.CompleteActivationAsync(new CompleteCredentialChallenge(
+                fixture.Notifications.Messages.Last().Code, "Correct-Password-123!"), default);
+        }
+        var account = await fixture.Db.Accounts.AsNoTracking().SingleAsync();
+        await fixture.Auth.UpdateTenantPolicyAsync(strict.TenantId, account.Id,
+            account.SessionVersion, new TenantPasswordPolicyRequest(24, 180,
+                true, true, true, true), default);
+
+        await fixture.Auth.RequestPasswordResetAsync(new PasswordResetRequest(email), default);
+        var code = fixture.Notifications.Messages.Last().Code;
+        Assert.True(code.Length >= 24);
+        // 21 characters satisfies the lenient organization but not the strict one.
+        var tooShort = await Assert.ThrowsAsync<AuthenticationException>(() =>
+            fixture.Auth.CompletePasswordResetAsync(
+                new CompleteCredentialChallenge(code, "Shorter-Password-123!"), default));
+        Assert.Equal(AuthenticationFailure.InvalidInput, tooShort.Failure);
+        await fixture.Auth.CompletePasswordResetAsync(new CompleteCredentialChallenge(
+            code, "Long-Enough-New-Password-456!"), default);
+
+        foreach (var tenantId in new[] { lenient.TenantId, strict.TenantId })
+        {
+            var login = await fixture.Auth.LoginAsync(new LoginRequest(tenantId, email,
+                "Long-Enough-New-Password-456!"), default);
+            Assert.False(login.MustChangePassword);
+        }
+    }
+
+    [Fact]
+    public async Task Password_reset_sends_nothing_for_unknown_or_unactivated_accounts()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var tenant = await fixture.Onboarding.CreateTenantAsync(
+            new CreateTenantRequest("Zeta", "zeta", "pending@zeta.test"), default);
+        await fixture.Auth.RequestPasswordResetAsync(
+            new PasswordResetRequest("nobody@zeta.test"), default);
+        await fixture.Auth.RequestPasswordResetAsync(
+            new PasswordResetRequest("pending@zeta.test"), default);
+        await fixture.Auth.RequestPasswordResetAsync(new PasswordResetRequest("not-an-email"),
+            default);
+        Assert.Empty(fixture.Notifications.Messages);
+        Assert.NotEqual(Guid.Empty, tenant.TenantId);
     }
 
     [Fact]
@@ -397,8 +451,7 @@ public sealed class AuthenticationFlowTests
         }
         var firstLogin = await fixture.Auth.LoginAsync(new LoginRequest(first.TenantId,
             email, "Correct-Password-123!"), default);
-        await fixture.Auth.RequestPasswordResetAsync(
-            new RequestCredentialEmail(second.TenantId, email), default);
+        await fixture.Auth.RequestPasswordResetAsync(new PasswordResetRequest(email), default);
         await fixture.Auth.CompletePasswordResetAsync(new CompleteCredentialChallenge(
             fixture.Notifications.Messages.Last().Code, "New-Correct-Password-456!"), default);
         await Assert.ThrowsAsync<AuthenticationException>(() => fixture.Auth.RefreshAsync(

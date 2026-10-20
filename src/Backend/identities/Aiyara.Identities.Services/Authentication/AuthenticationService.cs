@@ -21,47 +21,82 @@ public sealed class AuthenticationService(
     public const string MfaEnrolledAction = "platform_admin.mfa_enrolled";
     public const string RecoveryCodeUsedAction = "platform_admin.recovery_code_used";
 
-    public Task RequestActivationAsync(RequestCredentialEmail request, CancellationToken cancellationToken)
-        => RequestChallengeAsync(request, CredentialChallengePurpose.Activation, cancellationToken);
-
-    public Task RequestPasswordResetAsync(RequestCredentialEmail request, CancellationToken cancellationToken)
-        => RequestChallengeAsync(request, CredentialChallengePurpose.PasswordReset, cancellationToken);
-
-    private async Task RequestChallengeAsync(RequestCredentialEmail request,
-        CredentialChallengePurpose purpose, CancellationToken cancellationToken)
+    public async Task RequestActivationAsync(RequestCredentialEmail request,
+        CancellationToken cancellationToken)
     {
         if (request.TenantId == Guid.Empty || !ValidEmail(request.Email)) return;
         tenantScope.TenantId = request.TenantId;
         var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
         if (tenant is null || tenant.Status != TenantStatus.Active) return;
         var email = request.Email.Trim().ToLowerInvariant();
-        await attempts.CheckAsync(request.TenantId, email, purpose.ToString(),
-            cancellationToken);
+        await attempts.CheckAsync(request.TenantId, email,
+            CredentialChallengePurpose.Activation.ToString(), cancellationToken);
         var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
             cancellationToken);
         if (account is null) return;
         var membership = await db.Memberships.SingleOrDefaultAsync(x => x.AccountId == account.Id,
             cancellationToken);
-        if (membership is null || (purpose == CredentialChallengePurpose.Activation &&
-            membership.Status != MembershipStatus.PendingActivation) ||
-            (purpose == CredentialChallengePurpose.PasswordReset &&
-            membership.Status != MembershipStatus.Active)) return;
+        if (membership is null || membership.Status != MembershipStatus.PendingActivation) return;
+        await IssueChallengeAsync(account, request.TenantId, [tenant],
+            CredentialChallengePurpose.Activation, cancellationToken);
+    }
 
-        PasswordPolicy.ValidateSettings(tenant);
+    // The password belongs to the account, so a reset is requested by email alone (attempts are
+    // counted per email, like login) and the code is issued in the account's oldest active
+    // organization. The new password must satisfy every active organization's policy.
+    public async Task RequestPasswordResetAsync(PasswordResetRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!ValidEmail(request.Email)) return;
+        var email = request.Email.Trim().ToLowerInvariant();
+        await attempts.CheckAsync(Guid.Empty, email,
+            CredentialChallengePurpose.PasswordReset.ToString(), cancellationToken);
+        var account = await db.Accounts.SingleOrDefaultAsync(x => x.Email == email,
+            cancellationToken);
+        if (account is null) return;
+        var tenants = await ActivePolicyTenantsAsync(account.Id, cancellationToken);
+        if (tenants.Count == 0) return;
+        tenantScope.TenantId = tenants[0].Id;
+        await IssueChallengeAsync(account, tenants[0].Id, tenants,
+            CredentialChallengePurpose.PasswordReset, cancellationToken);
+    }
+
+    private async Task<List<Tenant>> ActivePolicyTenantsAsync(Guid accountId,
+        CancellationToken cancellationToken) =>
+        (await db.Memberships.IgnoreQueryFilters()
+            .Where(x => x.AccountId == accountId && x.Status == MembershipStatus.Active)
+            .Join(db.Tenants.IgnoreQueryFilters().Where(x => x.Status == TenantStatus.Active),
+                membership => membership.TenantId, tenant => tenant.Id,
+                (membership, tenant) => new { membership.CreatedAtUtc, Tenant = tenant })
+            .ToListAsync(cancellationToken))
+        .OrderBy(x => x.CreatedAtUtc).Select(x => x.Tenant).ToList();
+
+    private async Task IssueChallengeAsync(Account account, Guid tenantId,
+        IReadOnlyList<Tenant> policies, CredentialChallengePurpose purpose,
+        CancellationToken cancellationToken)
+    {
+        foreach (var policy in policies) PasswordPolicy.ValidateSettings(policy);
         var now = DateTime.UtcNow;
-        var old = await db.CredentialChallenges.Where(x => x.AccountId == account.Id &&
+        // An account has one password, so a new reset code replaces every outstanding one;
+        // activation codes stay per organization.
+        var pending = purpose == CredentialChallengePurpose.PasswordReset
+            ? db.CredentialChallenges.IgnoreQueryFilters()
+            : db.CredentialChallenges;
+        var old = await pending.Where(x => x.AccountId == account.Id &&
             x.Purpose == purpose && x.UsedAtUtc == null).ToListAsync(cancellationToken);
         foreach (var challenge in old) challenge.UsedAtUtc = now;
         var code = passwords.GenerateTemporaryPassword(
-            Math.Max(16, tenant.PasswordMinimumLength),
-            tenant.PasswordRequireLowercase, tenant.PasswordRequireUppercase,
-            tenant.PasswordRequireDigit, tenant.PasswordRequireSymbol);
-        if (!PasswordPolicy.IsSatisfied(tenant, code))
+            Math.Max(16, policies.Max(x => x.PasswordMinimumLength)),
+            policies.Any(x => x.PasswordRequireLowercase),
+            policies.Any(x => x.PasswordRequireUppercase),
+            policies.Any(x => x.PasswordRequireDigit),
+            policies.Any(x => x.PasswordRequireSymbol));
+        if (!policies.All(x => PasswordPolicy.IsSatisfied(x, code)))
             throw new AuthenticationException(AuthenticationFailure.Unavailable,
                 "Credential generation is unavailable.");
         db.CredentialChallenges.Add(new CredentialChallenge
         {
-            Id = IdentityGuid.New(), TenantId = request.TenantId, AccountId = account.Id,
+            Id = IdentityGuid.New(), TenantId = tenantId, AccountId = account.Id,
             TokenHash = InvitationCode.Hash(code), Purpose = purpose,
             CreatedAtUtc = now, ExpiresAtUtc = now.Add(ChallengeLifetime)
         });
@@ -94,8 +129,11 @@ public sealed class AuthenticationService(
         tenantScope.TenantId = challenge.TenantId;
         var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
         if (tenant is null || tenant.Status != TenantStatus.Active) throw InvalidChallenge();
-        PasswordPolicy.ValidateSettings(tenant);
-        if (!PasswordPolicy.IsSatisfied(tenant, request.Password))
+        var policies = purpose == CredentialChallengePurpose.PasswordReset
+            ? await ActivePolicyTenantsAsync(challenge.AccountId, cancellationToken)
+            : [tenant];
+        foreach (var policy in policies) PasswordPolicy.ValidateSettings(policy);
+        if (!policies.All(x => PasswordPolicy.IsSatisfied(x, request.Password)))
             throw new AuthenticationException(AuthenticationFailure.InvalidInput,
                 "Password does not satisfy tenant policy.");
         var account = await db.Accounts.SingleAsync(x => x.Id == challenge.AccountId,
@@ -121,6 +159,12 @@ public sealed class AuthenticationService(
                     c => c.RevokedAtUtc, now), cancellationToken);
         }
         membership.MustChangePassword = false;
+        // The reset password met every active organization's policy, so none still needs a change.
+        if (purpose == CredentialChallengePurpose.PasswordReset)
+            await db.Memberships.IgnoreQueryFilters().Where(x => x.AccountId == account.Id &&
+                x.Status == MembershipStatus.Active && x.MustChangePassword)
+                .ExecuteUpdateAsync(x => x.SetProperty(m => m.MustChangePassword, false),
+                    cancellationToken);
         challenge.UsedAtUtc = now;
         await db.RefreshSessions.Where(x => x.AccountId == account.Id && x.RevokedAtUtc == null)
             .ExecuteUpdateAsync(x => x.SetProperty(s => s.RevokedAtUtc, now), cancellationToken);

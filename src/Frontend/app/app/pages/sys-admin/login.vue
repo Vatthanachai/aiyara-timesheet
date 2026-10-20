@@ -9,7 +9,7 @@ const text = useLocaleText(locale, {
     eyebrow: 'ผู้ดูแลระบบ', heroTitle: 'เข้าสู่ระบบผู้ดูแลระบบ',
     heroSubtitle: 'สำหรับบัญชี sys-admin ไม่ต้องกรอกรหัสองค์กร ต้องใช้รหัสจากแอปยืนยันตัวตนทุกครั้ง',
     signIn: 'เข้าสู่ระบบ', email: 'อีเมล', password: 'รหัสผ่าน', continue: 'ดำเนินการต่อ',
-    organizationSignIn: 'เข้าสู่ระบบด้วยรหัสองค์กร', startOver: 'เริ่มใหม่',
+    organizationSignIn: 'เข้าสู่ระบบด้วยรหัสองค์กร', startOver: 'เริ่มใหม่', forgotPassword: 'ลืมรหัสผ่าน?',
     codeTitle: 'ยืนยันตัวตน', codeHint: 'กรอกรหัส 6 หลักจากแอปยืนยันตัวตน', code: 'รหัสยืนยัน',
     useRecovery: 'ใช้รหัสกู้คืนแทน', useAuthenticator: 'ใช้รหัสจากแอปแทน', recoveryCode: 'รหัสกู้คืน',
     enrollTitle: 'ตั้งค่าแอปยืนยันตัวตน',
@@ -23,7 +23,7 @@ const text = useLocaleText(locale, {
     eyebrow: 'SYSTEM ADMINISTRATION', heroTitle: 'System administrator sign in',
     heroSubtitle: 'For sys-admin accounts. No organization code required; an authenticator code is required every time.',
     signIn: 'Sign in', email: 'Email', password: 'Password', continue: 'Continue',
-    organizationSignIn: 'Sign in with an organization code', startOver: 'Start over',
+    organizationSignIn: 'Sign in with an organization code', startOver: 'Start over', forgotPassword: 'Forgot password?',
     codeTitle: 'Verify it is you', codeHint: 'Enter the 6-digit code from your authenticator app.', code: 'Authentication code',
     useRecovery: 'Use a recovery code instead', useAuthenticator: 'Use an authenticator code instead', recoveryCode: 'Recovery code',
     enrollTitle: 'Set up your authenticator',
@@ -139,7 +139,10 @@ function startOver() {
     <p v-if="error" role="alert">{{ error }}</p>
     <button class="button" type="submit" :disabled="pending">{{ step === 'password' ? text.signIn : text.continue }}</button>
     <button v-if="step !== 'password'" type="button" class="link-button" @click="startOver">{{ text.startOver }}</button>
-    <NuxtLink v-else to="/">{{ text.organizationSignIn }}</NuxtLink>
+    <template v-else>
+      <NuxtLink to="/forgot-password">{{ text.forgotPassword }}</NuxtLink>
+      <NuxtLink to="/">{{ text.organizationSignIn }}</NuxtLink>
+    </template>
   </form>
 </template>
 

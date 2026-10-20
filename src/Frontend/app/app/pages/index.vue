@@ -11,14 +11,16 @@ const text = useLocaleText(locale, {
     signIn: 'เข้าสู่ระบบ', email: 'อีเมล', password: 'รหัสผ่าน',
     chooseOrganization: 'เลือกองค์กร', chooseOrganizationHint: 'บัญชีนี้อยู่ในหลายองค์กร เลือกองค์กรที่ต้องการเข้าใช้งาน',
     back: 'ย้อนกลับ', organizations: 'ผู้ดูแลระบบ', organizationsHint: 'ภาพรวม จัดการองค์กร และประวัติการดำเนินการของระบบ',
-    signUp: 'สมัครใช้งานองค์กร', activateAccount: 'เปิดใช้งานบัญชี', adminSignIn: 'เข้าสู่ระบบผู้ดูแลระบบ'
+    signUp: 'สมัครใช้งานองค์กร', activateAccount: 'เปิดใช้งานบัญชี', adminSignIn: 'เข้าสู่ระบบผู้ดูแลระบบ',
+    forgotPassword: 'ลืมรหัสผ่าน?'
   },
   en: {
     heroTitle: 'Your workspace', heroSubtitle: 'Record time, manage tasks and your profile.',
     signIn: 'Sign in', email: 'Email', password: 'Password',
     chooseOrganization: 'Choose an organization', chooseOrganizationHint: 'This account belongs to several organizations. Choose the one to open.',
     back: 'Back', organizations: 'System admin', organizationsHint: 'Overview, organization management, and the platform audit log.',
-    signUp: 'Sign up your organization', activateAccount: 'Activate account', adminSignIn: 'System administrator sign in'
+    signUp: 'Sign up your organization', activateAccount: 'Activate account', adminSignIn: 'System administrator sign in',
+    forgotPassword: 'Forgot password?'
   }
 })
 const email = ref('')
@@ -94,6 +96,7 @@ function backToSignIn() {
     <small v-if="validation.password?.length" id="sign-in-password-error">{{ validation.password[0] }}</small>
     <p v-if="error" role="alert">{{ error }}</p>
     <button class="button" type="submit" :disabled="pending">{{ text.signIn }}</button>
+    <NuxtLink to="/forgot-password">{{ text.forgotPassword }}</NuxtLink>
     <NuxtLink to="/signup">{{ text.signUp }}</NuxtLink>
     <NuxtLink to="/activate">{{ text.activateAccount }}</NuxtLink>
     <NuxtLink to="/sys-admin/login">{{ text.adminSignIn }}</NuxtLink>

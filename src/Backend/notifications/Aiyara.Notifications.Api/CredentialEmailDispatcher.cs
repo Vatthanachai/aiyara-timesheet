@@ -23,13 +23,13 @@ public sealed class CredentialEmailDispatcher(
             return false;
         var port = configuration.GetValue("Smtp:Port", 25);
         var useTls = configuration.GetValue("Smtp:UseTls", true);
-        var activationUrl = Uri.TryCreate(configuration["Frontend:PublicUrl"],
+        var frontendUrl = Uri.TryCreate(configuration["Frontend:PublicUrl"],
             UriKind.Absolute, out var configuredUrl) &&
             configuredUrl.Scheme is "http" or "https"
-                ? new Uri(configuredUrl, "/activate")
+                ? configuredUrl
                 : null;
         var content = EmailTemplates.Credential(request.Template, request.Code,
-            activationUrl);
+            frontendUrl);
         var outcome = "failed";
         try
         {

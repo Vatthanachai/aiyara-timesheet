@@ -1,6 +1,9 @@
 namespace Aiyara.Identities.Services.Authentication;
 
 public sealed record RequestCredentialEmail(Guid TenantId, string Email);
+/// <summary>Public forgot-password body. A password belongs to the account rather than one
+/// organization, so the caller gives only the email; no tenant ID or organization code.</summary>
+public sealed record PasswordResetRequest(string Email);
 public sealed record CompleteCredentialChallenge(string Code, string Password);
 public sealed record LoginRequest
 {

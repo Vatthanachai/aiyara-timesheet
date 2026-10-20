@@ -139,7 +139,7 @@ public sealed class IdentityController(
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
-    public Task<IActionResult> ForgotPassword([FromBody] RequestCredentialEmail request, CancellationToken ct) =>
+    public Task<IActionResult> ForgotPassword([FromBody] PasswordResetRequest request, CancellationToken ct) =>
         Auth(async () => { await authentication.RequestPasswordResetAsync(request, ct); return AcceptedResponse(); });
 
     [HttpPost("auth/password/reset")]
