@@ -34,6 +34,20 @@ function Get-PrometheusQuery {
     return $response.data.result
 }
 
+# Services export over OTLP periodically, and rate() needs two samples, so a check made just after
+# a fresh deploy can run before the data exists. Returns the last result whether or not it is ready.
+function Wait-PrometheusQuery {
+    param([string]$Expression, [scriptblock]$Ready = { param($series) $series.Count -gt 0 })
+
+    $series = @()
+    for ($attempt = 0; $attempt -lt 24; $attempt++) {
+        $series = @(Get-PrometheusQuery $Expression)
+        if (& $Ready $series) { break }
+        Start-Sleep -Seconds 5
+    }
+    return , $series
+}
+
 $expectedServices = @(
     'Aiyara.Gateways.Api',
     'Aiyara.Identities.Api',
@@ -56,8 +70,10 @@ if ($missingServices.Count -gt 0) {
     throw "Backend request metrics missing for: $($missingServices -join ', '). Ensure the Compose stack is healthy and wait for an OTLP export interval."
 }
 
-$latencySeries = @(Get-PrometheusQuery 'histogram_quantile(0.95, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket[5m])))')
-$memorySeries = @(Get-PrometheusQuery 'dotnet_process_memory_working_set_bytes')
+$latencySeries = Wait-PrometheusQuery 'histogram_quantile(0.95, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket[5m])))'
+$memorySeries = Wait-PrometheusQuery 'dotnet_process_memory_working_set_bytes' {
+    param($series) $series.Count -ge $expectedServices.Count
+}
 if ($latencySeries.Count -eq 0) { throw 'Prometheus has no HTTP latency histogram data.' }
 if ($memorySeries.Count -lt $expectedServices.Count) { throw 'Prometheus has incomplete .NET process memory data.' }
 
@@ -154,7 +170,9 @@ foreach ($service in @('gateway-api', 'identities-api')) {
     }
 }
 
-$rabbitMetrics = @(Get-PrometheusQuery 'aiyara_rabbitmq_queue_messages')
+$rabbitMetrics = Wait-PrometheusQuery 'aiyara_rabbitmq_queue_messages' {
+    param($series) [bool]($series | Where-Object { $_.metric.queue -eq 'reporting.generate.v1' })
+}
 if (-not ($rabbitMetrics | Where-Object { $_.metric.queue -eq 'reporting.generate.v1' })) {
     throw 'Prometheus has no report generation RabbitMQ queue metrics.'
 }
