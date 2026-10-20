@@ -96,7 +96,8 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
             DateTime.SpecifyKind(run.PeriodStartUtc, DateTimeKind.Utc), zone));
         var endLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.SpecifyKind(run.PeriodEndUtc.AddTicks(-1), DateTimeKind.Utc), zone));
-        // Each snapshot with its owner; only group reports need the owner, to name each row.
+        // Each snapshot with its owner; reports about several people (the whole organization or a
+        // member group) need the owner to name each row.
         var snapshots = new List<(Guid? Owner, string Json)>();
         var groupMembers = run.SubjectGroupMemberIdsJson is { } membersJson
             ? JsonSerializer.Deserialize<HashSet<Guid>>(membersJson) : null;
@@ -132,11 +133,12 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
         }
 
         var memberNames = new Dictionary<Guid, string>();
-        if (groupMembers is not null)
+        var namesRows = run.SubjectUserId is null;
+        if (namesRows)
             foreach (var member in snapshots.Select(x => x.Owner!.Value).Distinct())
                 memberNames[member] = await MemberNameAsync(envelope.TenantId, member, run.Id, cancellationToken);
         var lines = snapshots.SelectMany(snapshot => ReportDocumentRenderer.ReadSnapshot(snapshot.Json)
-                .Select(line => groupMembers is null ? line : line with { Member = memberNames[snapshot.Owner!.Value] }))
+                .Select(line => !namesRows ? line : line with { Member = memberNames[snapshot.Owner!.Value] }))
             .Where(x => x.Date >= startLocal && x.Date <= endLocal)
             .OrderBy(x => x.Date).ThenBy(x => x.Member).ThenBy(x => x.Start).ToArray();
         var payload = JsonSerializer.Serialize(new { tenantId = envelope.TenantId,

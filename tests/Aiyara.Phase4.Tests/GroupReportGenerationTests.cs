@@ -18,9 +18,59 @@ using Xunit;
 namespace Aiyara.Phase4.Tests;
 
 /// <summary>A member group report reads the organization's locked month from Timesheet and keeps
-/// only the members the run was requested for.</summary>
+/// only the members the run was requested for. Reports about several people name each row's member.</summary>
 public sealed class GroupReportGenerationTests
 {
+    [Fact]
+    public async Task A_whole_organization_report_names_every_rows_member()
+    {
+        var tenantId = Guid.NewGuid();
+        var (ada, ben) = (Guid.NewGuid(), Guid.NewGuid());
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");
+        await connection.OpenAsync();
+        var services = new ServiceCollection();
+        services.AddScoped<ReportingTenantScope>();
+        services.AddDbContext<ReportingDbContext>(options => options.UseSqlite(connection));
+        await using var provider = services.BuildServiceProvider();
+        var definition = new ReportDefinition { Id = Guid.NewGuid(), TenantId = tenantId, Kind = ReportKind.Monthly,
+            Format = ReportFormat.Xlsx, Name = "Monthly", CreatedAtUtc = DateTime.UtcNow };
+        var run = new ReportRun { Id = Guid.NewGuid(), TenantId = tenantId, ReportDefinitionId = definition.Id,
+            RequestedBy = Guid.NewGuid(), TimeZoneId = "UTC", IdempotencyKey = "org-test",
+            PeriodStartUtc = new DateTime(2026, 9, 1), PeriodEndUtc = new DateTime(2026, 10, 1),
+            CreatedAtUtc = DateTime.UtcNow };
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            scope.ServiceProvider.GetRequiredService<ReportingTenantScope>().TenantId = tenantId;
+            var db = scope.ServiceProvider.GetRequiredService<ReportingDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            db.ReportDefinitions.Add(definition);
+            db.ReportRuns.Add(run);
+            await db.SaveChangesAsync();
+        }
+        var identity = new Profiles(new()
+        {
+            [ada] = new LookupProfileResponse { Found = true, FirstName = "Ada", LastName = "Lovelace" }
+        });
+        var storage = new MemoryStorage();
+        var consumer = new ReportGenerationConsumer(provider.GetRequiredService<IServiceScopeFactory>(),
+            new ConfigurationBuilder().Build(), storage,
+            new Clients(new SnapshotHandler(new[] { (ada, "Ada task"), (ben, "Ben task") })), identity,
+            NullLogger<ReportGenerationConsumer>.Instance);
+
+        await consumer.ProcessAsync(new MessageEnvelope<ReportGenerationRequestedV1>(Guid.NewGuid(), Guid.NewGuid(),
+            "org-test", tenantId, DateTime.UtcNow, "report.generate",
+            new ReportGenerationRequestedV1(tenantId, run.Id, "Monthly")), default);
+
+        var document = Encoding.UTF8.GetString(DecompressedXlsx(storage.Objects.Values.Single()));
+        Assert.Contains("Tenant summary", document);
+        Assert.Contains(">Member<", document);
+        Assert.Contains("Ada Lovelace", document);
+        Assert.Contains("Ben task", document);
+        // Someone Identity no longer knows is shown by account ID.
+        Assert.Contains(ben.ToString("D"), document);
+        Assert.Equal(new[] { ada, ben }.Order(), identity.LookedUp.Order());
+    }
+
     [Fact]
     public async Task A_group_report_contains_only_the_groups_members()
     {
