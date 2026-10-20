@@ -14,17 +14,44 @@ public interface IProfilePhotoStorage
 
 public sealed record ProfilePhotoContent(byte[] Bytes, string ContentType);
 
-public sealed class ProfilePhotoStorage(IAmazonS3 client, IConfiguration configuration) : IProfilePhotoStorage
+/// <summary>Each organization's logo, one object per tenant.</summary>
+public interface IOrganizationLogoStorage
+{
+    Task<string> PutLogoAsync(Guid tenantId, byte[] content, string contentType, CancellationToken cancellationToken);
+    Task<ProfilePhotoContent?> GetLogoAsync(string key, CancellationToken cancellationToken);
+    Task DeleteLogoAsync(string key, CancellationToken cancellationToken);
+}
+
+public sealed class ProfilePhotoStorage(IAmazonS3 client, IConfiguration configuration)
+    : IProfilePhotoStorage, IOrganizationLogoStorage
 {
     private string Bucket => configuration["ObjectStorage:Bucket"] ?? "aiyara-profile-photos";
     private static string Key(Guid tenantId, Guid accountId) =>
         $"profiles/{tenantId:N}/{accountId:N}/avatar";
 
-    public async Task<string> PutAsync(Guid tenantId, Guid accountId, byte[] content,
-        string contentType, CancellationToken cancellationToken)
+    public Task<string> PutAsync(Guid tenantId, Guid accountId, byte[] content,
+        string contentType, CancellationToken cancellationToken) =>
+        PutObjectAsync(Key(tenantId, accountId), content, contentType, cancellationToken);
+
+    public Task<string> PutLogoAsync(Guid tenantId, byte[] content, string contentType,
+        CancellationToken cancellationToken) =>
+        PutObjectAsync($"organizations/{tenantId:N}/logo", content, contentType, cancellationToken);
+
+    public async Task<ProfilePhotoContent?> GetLogoAsync(string key, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetObjectAsync(Bucket, key, cancellationToken);
+        await using var content = new MemoryStream();
+        await response.ResponseStream.CopyToAsync(content, cancellationToken);
+        return new ProfilePhotoContent(content.ToArray(), response.Headers.ContentType ?? "image/png");
+    }
+
+    public Task DeleteLogoAsync(string key, CancellationToken cancellationToken) =>
+        client.DeleteObjectAsync(Bucket, key, cancellationToken);
+
+    private async Task<string> PutObjectAsync(string key, byte[] content, string contentType,
+        CancellationToken cancellationToken)
     {
         await EnsureBucketAsync(cancellationToken);
-        var key = Key(tenantId, accountId);
         await using var stream = new MemoryStream(content, writable: false);
         await client.PutObjectAsync(new PutObjectRequest
         {

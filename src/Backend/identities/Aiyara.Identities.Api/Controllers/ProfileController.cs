@@ -1,4 +1,3 @@
-using System.Buffers;
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Models.Tenancy;
 using Aiyara.Timesheet.Component.Abstractions.Controllers;
@@ -11,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Aiyara.Identities.Api.Controllers;
 
 [Route("api/v1")]
-public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService tokens,
+public sealed class ProfileController(IdentityDbContext db, AuthenticatedMemberResolver members,
     TenantScope scope) : BaseController
 {
     private const int MaxPhotoBytes = 5 * 1024 * 1024;
@@ -86,27 +85,8 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
     {
         var account = await AuthenticatedAccount(ct);
         if (account is null) return Error(401, "UNAUTHORIZED");
-        if (photo.Length is < 1 or > MaxPhotoBytes)
+        if (await ImageUploads.ReadAsync(photo, MaxPhotoBytes, ct) is not var (bytes, contentType))
             return Error(400, "INVALID_PHOTO");
-
-        await using var input = photo.OpenReadStream();
-        await using var content = new MemoryStream();
-        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-        try
-        {
-            int read;
-            while ((read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
-            {
-                if (content.Length + read > MaxPhotoBytes)
-                    return Error(400, "INVALID_PHOTO");
-                await content.WriteAsync(buffer.AsMemory(0, read), ct);
-            }
-        }
-        finally { ArrayPool<byte>.Shared.Return(buffer); }
-
-        var bytes = content.ToArray();
-        var contentType = DetectImageType(bytes);
-        if (contentType is null) return Error(400, "INVALID_PHOTO");
         var tenantId = scope.TenantId ?? throw new InvalidOperationException("Authenticated tenant scope is missing.");
         account.PhotoUrl = await storage.PutAsync(tenantId, account.Id, bytes, contentType, ct);
         await db.SaveChangesAsync(ct);
@@ -157,20 +137,8 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
         return ReturnResponseWithHttpStatus(new ServiceOkResponse<object>(new { }, 204));
     }
 
-    private async Task<Account?> AuthenticatedAccount(CancellationToken ct)
-    {
-        var authorization = Request.Headers.Authorization.ToString();
-        var claims = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            ? tokens.ValidateToken(authorization[7..].Trim()) : null;
-        if (claims is null || claims.MustChangePassword) return null;
-        scope.TenantId = claims.TenantId;
-        var membership = await db.Memberships.SingleOrDefaultAsync(x => x.AccountId == claims.UserId &&
-            x.Status == MembershipStatus.Active, ct);
-        if (membership is null || membership.Role.ToString() != claims.Role) return null;
-        var account = await db.Accounts.SingleOrDefaultAsync(x => x.Id == claims.UserId, ct);
-        return account is not null && account.SessionVersion == claims.SessionVersion &&
-            !account.MustChangePassword && !membership.MustChangePassword ? account : null;
-    }
+    private async Task<Account?> AuthenticatedAccount(CancellationToken ct) =>
+        (await members.ResolveAsync(Request, ct))?.Account;
 
     private IActionResult Error(int status, string code) => ReturnResponseWithHttpStatus(
         new ServiceErrorResponse(status, code, "The request could not be completed."));
@@ -183,18 +151,6 @@ public sealed class ProfileController(IdentityDbContext db, IPasetoTokenService 
         account.JobTitle
     };
 
-    private static string? DetectImageType(ReadOnlySpan<byte> bytes)
-    {
-        if (bytes.Length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff)
-            return "image/jpeg";
-        if (bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[]
-            { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a }))
-            return "image/png";
-        if (bytes.Length >= 12 && bytes[..4].SequenceEqual("RIFF"u8) &&
-            bytes.Slice(8, 4).SequenceEqual("WEBP"u8))
-            return "image/webp";
-        return null;
-    }
 }
 
 public sealed record ProfileRequest(string FirstName, string LastName, string? PhotoUrl, string? JobTitle);

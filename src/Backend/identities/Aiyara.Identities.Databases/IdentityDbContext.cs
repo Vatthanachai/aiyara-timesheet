@@ -30,6 +30,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.HasIndex(x => x.OrganizationCode).IsUnique();
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.LogoKey).HasMaxLength(200);
             entity.HasQueryFilter(x => CurrentTenantId != null && x.Id == CurrentTenantId);
         });
 

@@ -7,6 +7,7 @@ type ProfileSummary = {
   lastName: string
   photoUrl: string | null
 }
+type OrganizationSummary = { name: string; logoUrl: string | null }
 
 const { visibleNavigation } = useRemoteNavigation()
 const { locale, setLocale } = useLocale()
@@ -19,6 +20,9 @@ const text = useLocaleText(locale, {
 const profile = ref<ProfileSummary | null>(null)
 const profileMenu = ref<HTMLDetailsElement | null>(null)
 let avatarObjectUrl = ''
+// The signed-in organization's name and logo replace the product name in the header.
+const organization = ref<OrganizationSummary | null>(null)
+const organizationLogo = ref('')
 
 const profileName = computed(() => {
   const fullName = [profile.value?.firstName, profile.value?.lastName]
@@ -75,9 +79,38 @@ async function authorizedFetch<T>(url: string, asBlob = false): Promise<T> {
 }
 
 function onProfileUpdated(event: MessageEvent) {
+  if (event.origin === new URL(config.public.remotes.administration).origin &&
+      event.data?.type === 'aiyara.organization.updated') {
+    void loadOrganization()
+    return
+  }
   if (event.origin !== new URL(config.public.remotes.identity).origin ||
       event.data?.type !== 'aiyara.profile.updated') return
   void loadProfile()
+}
+
+function clearOrganization() {
+  organization.value = null
+  if (organizationLogo.value) URL.revokeObjectURL(organizationLogo.value)
+  organizationLogo.value = ''
+}
+
+async function loadOrganization() {
+  // Platform Admins sign in to the platform tenant, which has no customer branding.
+  if (!token.value || role.value === 'PlatformAdmin') {
+    clearOrganization()
+    return
+  }
+  try {
+    const value = unwrapResponse(await authorizedFetch<ApiEnvelope<OrganizationSummary>>(
+      `${config.public.gatewayUrl}/api/v1/identity/organization`))
+    const logo = value.logoUrl
+      ? URL.createObjectURL(await authorizedFetch<Blob>(`${config.public.gatewayUrl}${value.logoUrl}`, true))
+      : ''
+    if (organizationLogo.value) URL.revokeObjectURL(organizationLogo.value)
+    organizationLogo.value = logo
+    organization.value = value
+  } catch { clearOrganization() } // The product name stays when branding cannot load.
 }
 
 function closeProfileMenu() {
@@ -96,6 +129,7 @@ onMounted(() => {
 })
 
 watch(token, (value) => {
+  void loadOrganization()
   if (value) void loadProfile()
   else {
     profile.value = null
@@ -107,13 +141,17 @@ watch(token, (value) => {
 onUnmounted(() => {
   window.removeEventListener('message', onProfileUpdated)
   if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
+  clearOrganization()
 })
 </script>
 
 <template>
   <div class="shell">
     <header class="shell-header">
-      <NuxtLink class="brand" to="/">Aiyara Timesheet</NuxtLink>
+      <NuxtLink class="brand" to="/">
+        <img v-if="organization && organizationLogo" class="brand-logo" :src="organizationLogo" alt="" />
+        <span class="brand-name">{{ organization?.name || 'Aiyara Timesheet' }}</span>
+      </NuxtLink>
       <nav v-if="token" aria-label="Primary navigation" class="navigation">
         <NuxtLink v-for="item in visibleNavigation.filter((item) => item.id !== 'identity')" :key="item.id" :to="item.path">
           {{ item.label[locale] }}
@@ -150,6 +188,9 @@ onUnmounted(() => {
 
 <style scoped>
 .shell-header { position: relative; }
+.brand { align-items: center; color: inherit; display: inline-flex; gap: .6rem; min-width: 0; }
+.brand-logo { flex: 0 0 auto; height: 2.25rem; max-width: 7rem; object-fit: contain; }
+.brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(22rem, 45vw); }
 .header-actions { align-items: center; }
 .header-actions .locale-button { border: 1px solid var(--color-border); border-radius: .5rem; background: white; padding: .5rem .7rem; }
 .profile-menu { position: relative; }
