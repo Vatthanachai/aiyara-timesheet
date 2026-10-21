@@ -60,6 +60,11 @@ $profile = Expect (Request Put '/api/v1/identity/profile/me' @{
 } $auth) 200 'profile setup'
 $context = Expect (Request Get '/api/v1/timesheets/context' $null $auth) 200 'timesheet context'
 $year, $month = $context.currentMonth.Split('-')
+# Buddhist years and 12-hour times, which generated reports read from Identity over gRPC.
+$formats = Expect (Request Put '/api/v1/identity/organization/formats' @{
+    dateFormat = 'dd/MM/bbbb'; timeFormat = 'h:mm a'
+} $auth) 200 'organization formats'
+if ($formats.dateFormat -ne 'dd/MM/bbbb' -or $formats.timeFormat -ne 'h:mm a') { throw 'Organization formats did not persist.' }
 $date = "$year-$month-07"
 $project = Expect (Request Post '/api/v1/timesheets/projects' @{ name = 'Phase 4 E2E project' } $auth) 201 'project'
 $category = Expect (Request Post '/api/v1/timesheets/categories' @{ name = 'Reporting E2E' } $auth) 201 'category'
@@ -125,6 +130,40 @@ if ([Convert]::ToBase64String($downloadSigned) -ne [Convert]::ToBase64String($si
     throw 'Latest report download did not return the signed PDF.'
 }
 
+# The same month as XLSX, written in the organization's formats.
+$xlsxDefinitionResponse = Request Post '/api/v1/reports/definitions' @{
+    kind = 'Monthly'; format = 'Xlsx'; name = 'Phase 4 live E2E (Excel)'
+} $auth
+$xlsxDefinition = if ($xlsxDefinitionResponse.StatusCode -eq 409) {
+    (Expect (Request Get '/api/v1/reports/definitions' $null $auth) 200 'report definitions') |
+        Where-Object { $_.kind -eq 'Monthly' -and $_.format -eq 'Xlsx' } | Select-Object -First 1
+} else { Expect $xlsxDefinitionResponse 201 'xlsx report definition' }
+$xlsxRun = Expect (Request Post '/api/v1/reports/runs' @{
+    definitionId = $xlsxDefinition.id
+    periodStartUtc = $startLocal.ToUniversalTime().ToString('o')
+    periodEndUtc = $nextLocal.ToUniversalTime().ToString('o')
+    subjectUserId = $profile.id
+} $auth) 202 'xlsx report request'
+$xlsxDone = $false
+for ($attempt = 0; $attempt -lt 60; $attempt++) {
+    $current = @((Expect (Request Get '/api/v1/reports/runs' $null $auth) 200 'xlsx report status').items) |
+        Where-Object { $_.id -eq $xlsxRun.id } | Select-Object -First 1
+    if ($current.status -eq 'Succeeded') { $xlsxDone = $true; break }
+    if ($current.status -eq 'Failed') { throw 'Report worker failed the XLSX report.' }
+    Start-Sleep -Seconds 1
+}
+if (-not $xlsxDone) { throw 'Report worker did not finish the XLSX report within 60 seconds.' }
+$xlsxBytes = $client.GetByteArrayAsync("$GatewayUrl/api/v1/reports/runs/$($xlsxRun.id)/download").GetAwaiter().GetResult()
+Add-Type -AssemblyName System.IO.Compression
+$archive = [System.IO.Compression.ZipArchive]::new([System.IO.MemoryStream]::new($xlsxBytes))
+$xlsxText = ($archive.Entries | ForEach-Object { [System.IO.StreamReader]::new($_.Open()).ReadToEnd() }) -join ''
+$archive.Dispose()
+$buddhistYear = [int]$year + 543
+$lastDay = [DateTime]::DaysInMonth([int]$year, [int]$month)
+foreach ($expected in @("01/$month/$buddhistYear – $lastDay/$month/$buddhistYear", "07/$month/$buddhistYear", '9:00 AM', '5:30 PM')) {
+    if (-not $xlsxText.Contains($expected)) { throw "XLSX report does not show '$expected' in the organization's formats." }
+}
+
 # Reporting workspace views: filtered/paged history, dashboard counts, and the member directory.
 $readyRuns = Expect (Request Get "/api/v1/reports/runs?status=Succeeded&definitionId=$($definition.id)&page=1&pageSize=5" $null $auth) 200 'filtered report history'
 $listed = @($readyRuns.items) | Where-Object { $_.id -eq $run.id } | Select-Object -First 1
@@ -161,4 +200,4 @@ if (-not $deliveryPersisted) { throw 'Notification did not persist the report-re
 
 $upload.Dispose()
 $client.Dispose()
-Write-Output "Phase 4 live E2E passed: tenant=$($tenant.tenantId) run=$($run.id) generatedPdfBytes=$($generatedPdf.Length) signedVersion=$($signedDocument.version) reportReadyEmail=received deliveryPersisted=yes"
+Write-Output "Phase 4 live E2E passed: tenant=$($tenant.tenantId) run=$($run.id) generatedPdfBytes=$($generatedPdf.Length) signedVersion=$($signedDocument.version) xlsxFormats=dd/MM/bbbb,h:mm a reportReadyEmail=received deliveryPersisted=yes"

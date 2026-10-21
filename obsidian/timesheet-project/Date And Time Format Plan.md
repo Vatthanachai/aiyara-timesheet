@@ -1,6 +1,13 @@
 # Date And Time Format Plan
 
-> Drafted 21 October 2026 from a code audit of `develop` at `ae3b37c`. Covers how an organization's Tenant Admin chooses how dates and times appear across the product. Branch `feature/date-time-format`.
+> Drafted 21 October 2026 from a code audit of `develop` at `ae3b37c` and implemented the same day on `feature/date-time-format` (phases A–C). Covers how an organization's Tenant Admin chooses how dates and times appear across the product.
+
+## Implementation Progress
+
+- **Phase A** (Identity): `tenants.DateFormat` / `TimeFormat` (migration `AddOrganizationFormats`), `PUT /api/v1/identity/organization/formats`, both fields on `GET /api/v1/identity/organization`, and gRPC `GetOrganizationSettings`.
+- **Phase B** (UI): `shared/date-format.ts`; the Shell sends the formats with every session message and again when Administration saves them; Administration → Date and time format (two choices, live preview); Timesheet, Reporting, and Administration dates and times follow it. Browser date pickers keep the device's format.
+- **Phase C** (reports): `ReportFormats` in the renderer; the worker reads Identity's formats for every run and falls back to the defaults if Identity cannot answer.
+
 
 ## Audit: What Exists On `develop`
 
@@ -39,9 +46,9 @@ There is no organization setting for either. Browser date inputs (`type="date"` 
 
 ## Phase C — Generated Reports
 
-- [ ] C1. `ReportDocumentData` carries the formats; the XLSX date and time columns, the PDF day column, and the period use them.
-- [ ] C2. The worker reads them with `GetOrganizationSettings`, falling back to the defaults.
-- [ ] C3. Tests: renderer output for each format; the worker uses the organization's formats and survives an Identity failure. Docs: [[Project Status]], [[Timesheet Project Index]].
+- [x] C1. `ReportDocumentData` carries the formats; the XLSX date and time columns, the PDF day column, and the period use them.
+- [x] C2. The worker reads them with `GetOrganizationSettings`, falling back to the defaults.
+- [x] C3. Tests: renderer output for each format; the worker uses the organization's formats and survives an Identity failure. Docs: [[Project Status]], [[Timesheet Project Index]].
 
 ## Out Of Scope
 

@@ -179,7 +179,8 @@ public sealed class ReportFoundationTests
 
         Assert.Equal("A7:I11", table.RangeAddress.ToString());
         Assert.True(table.ShowAutoFilter);
-        Assert.Equal(["2026-10-01", "", "2026-10-02", "2026-10-03"],
+        // The organization's default date format.
+        Assert.Equal(["01/10/2026", "", "02/10/2026", "03/10/2026"],
             Enumerable.Range(8, 4).Select(row => sheet.Cell(row, 1).GetString()));
         Assert.Equal(["08:30", "13:00"], new[] { sheet.Cell(8, 2).GetString(), sheet.Cell(9, 2).GetString() });
         Assert.Equal("Overview", sheet.Cell(9, 5).GetString());
@@ -188,6 +189,31 @@ public sealed class ReportFoundationTests
         using var empty = new ClosedXML.Excel.XLWorkbook(new MemoryStream(
             ReportDocumentRenderer.RenderXlsx(new ReportDocumentData("Ada", "", "October", [], 0))));
         Assert.Equal("A7:I8", Assert.Single(empty.Worksheet(1).Tables).RangeAddress.ToString());
+    }
+
+    [Theory]
+    [InlineData("dd/MM/yyyy", "HH:mm", "05/10/2026", "13:30", "05/10/2026 – 31/10/2026")]
+    [InlineData("dd/MM/bbbb", "h:mm a", "05/10/2569", "1:30 PM", "05/10/2569 – 31/10/2569")]
+    [InlineData("d MMM yyyy", "h:mm a", "5 Oct 2026", "1:30 PM", "5 Oct 2026 – 31 Oct 2026")]
+    [InlineData("yyyy-MM-dd", "HH:mm", "2026-10-05", "13:30", "2026-10-05 – 2026-10-31")]
+    [InlineData("MM/dd/yyyy", "HH:mm", "10/05/2026", "13:30", "10/05/2026 – 10/31/2026")]
+    [InlineData("unknown", "unknown", "05/10/2026", "13:30", "05/10/2026 – 31/10/2026")]
+    public void Documents_write_dates_and_times_in_the_organizations_formats(string dateFormat, string timeFormat,
+        string date, string time, string period)
+    {
+        var formats = new ReportFormats(dateFormat, timeFormat);
+        var day = new DateOnly(2026, 10, 5);
+        Assert.Equal(date, formats.Date(day));
+        Assert.Equal(time, formats.Time("13:30"));
+        Assert.Equal("", formats.Time(""));
+        Assert.Equal(period, formats.Period(day, new DateOnly(2026, 10, 31)));
+
+        var data = new ReportDocumentData("Ada", "", formats.Period(day, new DateOnly(2026, 10, 31)),
+            [new ReportLine(day, "13:30", "14:00", 30, "Review", "", "", "", "", "work")], 0, formats);
+        using var workbook = new ClosedXML.Excel.XLWorkbook(new MemoryStream(ReportDocumentRenderer.RenderXlsx(data)));
+        var sheet = workbook.Worksheet(1);
+        Assert.Equal((date, time, period), (sheet.Cell(8, 1).GetString(), sheet.Cell(8, 2).GetString(), sheet.Cell(4, 2).GetString()));
+        Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(ReportDocumentRenderer.RenderPdf(data), 0, 5));
     }
 
     [Fact]
