@@ -25,6 +25,8 @@ const props = defineProps<{
   timeZoneId: string
   /** GET a Timesheet API path through Gateway with the remote's session. */
   load: <T>(path: string, query: Record<string, unknown>) => Promise<T>
+  /** Set for a member who is not an admin: shows only their own month, read live. */
+  self?: { name: string }
 }>()
 
 const copy = useLocaleText(toRef(props, 'locale'), { th: {
@@ -37,7 +39,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   noEntries: 'ไม่มีรายการเวลาทำงานในเดือนนี้', noLeave: 'ไม่มีวันลา', noHolidays: 'ไม่มีวันหยุดในเดือนนี้', dayTotal: 'รวมวันนี้',
   group: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม', byGroup: 'สรุปตามกลุ่ม', members: 'สมาชิก', noMembersInGroup: 'ไม่มีสมาชิกในกลุ่มนี้',
   exportXlsx: 'ส่งออก XLSX', exportCsv: 'ส่งออก CSV', exportLabel: 'ส่งออก timesheet ของ {name}', start: 'เริ่ม', end: 'สิ้นสุด',
-  detail: 'รายละเอียด', notes: 'บันทึก', remark: 'หมายเหตุ', status: 'สถานะ'
+  detail: 'รายละเอียด', notes: 'บันทึก', remark: 'หมายเหตุ', status: 'สถานะ',
+  myTitle: 'Timesheet ของฉัน', myHint: 'เวลาทำงาน วันลา และวันหยุดของคุณรายเดือน รวมเดือนปัจจุบันที่ยังไม่ปิดรอบ อัปเดตทันทีที่บันทึกเวลา', me: 'ฉัน'
 }, en: {
   title: 'Member timesheets', hint: "Review each member's hours and leave by month, including the current open month.",
   month: 'Month', member: 'Member', entries: 'Entries', hours: 'Hours', leaveDays: 'Leave days', view: 'View timesheet',
@@ -48,7 +51,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   noEntries: 'No time entries this month.', noLeave: 'No leave.', noHolidays: 'No days off this month.', dayTotal: 'Day total',
   group: 'Group', allGroups: 'All groups', noGroup: 'No group', byGroup: 'Totals by group', members: 'Members', noMembersInGroup: 'No members in this group.',
   exportXlsx: 'Export XLSX', exportCsv: 'Export CSV', exportLabel: 'Export the timesheet of {name}', start: 'Start', end: 'End',
-  detail: 'Detail', notes: 'Notes', remark: 'Remark', status: 'Status'
+  detail: 'Detail', notes: 'Notes', remark: 'Remark', status: 'Status',
+  myTitle: 'My timesheet', myHint: 'Your hours, leave, and days off by month, including the current open month. It updates as soon as you record time.', me: 'Me'
 } })
 
 const month = ref(zonedToday(props.timeZoneId).slice(0, 7))
@@ -66,6 +70,8 @@ const period = computed(() => ({ year: Number(month.value.slice(0, 4)), month: N
 const memberName = (member: Member | undefined) =>
   member ? [member.firstName, member.lastName].filter(part => part?.trim()).join(' ') || member.email : copy.value.formerMember
 const memberById = (id: string) => props.members.find(x => x.id === id)
+/** The name on the open month: the member's own in self mode. */
+const selectedName = computed(() => props.self ? props.self.name || copy.value.me : memberName(memberById(selectedId.value)))
 /** Every directory member, plus anyone with data who has since left, busiest first. */
 const rows = computed(() => {
   const totals = new Map((summary.value?.members ?? []).map(x => [x.ownerId, x]))
@@ -154,7 +160,7 @@ function exportRows(): Cell[][] {
       entry.projectName ?? '', entry.categoryName ?? '', daysOff.value.get(entry.date) ?? ''] })
   lines.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order || a.start.localeCompare(b.start))
   return [
-    [c.title, `${memberName(memberById(selectedId.value))} · ${monthLabel.value}`],
+    [props.self ? c.myTitle : c.title, `${selectedName.value} · ${monthLabel.value}`],
     [c.status, current.locked ? c.monthClosed : c.monthOpen],
     [c.totalHours, Math.round(totalMinutes.value / 60 * 100) / 100, c.daysWorked, daysWorked.value,
       c.leaveDays, current.leaves.length, c.daysOff, daysOff.value.size],
@@ -166,7 +172,7 @@ function exportRows(): Cell[][] {
 function exportTimesheet(format: 'xlsx' | 'csv') {
   const sheet = { name: month.value, rows: exportRows(), boldRows: [0, 4] }
   // Keep the member's name in the file name, minus characters file systems refuse.
-  const name = memberName(memberById(selectedId.value)).replace(/[\\/:*?"<>|\s]+/g, '-')
+  const name = selectedName.value.replace(/[\\/:*?"<>|\s]+/g, '-')
   saveBlob(format === 'xlsx' ? xlsxBlob(sheet) : csvBlob(sheet), `timesheet-${name}-${month.value}.${format}`)
 }
 
@@ -177,6 +183,11 @@ async function run(action: () => Promise<void>) {
   finally { busy.value = false }
 }
 const loadSummary = () => run(async () => {
+  if (props.self) {
+    detail.value = await props.load<Detail>('/me/timesheet', period.value)
+    selectedId.value = detail.value.ownerId
+    return
+  }
   summary.value = await props.load<Summary>('/members/summary', period.value)
   if (selectedId.value) detail.value = await props.load<Detail>(`/members/${selectedId.value}/timesheet`, period.value)
 })
@@ -197,11 +208,11 @@ onMounted(loadSummary)
   <section class="card member-timesheets" aria-labelledby="member-timesheets-heading">
     <div class="card-heading">
       <div>
-        <h2 id="member-timesheets-heading">{{ copy.title }}</h2>
-        <p class="muted">{{ copy.hint }}</p>
+        <h2 id="member-timesheets-heading">{{ self ? copy.myTitle : copy.title }}</h2>
+        <p class="muted">{{ self ? copy.myHint : copy.hint }}</p>
       </div>
       <div class="member-filters">
-        <label v-if="groups.length">{{ copy.group }}<select v-model="groupFilter" :aria-label="copy.group">
+        <label v-if="groups.length && !self">{{ copy.group }}<select v-model="groupFilter" :aria-label="copy.group">
           <option value="">{{ copy.allGroups }}</option>
           <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
           <option :value="NO_GROUP">{{ copy.noGroup }}</option>
@@ -210,14 +221,14 @@ onMounted(loadSummary)
       </div>
     </div>
     <p v-if="error" class="feedback feedback-error" role="alert">{{ error }}</p>
-    <p v-if="busy && !summary" class="muted" role="status">{{ copy.loading }}</p>
+    <p v-if="busy && !summary && !detail" class="muted" role="status">{{ copy.loading }}</p>
 
     <template v-if="selectedId && detail">
       <div class="detail-heading">
-        <button type="button" class="secondary" @click="close">← {{ copy.back }}</button>
-        <h3>{{ memberName(memberById(selectedId)) }} · {{ monthLabel }}</h3>
+        <button v-if="!self" type="button" class="secondary" @click="close">← {{ copy.back }}</button>
+        <h3>{{ selectedName }} · {{ monthLabel }}</h3>
         <span class="status" :data-status="detail.locked ? 'Succeeded' : 'Blocked'">{{ detail.locked ? copy.monthClosed : copy.monthOpen }}</span>
-        <div class="export-actions" role="group" :aria-label="copy.exportLabel.replace('{name}', memberName(memberById(selectedId)))">
+        <div class="export-actions" role="group" :aria-label="copy.exportLabel.replace('{name}', selectedName)">
           <button type="button" @click="exportTimesheet('xlsx')">{{ copy.exportXlsx }}</button>
           <button type="button" class="secondary" @click="exportTimesheet('csv')">{{ copy.exportCsv }}</button>
         </div>
@@ -231,7 +242,7 @@ onMounted(loadSummary)
       </dl>
       <p v-if="!detail.entries.length" class="empty">{{ copy.noEntries }}</p>
       <div v-else class="table-wrap">
-        <table :aria-label="`${copy.entries}: ${memberName(memberById(selectedId))}`">
+        <table :aria-label="`${copy.entries}: ${selectedName}`">
           <thead><tr>
             <th scope="col">{{ copy.date }}</th><th scope="col">{{ copy.time }}</th><th scope="col">{{ copy.task }}</th>
             <th scope="col">{{ copy.project }}</th><th scope="col">{{ copy.category }}</th><th scope="col" class="number">{{ copy.duration }}</th>

@@ -114,6 +114,10 @@ $leave = Expect (Request Post '/api/v1/timesheets/leave' @{
 } $employee) 201 'leave entry'
 Expect (Request Get "/api/v1/timesheets/leave?year=$year&month=$month" $null $employee) 200 'leave read' | Out-Null
 Expect (Request Delete "/api/v1/timesheets/leave/$($leave.id)" $null $admin) 404 'leave owner isolation' | Out-Null
+$myMonth = Expect (Request Get "/api/v1/timesheets/me/timesheet?year=$year&month=$month" $null $employee) 200 'own open month'
+if ($myMonth.locked -or @($myMonth.entries).Count -ne 1 -or @($myMonth.leaves).Count -ne 1) { throw 'Own month is not read live.' }
+$adminMonth = Expect (Request Get "/api/v1/timesheets/me/timesheet?year=$year&month=$month" $null $admin) 200 'admin own month'
+if (@($adminMonth.entries).Count -ne 0) { throw 'Own month shows another member''s entries.' }
 
 Expect (Request Post "/api/v1/timesheets/months/$year/$month/lock" $null $employee) 403 'month lock permission' | Out-Null
 Expect (Request Post "/api/v1/timesheets/months/$year/$month/lock" $null $admin) 200 'month lock' | Out-Null

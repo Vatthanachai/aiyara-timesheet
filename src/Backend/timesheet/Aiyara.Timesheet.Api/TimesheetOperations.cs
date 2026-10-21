@@ -367,10 +367,18 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
 
     /// <summary>Tenant Admin view of one member's month: entries with project and category names,
     /// leave, the month's holidays, and the working weekdays. Read-only; another tenant's member simply has no rows.</summary>
-    public async Task<ServiceResponse> MemberTimesheet(Actor actor, Guid ownerId, int year, int month,
-        CancellationToken ct)
+    public Task<ServiceResponse> MemberTimesheet(Actor actor, Guid ownerId, int year, int month,
+        CancellationToken ct) => actor.IsAdmin
+        ? MonthTimesheet(ownerId, year, month, ct)
+        : Task.FromResult(Error(403, "FORBIDDEN"));
+
+    /// <summary>Any member's own month in the same shape as <see cref="MemberTimesheet"/>, read live,
+    /// so the open month is included.</summary>
+    public Task<ServiceResponse> MyTimesheet(Actor actor, int year, int month, CancellationToken ct) =>
+        MonthTimesheet(actor.UserId, year, month, ct);
+
+    private async Task<ServiceResponse> MonthTimesheet(Guid ownerId, int year, int month, CancellationToken ct)
     {
-        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
         if (!ValidMonth(year, month)) return Error(400, "INVALID_DATE");
         var projects = await db.Projects.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
         var categories = await db.Categories.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);

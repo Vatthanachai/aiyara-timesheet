@@ -1778,6 +1778,7 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     renamed: [] as unknown[],
     memberCalls: 0,
     timesheetQueries: [] as string[],
+    myQueries: [] as string[],
     regenerated: [] as string[],
     scheduleRequests: [] as Record<string, unknown>[],
     schedules: [] as Record<string, unknown>[]
@@ -1821,6 +1822,14 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
         { id: 'member-new', firstName: '', lastName: '', email: 'new@acme.test', role: 'Employee', status: 'PendingActivation',
           groupId: null, groupName: null }
       ])
+    }
+    if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'mali@acme.test', firstName: 'Mali', lastName: 'Member', photoUrl: null })
+    if (url.pathname.endsWith('/timesheets/me/timesheet')) {
+      state.myQueries.push(url.searchParams.toString())
+      return ok({ ownerId: 'member-mali', year: 2026, month: 10, locked: false,
+        entries: [{ id: 'm1', date: '2026-10-07', startTime: '09:00:00', endTime: '11:30:00', durationMinutes: 150, taskName: 'Sprint planning',
+          detail: null, notes: null, projectName: 'Apollo', categoryName: null }],
+        leaves: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
     }
     if (url.pathname.includes('/timesheets/members/')) {
       state.timesheetQueries.push(`${url.pathname.replace(/^.*\/timesheets/, '')}?${url.searchParams}`)
@@ -1994,6 +2003,10 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   const { frame, state } = await openReporting(page, 'TenantAdmin')
   const section = frame.getByRole('region', { name: 'Member timesheets' })
   const table = section.getByRole('table', { name: 'Member timesheets' })
+  // Admins find their own month among the members, so they get no separate My timesheet.
+  await expect(section).toBeVisible()
+  await expect(frame.getByRole('region', { name: 'My timesheet' })).toHaveCount(0)
+  expect(state.myQueries).toEqual([])
 
   await expect(table.locator('tbody tr')).toHaveCount(4)
   // Busiest first; members with no entries show zero, and departed members keep their hours.
@@ -2091,7 +2104,7 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
 test('employees request only their own reports and never load the member directory', async ({ page }) => {
   const { frame, state } = await openReporting(page, 'Employee')
 
-  await expect(frame.locator('table')).toBeVisible()
+  await expect(frame.getByRole('region', { name: 'Report history' }).locator('table')).toBeVisible()
   await expect(frame.getByRole('columnheader', { name: 'Person' })).toHaveCount(0)
   await expect(frame.getByLabel('Report on', { exact: true })).toHaveCount(0)
   await expect(frame.getByRole('heading', { name: 'Report settings' })).toHaveCount(0)
@@ -2101,6 +2114,19 @@ test('employees request only their own reports and never load the member directo
   expect(state.memberCalls).toBe(0)
   await expect(frame.getByRole('region', { name: 'Member timesheets' })).toHaveCount(0)
   expect(state.timesheetQueries).toEqual([])
+
+  // Their own month shows live, before it is closed, and can be exported.
+  const mine = frame.getByRole('region', { name: 'My timesheet' })
+  await expect(mine.getByRole('heading', { name: /^Mali Member · / })).toBeVisible()
+  await expect(mine.getByText('Month open (may still change)')).toBeVisible()
+  await expect(mine.locator('.member-totals')).toContainText('Total hours2:30')
+  await expect(mine.getByRole('table', { name: 'Entries: Mali Member' })).toContainText('Sprint planning')
+  await expect(mine.getByRole('button', { name: /All members/ })).toHaveCount(0)
+  await expect(mine.getByLabel('Group', { exact: true })).toHaveCount(0)
+  expect(state.myQueries[0]).toMatch(/^year=\d{4}&month=\d{1,2}$/)
+  const [download] = await Promise.all([page.waitForEvent('download'), mine.getByRole('button', { name: 'Export CSV' }).click()])
+  expect(download.suggestedFilename()).toMatch(/^timesheet-Mali-Member-\d{4}-\d{2}\.csv$/)
+  expect(readFileSync(await download.path(), 'utf8')).toContain('My timesheet,Mali Member · ')
 
   // Only the history table may scroll sideways on a phone; the page itself must not.
   for (const width of [375, 320]) {

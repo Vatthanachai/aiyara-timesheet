@@ -103,6 +103,31 @@ public sealed class MemberTimesheetReportTests : IAsyncLifetime
         Assert.Empty((await Result(otherDetail)).GetProperty("entries").EnumerateArray());
     }
 
+    [Fact]
+    public async Task Any_member_reads_only_their_own_open_month()
+    {
+        // The test actor's user is `admin`, whatever role the request claims.
+        await AddEntryAsync(admin, "My work", 9, 11);
+        await AddEntryAsync(alice, "Alice's work", 9, 17);
+        var month = $"year={today.Year}&month={today.Month}";
+
+        using var employee = await Get($"/api/v1/me/timesheet?{month}", "Employee");
+        using var anonymous = await Get($"/api/v1/me/timesheet?{month}", null);
+        using var badMonth = await Get($"/api/v1/me/timesheet?year={today.Year}&month=0", "Employee");
+        using var otherTenant = await Get($"/api/v1/me/timesheet?{month}", "Employee", tenantB);
+
+        Assert.Equal(HttpStatusCode.OK, employee.StatusCode);
+        var result = await Result(employee);
+        Assert.Equal(admin, result.GetProperty("ownerId").GetGuid());
+        Assert.False(result.GetProperty("locked").GetBoolean());
+        var entry = Assert.Single(result.GetProperty("entries").EnumerateArray().ToList());
+        Assert.Equal("My work", entry.GetProperty("taskName").GetString());
+        Assert.Equal(5, result.GetProperty("workingDays").GetArrayLength());
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, badMonth.StatusCode);
+        Assert.Empty((await Result(otherTenant)).GetProperty("entries").EnumerateArray());
+    }
+
     /// <summary>Uses in-memory SQLite, or a throwaway PostgreSQL database built from the real
     /// migrations when AIYARA_TEST_POSTGRES holds a server connection string.</summary>
     public async Task InitializeAsync()
