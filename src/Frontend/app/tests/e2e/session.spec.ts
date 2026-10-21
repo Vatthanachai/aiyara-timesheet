@@ -58,7 +58,7 @@ test('sign in persists the session, restores it after reload, and signs out', as
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   expect(loginRequest).toEqual({ email: 'admin@example.test', password: 'test-password' })
-  await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Record time' })).toBeVisible()
   await expect(navigation.getByRole('link', { name: 'Timesheet' })).toBeVisible()
   await expect(page.getByRole('link', { name: /Reports.*View reports/ })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
@@ -134,7 +134,8 @@ test('profile settings previews and uploads an image then refreshes the shell av
   await page.getByLabel('Email').fill('admin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: /Profile.*Manage your profile/ }).click()
+  await page.locator('.profile-trigger').click()
+  await page.getByRole('link', { name: 'Profile settings' }).click()
 
   const profileFrame = page.frameLocator('iframe')
   await expect(profileFrame.getByRole('heading', { name: 'Profile settings' })).toBeVisible()
@@ -228,7 +229,7 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   await page.getByLabel('Email').fill('admin@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+  await page.getByRole('link', { name: 'Record time' }).click()
 
   const timesheet = page.frameLocator('iframe')
   await expect(timesheet.getByRole('heading', { name: 'Time entries', level: 1 })).toBeVisible()
@@ -341,7 +342,7 @@ test('timesheet task tray keeps a rejected task name, prefills the entry form, a
   await page.getByLabel('Email').fill('employee@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+  await page.getByRole('link', { name: 'Record time' }).click()
 
   const timesheet = page.frameLocator('iframe')
   const tray = timesheet.locator('.task-panel')
@@ -439,7 +440,7 @@ test('timesheet task board moves cards by button and drag, reverts a rejected mo
   await page.getByLabel('Email').fill('employee@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+  await page.getByRole('link', { name: 'Record time' }).click()
 
   const timesheet = page.frameLocator('iframe')
   await timesheet.getByRole('button', { name: 'Task board' }).click()
@@ -496,7 +497,7 @@ test('failed sign in displays an error and does not persist credentials', async 
   await page.getByRole('button', { name: 'Sign in' }).click()
 
   await expect(page.getByRole('alert')).toHaveText('Incorrect email or password.')
-  await expect(page.getByRole('region', { name: 'Available applications' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Record time' })).toHaveCount(0)
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.access'))).toBeNull()
   expect(await page.evaluate(() => sessionStorage.getItem('aiyara.refresh'))).toBeNull()
 })
@@ -993,7 +994,7 @@ test('sign in asks which organization to open when the account belongs to severa
   await page.getByRole('button', { name: 'Beta (BETA456)' }).click()
 
   expect(loginRequests).toEqual([{ organizationCode: 'BETA456', email: 'admin@example.test', password: 'test-password' }])
-  await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Record time' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
     .toBe('beta-token')
 })
@@ -1017,7 +1018,7 @@ async function signInAs(page: import('@playwright/test').Page, role: string) {
   await page.getByLabel('Email').fill(`${role.toLowerCase()}@example.test`)
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('region', { name: 'Available applications' })).toBeVisible()
+  await expect(page.getByRole('link', { name: role === 'PlatformAdmin' ? 'Open System admin' : 'Record time' })).toBeVisible()
 }
 
 test('platform admin sees only platform areas and cannot open tenant administration', async ({ page }) => {
@@ -1027,9 +1028,10 @@ test('platform admin sees only platform areas and cannot open tenant administrat
   await expect(navigation.getByRole('link', { name: 'System admin' })).toBeVisible()
   for (const name of ['Timesheet', 'Reports', 'Administration'])
     await expect(navigation.getByRole('link', { name })).toHaveCount(0)
-  const apps = page.getByRole('region', { name: 'Available applications' })
-  await expect(apps.getByRole('link', { name: /System admin/ })).toBeVisible()
-  await expect(apps.getByRole('link', { name: /Administration/ })).toHaveCount(0)
+  const home = page.getByRole('main')
+  await expect(home.getByRole('link', { name: 'Open System admin' })).toHaveAttribute('href', '/sys-admin')
+  await expect(home.getByRole('link', { name: /Administration/ })).toHaveCount(0)
+  await expect(home.getByRole('link', { name: 'Record time' })).toHaveCount(0)
 
   await page.goto('/remote/administration')
   await expect(page.getByRole('heading', { name: 'Access restricted' })).toBeVisible()
@@ -1454,7 +1456,7 @@ test('invitation page accepts a code and points to activation, and explains a ba
 
   await page.goto('/')
   await waitForHydration(page)
-  await page.getByRole('link', { name: 'Have an invitation code?' }).click()
+  await page.getByRole('link', { name: 'Join with an invitation code' }).click()
   await expect(page.getByRole('heading', { name: 'Accept your invitation' })).toBeVisible()
   await waitForHydration(page)
 
@@ -1828,7 +1830,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
       return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null, ...formats })
     if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'mali@acme.test', firstName: 'Mali', lastName: 'Member', photoUrl: null })
     if (url.pathname.endsWith('/timesheets/me/timesheet')) {
-      state.myQueries.push(url.searchParams.toString())
+      // Only the Reporting remote's reads; the Shell's home page reads the same route.
+      if (route.request().frame().parentFrame()) state.myQueries.push(url.searchParams.toString())
       return ok({ ownerId: 'member-mali', year: 2026, month: 10, locked: false,
         entries: [{ id: 'm1', date: '2026-10-07', startTime: '09:00:00', endTime: '11:30:00', durationMinutes: 150, taskName: 'Sprint planning',
           detail: null, notes: null, projectName: 'Apollo', categoryName: null }],
@@ -2279,7 +2282,7 @@ test('timesheet calendar shades the days the organization does not work and new 
   await page.getByLabel('Email').fill('employee@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+  await page.getByRole('link', { name: 'Record time' }).click()
 
   const timesheet = page.frameLocator('iframe')
   const cell = (date: string) => timesheet.locator(`.day-button[aria-label="Date ${date}"]`)
@@ -2406,7 +2409,7 @@ test('timesheet shows dates and times in the organization\'s format', async ({ p
   await page.getByLabel('Email').fill('employee@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+  await page.getByRole('link', { name: 'Record time' }).click()
 
   const timesheet = page.frameLocator('iframe')
   const month = new Intl.DateTimeFormat('en-GB', { month: 'short' }).format(now)
@@ -2551,7 +2554,7 @@ test('timesheet leaves the break out of an entry unless the member worked throug
   await page.getByLabel('Email').fill('employee@example.test')
   await page.getByLabel('Password').fill('test-password')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+  await page.getByRole('link', { name: 'Record time' }).click()
 
   const timesheet = page.frameLocator('iframe')
   const composer = timesheet.locator('.entry-panel')

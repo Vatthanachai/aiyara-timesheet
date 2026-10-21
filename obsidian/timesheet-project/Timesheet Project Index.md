@@ -22,6 +22,7 @@
 - [[Tenant Member Management Plan]] — how a Tenant Admin invites and manages members (phases A–C).
 - [[Working Days Plan]] — how a Tenant Admin sets the organization's working weekdays (phases A–B).
 - [[Date And Time Format Plan]] — how a Tenant Admin chooses how dates and times appear everywhere (phases A–C).
+- [[Home Page Plan]] — the Shell's signed-out welcome and the signed-in Today page (phases A–C).
 
 ## Repository Facts
 

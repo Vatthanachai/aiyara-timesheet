@@ -12,13 +12,15 @@ type OrganizationSummary = { name: string; logoUrl: string | null; dateFormat?: 
 
 const { visibleNavigation } = useRemoteNavigation()
 const { locale, setLocale } = useLocale()
-const { token, role, logout, restore, renew } = useSession()
+const { token, role, logout, restore } = useSession()
+const authorizedFetch = useAuthorizedFetch()
 const config = useRuntimeConfig()
 const text = useLocaleText(locale, {
   th: { profile: 'โปรไฟล์', organizations: 'ผู้ดูแลระบบ', profileSettings: 'ตั้งค่าโปรไฟล์', signOut: 'ออกจากระบบ' },
   en: { profile: 'Profile', organizations: 'System admin', profileSettings: 'Profile settings', signOut: 'Sign out' }
 })
-const profile = ref<ProfileSummary | null>(null)
+// Shared with the home page, which greets the member by name.
+const profile = useState<ProfileSummary | null>('profile-summary', () => null)
 const profileMenu = ref<HTMLDetailsElement | null>(null)
 let avatarObjectUrl = ''
 // The signed-in organization's name and logo replace the product name in the header.
@@ -65,19 +67,6 @@ async function loadProfile() {
     profile.value = null
     if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
     avatarObjectUrl = ''
-  }
-}
-
-async function authorizedFetch<T>(url: string, asBlob = false): Promise<T> {
-  const send = () => $fetch<T>(url, {
-    headers: { Authorization: `Bearer ${token.value}` },
-    ...(asBlob ? { responseType: 'blob' as const } : {})
-  })
-  try { return await send() }
-  catch (cause) {
-    const status = (cause as { status?: number })?.status
-    if (status !== 401 || !(await renew(true))) throw cause
-    return await send()
   }
 }
 
