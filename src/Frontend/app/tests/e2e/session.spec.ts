@@ -2087,7 +2087,13 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   // Entries are stored uncompressed, so the sheet's text is readable in the raw package.
   const xlsx = readFileSync(await xlsxDownload.path())
   expect(xlsx.subarray(0, 2).toString()).toBe('PK')
-  expect(xlsx.toString('utf8')).toContain('<t xml:space="preserve">Memorial day</t>')
+  const xlsxText = xlsx.toString('utf8')
+  expect(xlsxText).toContain('<t xml:space="preserve">Memorial day</t>')
+  // An Excel table over the entry rows, and 5 October's two entries carry the date once (CSV: on both).
+  expect(xlsxText).toContain('<tablePart r:id="rId1"/>')
+  expect(xlsxText).toContain('ref="A5:J14"')
+  expect(xlsxText.split('2026-10-05').length - 1).toBe(1)
+  expect(csv.split('2026-10-05').length - 1).toBe(2)
 
   // Changing the month reloads the open member; going back shows everyone again.
   await section.getByLabel('Month').fill('2026-09')

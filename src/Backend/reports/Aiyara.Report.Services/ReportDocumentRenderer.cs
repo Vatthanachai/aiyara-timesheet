@@ -23,6 +23,10 @@ public static class ReportDocumentRenderer
 
     public static bool IsDayOff(ReportLine line) => line.Kind is "holiday" or "dayoff";
 
+    /// <summary>Rows by date; a day off sorts first in its day because it names no member or time.</summary>
+    private static IEnumerable<ReportLine> Ordered(ReportDocumentData data) =>
+        data.Lines.OrderBy(x => x.Date).ThenBy(x => x.Member).ThenBy(x => x.Start);
+
     private static int DaysOff(ReportDocumentData data) => data.Lines.Where(IsDayOff).Select(x => x.Date).Distinct().Count();
 
     public static byte[] RenderXlsx(ReportDocumentData data)
@@ -45,14 +49,15 @@ public static class ReportDocumentRenderer
             ? ["Date", "Member", "Start", "End", "Hours", "Task", "Detail", "Notes", "Project", "Category"]
             : ["Date", "Start", "End", "Hours", "Task", "Detail", "Notes", "Project", "Category"];
         for (var column = 0; column < headers.Length; column++) sheet.Cell(7, column + 1).Value = headers[column];
-        var header = sheet.Range(7, 1, 7, headers.Length);
-        header.Style.Font.Bold = true;
-        header.Style.Fill.BackgroundColor = XLColor.FromHtml("#DBEAFE");
         var row = 8;
-        foreach (var line in data.Lines)
+        DateOnly? previous = null;
+        foreach (var line in Ordered(data))
         {
             var column = 1;
-            sheet.Cell(row, column++).Value = line.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            // A day's date only on its first row; the rows under it show their own times.
+            if (line.Date != previous) sheet.Cell(row, column).Value = line.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            previous = line.Date;
+            column++;
             if (showMember) sheet.Cell(row, column++).Value = line.Member;
             sheet.Cell(row, column++).Value = line.Start;
             sheet.Cell(row, column++).Value = line.End;
@@ -67,6 +72,10 @@ public static class ReportDocumentRenderer
             if (IsDayOff(line)) sheet.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#EEF0F4");
             row++;
         }
+        // An Excel table with filters and banded rows; it needs a row under its header even when empty.
+        var table = sheet.Range(7, 1, Math.Max(row - 1, 8), headers.Length).CreateTable("Timesheet");
+        table.Theme = XLTableTheme.TableStyleMedium2;
+        table.ShowAutoFilter = true;
         sheet.Columns().AdjustToContents(8, 48);
         sheet.SheetView.FreezeRows(7);
         using var stream = new MemoryStream();
@@ -115,7 +124,8 @@ public static class ReportDocumentRenderer
             x += widths[i];
         }
         y += 20;
-        foreach (var line in data.Lines.OrderBy(x => x.Date).ThenBy(x => x.Member).ThenBy(x => x.Start))
+        DateOnly? previousDate = null;
+        foreach (var line in Ordered(data))
         {
             var description = string.Join(" · ", new[] { line.Task, line.Detail, line.Project, line.Category }
                 .Where(value => !string.IsNullOrWhiteSpace(value)));
@@ -130,7 +140,9 @@ public static class ReportDocumentRenderer
                 y = 45;
             }
             x = left;
-            var day = line.Date.Day.ToString(CultureInfo.InvariantCulture);
+            // A day's date only on its first row, and again at the top of a new page.
+            var day = line.Date != previousDate || y == 45 ? line.Date.Day.ToString(CultureInfo.InvariantCulture) : "";
+            previousDate = line.Date;
             var time = line.Start.Length > 0 ? $"{line.Start} - {line.End}" : "";
             var values = showMember
                 ? new[] { day, line.Member, time, description, line.Notes }
