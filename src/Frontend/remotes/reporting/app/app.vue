@@ -30,6 +30,7 @@ const token = ref('')
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
 const isAdmin = ref(false)
+const myName = ref('')
 const timeZoneId = ref('Asia/Bangkok')
 const loaded = ref(false)
 const definitions = ref<Definition[]>([])
@@ -341,6 +342,16 @@ async function timesheetGet<T>(path: string, query: Record<string, unknown>) {
     }), token, config.public.shellOrigin))
 }
 
+/** A member's own display name for the My timesheet heading and export; empty falls back to "Me". */
+async function loadMyName() {
+  try {
+    const profile = unwrapResponse(await withRemoteRefresh(accessToken =>
+      $fetch<ApiEnvelope<{ firstName: string | null; lastName: string | null; email: string }>>(`${gateway.value}/api/v1/identity/profile/me`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      }), token, config.public.shellOrigin))
+    myName.value = [profile.firstName, profile.lastName].filter(part => part?.trim()).join(' ') || profile.email
+  } catch { myName.value = '' }
+}
 async function loadMembers() {
   try {
     members.value = unwrapResponse(await withRemoteRefresh(accessToken =>
@@ -372,7 +383,7 @@ async function load() {
     timeZoneId.value = context.timeZoneId || 'Asia/Bangkok'
     scheduleForm.timeZoneId ||= timeZoneId.value
     await Promise.all([loadDefinitionsAndSettings(), loadHistory(), loadDashboard(),
-      isAdmin.value ? loadMembers() : Promise.resolve()])
+      isAdmin.value ? loadMembers() : loadMyName()])
     resetPeriod()
     error.value = ''
   } catch (cause) { error.value = safeError(cause, locale.value) }
@@ -465,6 +476,7 @@ onMounted(() => {
       </section>
 
       <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :time-zone-id="timeZoneId" :load="timesheetGet" />
+      <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :time-zone-id="timeZoneId" :load="timesheetGet" :self="{ name: myName }" />
 
       <section class="card" aria-labelledby="history-heading">
         <div class="card-heading">

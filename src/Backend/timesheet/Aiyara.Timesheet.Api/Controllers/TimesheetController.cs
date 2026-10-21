@@ -227,6 +227,14 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> MemberTimesheet(Guid ownerId, [FromQuery] int year, [FromQuery] int month,
         CancellationToken ct) => Execute(actor => operations.MemberTimesheet(actor, ownerId, year, month, ct));
 
+    /// <summary>The signed-in member's own entries, leave, holidays, and working days for a month.</summary>
+    [HttpGet("me/timesheet", Name = "GetMyTimesheetV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    public Task<IActionResult> MyTimesheet([FromQuery] int year, [FromQuery] int month, CancellationToken ct) =>
+        Execute(actor => operations.MyTimesheet(actor, year, month, ct));
+
     private async Task<IActionResult> Execute(Func<Actor, Task<ServiceResponse>> action)
     {
         if (!Actor.TryRead(HttpContext, out var actor)) return ReturnResponseWithHttpStatus(
