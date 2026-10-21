@@ -1134,6 +1134,13 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   await expect(tabs.getByRole('tab', { name: 'Security' })).toBeFocused()
   await expect(tabs.getByRole('tab', { name: 'Security' })).toHaveAttribute('aria-selected', 'true')
   await expect(frame.getByRole('region', { name: 'Organization' })).toBeHidden()
+  // The tab bar fits at every width: a row when there is room, a wrapping grid when not, never a scroll.
+  for (const width of [1280, 1024, 768, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect.poll(() => tabs.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    for (const tab of await tabs.getByRole('tab').all()) await expect(tab).toBeInViewport()
+  }
+  await page.setViewportSize({ width: 1280, height: 720 })
   const minimumLength = frame.getByRole('spinbutton', { name: 'Minimum length' })
   await expect(minimumLength).toHaveValue('14')
   await expect.poll(() => catalogCalls).toBe(1)

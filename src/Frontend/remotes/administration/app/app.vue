@@ -78,7 +78,7 @@ const formatPreview = computed(() => {
 })
 const copy = useLocaleText(locale, { th: {
   title: 'จัดการองค์กร', subtitle: 'จัดระเบียบโครงการ หมวดหมู่ วันหยุด และข้อกำหนดการใช้งานในที่เดียว', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
-  settingsTabs: 'หมวดการตั้งค่า', tabOrganization: 'องค์กร', tabPeople: 'สมาชิก', tabTime: 'เวลาทำงาน', tabCatalog: 'โครงการและหมวดหมู่', tabSecurity: 'ความปลอดภัย',
+  settingsTabs: 'หมวดการตั้งค่า', tabOrganization: 'องค์กร', tabPeople: 'สมาชิก', tabTime: 'เวลาทำงาน', tabCatalog: 'โครงการ|และหมวดหมู่', tabSecurity: 'ความปลอดภัย',
   organizationCode: 'รหัสองค์กร {code}', dayOff: 'วันหยุด', member: 'สมาชิก', status: 'สถานะ', actions: 'การดำเนินการ',
   projects: 'โครงการ', projectName: 'ชื่อโครงการ', categories: 'หมวดหมู่',
   categoryName: 'ชื่อหมวดหมู่', holidays: 'วันหยุด', holidayName: 'ชื่อวันหยุด',
@@ -201,12 +201,7 @@ const tabs = computed(() => [
 function selectTab(id: TabId, focus = false) {
   activeTab.value = id
   try { sessionStorage.setItem(TAB_KEY, id) } catch { /* the choice is a convenience */ }
-  void nextTick(() => {
-    const button = tabButtons.value[tabIds.indexOf(id)]
-    // On a phone the tab bar scrolls; keep the chosen tab in view.
-    button?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    if (focus) button?.focus()
-  })
+  if (focus) void nextTick(() => tabButtons.value[tabIds.indexOf(id)]?.focus())
 }
 /** Arrow keys move along the tabs (wrapping), Home and End jump to the ends. */
 function onTabKey(event: KeyboardEvent) {
@@ -490,7 +485,7 @@ async function lock() {
       <div class="tab-list" role="tablist" :aria-label="copy.settingsTabs" @keydown="onTabKey">
         <button v-for="tab in tabs" :id="`tab-${tab.id}`" :key="tab.id" ref="tabButtons" type="button" role="tab" class="tab"
           :aria-selected="activeTab === tab.id" :aria-controls="`panel-${tab.id}`" :tabindex="activeTab === tab.id ? 0 : -1"
-          @click="selectTab(tab.id)">{{ tab.label }}<span v-if="tab.count" class="tab-count">{{ tab.count }}</span></button>
+          @click="selectTab(tab.id)"><!-- Thai has no spaces, so "|" marks where a long label may break; each part stays whole. --><span v-if="tab.label.includes('|')" class="tab-words"><span v-for="part in tab.label.split('|')" :key="part">{{ part }}</span></span><template v-else>{{ tab.label }}</template><span v-if="tab.count" class="tab-count">{{ tab.count }}</span></button>
       </div>
 
       <!-- Organization: name and logo, date and time format. -->
@@ -651,13 +646,27 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600}
 .feedback-error{background:#fff0ef;color:#a53d38}.feedback-success{background:#eaf8f1;color:#287751}
 .loading-line{color:var(--color-muted);margin:0 0 .75rem}
 /* Tabs: one subject at a time. */
-.tab-list{display:flex;gap:.25rem;border-bottom:1px solid var(--color-border);margin:0 0 1.25rem;overflow-x:auto;scrollbar-width:thin}
-.tab{display:inline-flex;align-items:center;gap:.45rem;flex:0 0 auto;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:.7rem .9rem;color:var(--color-muted);font-family:var(--font-display);font-size:1rem;font-weight:600;cursor:pointer;transition:color 150ms ease,border-color 150ms ease}
+.tab-list{display:flex;gap:.15rem;border-bottom:1px solid var(--color-border);margin:0 0 1.25rem}
+.tab{display:inline-flex;align-items:center;gap:.45rem;flex:0 0 auto;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:.7rem .75rem;color:var(--color-muted);font-family:var(--font-display);font-size:.95rem;font-weight:600;cursor:pointer;transition:color 150ms ease,border-color 150ms ease}
 .tab:hover{color:var(--color-ink)}
 .tab[aria-selected="true"]{color:var(--color-brand);border-bottom-color:var(--color-brand)}
 .tab:focus-visible{outline-offset:-2px;border-radius:.35rem .35rem 0 0}
 .tab-count{background:var(--color-work-track);color:#1d3f9e;border-radius:999px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.75rem;padding:.05rem .45rem}
+.tab-words span{display:inline-block;white-space:nowrap}
 .tab-panel{display:grid;gap:1.25rem}.tab-panel:focus-visible{outline:none}
+/* Narrower than the five tabs in a row: a grid of buttons that wraps, so the bar never scrolls. */
+@media (max-width:56rem){
+  .tab-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.4rem;border-bottom:0}
+  .tab{justify-content:center;margin:0;border:1px solid var(--color-border);border-radius:.5rem;background:var(--color-surface);padding:.6rem .5rem;text-align:center;white-space:normal}
+  .tab[aria-selected="true"]{background:var(--color-work-track);border-color:var(--color-brand)}
+  .tab:focus-visible{border-radius:.5rem}
+}
+/* Phones: three tabs on the first row, the two longer ones sharing the second, so no tab sits alone. */
+@media (max-width:36rem){
+  .tab-list{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .tab{grid-column:span 2}
+  .tab:nth-child(n+4){grid-column:span 3}
+}
 .two-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1.25rem;align-items:start}
 /* Panels: flat, one border, a heading and one hint. */
 .panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:.75rem;padding:clamp(1rem,2vw,1.35rem);min-width:0}
