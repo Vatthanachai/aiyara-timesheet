@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { injectTimesheetText, type Catalog, type EntryForm } from '../utils/timesheet'
+import { injectTimesheetDates, injectTimesheetText, type Catalog, type EntryForm } from '../utils/timesheet'
 
 const props = defineProps<{ form: EntryForm; catalog: Catalog; monthStart: string; monthEnd: string }>()
 const emit = defineEmits<{ save: []; cancel: []; drop: [event: DragEvent] }>()
 const { text, labels } = injectTimesheetText()
+const dates = injectTimesheetDates()
 
 const durationPreview = computed(() => {
   const [startHour, startMinute] = props.form.startTime.split(':').map(Number)
@@ -15,7 +16,7 @@ const durationPreview = computed(() => {
 
 <template>
   <section class="panel entry-panel" @dragover.prevent @drop.prevent="emit('drop', $event)">
-    <div class="panel-heading"><div><span class="eyebrow">{{ text.add }}</span><h2>{{ labels.selectedDate }} · {{ form.date }}</h2></div><span v-if="durationPreview" class="duration-pill">{{ labels.estimate }} <strong>{{ durationPreview }}</strong></span></div>
+    <div class="panel-heading"><div><span class="eyebrow">{{ text.add }}</span><h2>{{ labels.selectedDate }} · {{ dates.date(form.date) }}</h2></div><span v-if="durationPreview" class="duration-pill">{{ labels.estimate }} <strong>{{ durationPreview }}</strong></span></div>
     <p class="subtle-hint">{{ text.drop }}</p>
     <form class="entry-grid" @submit.prevent="emit('save')">
       <label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" :placeholder="labels.taskPlaceholder" /></label>

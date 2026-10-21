@@ -3,6 +3,7 @@ import { safeError } from '../../../../shared/api-response'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 import { zonedToday } from '../utils/reportPeriods'
 import { csvBlob, saveBlob, xlsxBlob, type Cell } from '../utils/spreadsheet'
+import { formatDate as formatCalendarDate, formatMonth, formatTime, type Formats } from '../../../../shared/date-format'
 
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; groupId?: string | null; groupName?: string | null }
 type MemberSummary = { ownerId: string; entryCount: number; totalMinutes: number; leaveDays: number }
@@ -25,6 +26,8 @@ const props = defineProps<{
   timeZoneId: string
   /** GET a Timesheet API path through Gateway with the remote's session. */
   load: <T>(path: string, query: Record<string, unknown>) => Promise<T>
+  /** The organization's date and time formats. */
+  formats: Formats
   /** Set for a member who is not an admin: shows only their own month, read live. */
   self?: { name: string }
 }>()
@@ -64,7 +67,6 @@ const groupFilter = ref('')
 const detail = ref<Detail | null>(null)
 const busy = ref(false)
 const error = ref('')
-const dateLocale = computed(() => props.locale === 'th' ? 'th-TH' : 'en-GB')
 const period = computed(() => ({ year: Number(month.value.slice(0, 4)), month: Number(month.value.slice(5, 7)) }))
 
 const memberName = (member: Member | undefined) =>
@@ -105,11 +107,9 @@ const groupTotals = computed(() => {
     b.totalMinutes - a.totalMinutes || a.name.localeCompare(b.name))
 })
 const hours = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
-const formatDate = (value: string) => new Intl.DateTimeFormat(dateLocale.value,
-  { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`))
-const monthLabel = computed(() => new Intl.DateTimeFormat(dateLocale.value,
-  { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month.value}-01T00:00:00Z`)))
-const time = (value: string) => value.slice(0, 5)
+const formatDate = (value: string) => formatCalendarDate(value, props.formats, props.locale, { weekday: true })
+const monthLabel = computed(() => formatMonth(month.value, props.formats, props.locale))
+const time = (value: string) => formatTime(value, props.formats)
 const totalMinutes = computed(() => detail.value?.entries.reduce((sum, x) => sum + x.durationMinutes, 0) ?? 0)
 const daysWorked = computed(() => new Set(detail.value?.entries.map(x => x.date)).size)
 const dayTotals = computed(() => {
@@ -145,22 +145,25 @@ const byProject = computed(() => {
 })
 
 /** The open member's month as a sheet: a heading and totals, then entries, leave, and days off by
- * date, with each day off named in the Remark column. `groupDays` writes each date only on its
- * day's first row, for reading; CSV keeps it on every row for importing. */
-function exportRows(groupDays: boolean): Cell[][] {
+ * date, with each day off named in the Remark column. `forReading` (XLSX) uses the organization's
+ * formats and writes each date only on its day's first row; CSV keeps ISO dates and 24-hour times
+ * on every row for importing. */
+function exportRows(forReading: boolean): Cell[][] {
   const current = detail.value!
   const c = copy.value
+  const day = (value: string) => forReading ? formatCalendarDate(value, props.formats, props.locale) : value
+  const clock = (value: string) => forReading ? time(value) : value.slice(0, 5)
   const lines: { date: string; order: number; start: string; cells: Cell[] }[] = []
   for (const [date, name] of daysOff.value)
-    lines.push({ date, order: 0, start: '', cells: [date, '', '', '', name, '', '', '', '', c.daysOff] })
+    lines.push({ date, order: 0, start: '', cells: [day(date), '', '', '', name, '', '', '', '', c.daysOff] })
   for (const leave of current.leaves)
-    lines.push({ date: leave.date, order: 1, start: '', cells: [leave.date, '', '', '', leave.kind, '', leave.notes ?? '', '', '', c.leave] })
+    lines.push({ date: leave.date, order: 1, start: '', cells: [day(leave.date), '', '', '', leave.kind, '', leave.notes ?? '', '', '', c.leave] })
   for (const entry of current.entries)
-    lines.push({ date: entry.date, order: 2, start: entry.startTime, cells: [entry.date, time(entry.startTime), time(entry.endTime),
+    lines.push({ date: entry.date, order: 2, start: entry.startTime, cells: [day(entry.date), clock(entry.startTime), clock(entry.endTime),
       Math.round(entry.durationMinutes / 60 * 100) / 100, entry.taskName, entry.detail ?? '', entry.notes ?? '',
       entry.projectName ?? '', entry.categoryName ?? '', daysOff.value.get(entry.date) ?? ''] })
   lines.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order || a.start.localeCompare(b.start))
-  if (groupDays) lines.forEach((line, index) => { if (lines[index - 1]?.date === line.date) line.cells[0] = '' })
+  if (forReading) lines.forEach((line, index) => { if (lines[index - 1]?.date === line.date) line.cells[0] = '' })
   return [
     [props.self ? c.myTitle : c.title, `${selectedName.value} · ${monthLabel.value}`],
     [c.status, current.locked ? c.monthClosed : c.monthOpen],

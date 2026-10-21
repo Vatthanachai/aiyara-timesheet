@@ -32,10 +32,10 @@ There is no organization setting for either. Browser date inputs (`type="date"` 
 
 ## Phase B — Shell, Administration, Timesheet, Reporting
 
-- [ ] B1. `shared/date-format.ts` (`formatDate`, `formatTime`, `formatMonth`, `readSessionFormats`) and the Shell passing the formats in `aiyara.session`.
-- [ ] B2. Administration **Date and time format** panel: two choices with a live preview of today; saving tells the Shell to reload the organization, so every remote gets the new formats.
-- [ ] B3. Timesheet: entries, leave, holidays, and the month label. Reporting: Member timesheets / My timesheet, history timestamps and periods, and the XLSX export.
-- [ ] B4. Playwright: the admin saves a format and the preview changes; the Timesheet and Reporting remotes show `dd/MM/bbbb` and `h:mm a`; narrow widths.
+- [x] B1. `shared/date-format.ts` (`formatDate`, `formatTime`, `formatMonth`, `readSessionFormats`) and the Shell passing the formats in `aiyara.session`.
+- [x] B2. Administration **Date and time format** panel: two choices with a live preview of today; saving tells the Shell to reload the organization, so every remote gets the new formats.
+- [x] B3. Timesheet: entries, leave, holidays, and the month label. Reporting: Member timesheets / My timesheet, history timestamps and periods, and the XLSX export.
+- [x] B4. Playwright: the admin saves a format and the preview changes; the Timesheet and Reporting remotes show `dd/MM/bbbb` and `h:mm a`; narrow widths.
 
 ## Phase C — Generated Reports
 

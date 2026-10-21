@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useLocaleText } from '../../../../shared/i18n'
+import { DEFAULT_FORMATS, type Formats } from '../../../../shared/date-format'
 const route = useRoute()
 const config = useRuntimeConfig()
 const { navigation, canOpen } = useRemoteNavigation()
@@ -15,6 +16,8 @@ const remoteUrl = computed(() => {
 })
 const { token, tenantId, renew, restore } = useSession()
 const { locale } = useLocale()
+// Set by the layout from the signed-in organization.
+const formats = useState<Formats>('organization-formats', () => DEFAULT_FORMATS)
 const text = useLocaleText(locale, {
   th: { signIn: 'กรุณาเข้าสู่ระบบ', goHome: 'กลับหน้าแรก', accessRestrictedTitle: 'ไม่มีสิทธิ์เข้าถึง', accessRestrictedBody: 'บัญชีของคุณไม่มีสิทธิ์ใช้งานส่วนนี้' },
   en: { signIn: 'Please sign in', goHome: 'Go home', accessRestrictedTitle: 'Access restricted', accessRestrictedBody: 'Your account does not have access to this area.' }
@@ -57,10 +60,10 @@ async function sendSession() {
   if (!import.meta.client || !frame.value || !remoteUrl.value) return
   if (token.value) await renew()
   frame.value.contentWindow?.postMessage({ type: 'aiyara.session', token: token.value,
-    locale: locale.value, tenantId: tenantId.value,
+    locale: locale.value, tenantId: tenantId.value, ...formats.value,
     gatewayUrl: config.public.gatewayUrl }, new URL(remoteUrl.value).origin)
 }
-watch([token, locale], () => sendSession())
+watch([token, locale, formats], () => sendSession())
 
 if (!remote.value) {
   throw createError({ statusCode: 404, statusMessage: 'Remote application not found' })

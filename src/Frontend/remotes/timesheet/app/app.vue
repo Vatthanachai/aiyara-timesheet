@@ -2,7 +2,8 @@
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale } from '../../../shared/i18n'
-import { readDroppedTrayItem, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
+import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
+import { readDroppedTrayItem, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
 const config = useRuntimeConfig()
@@ -25,9 +26,8 @@ const leaveKind = ref('annual')
 const currentMonth = ref('')
 const locked = ref(false)
 const canEdit = computed(() => month.value === currentMonth.value && !locked.value)
-const monthLabel = computed(() => new Intl.DateTimeFormat(locale.value === 'th' ? 'th-TH' : 'en', {
-  month: 'long', year: 'numeric'
-}).format(new Date(`${month.value}-01T12:00:00`)))
+const formats = ref(readFormats(null))
+const monthLabel = computed(() => formatMonth(month.value, formats.value, locale.value))
 const monthStart = computed(() => `${month.value}-01`)
 const monthEnd = computed(() => `${month.value}-${new Date(Number(month.value.slice(0, 4)), Number(month.value.slice(5)), 0).getDate()}`)
 const totalHours = computed(() => entries.value.reduce((total, entry) => total + entry.durationMinutes, 0) / 60)
@@ -38,11 +38,16 @@ const daysWithHoliday = computed(() => new Set(catalog.value.holidays.filter(hol
 const copy = useTimesheetText(locale)
 const { text, labels } = copy
 provide(timesheetTextKey, copy)
+provide(timesheetDatesKey, computed(() => ({
+  date: (value: string) => formatDate(value, formats.value, locale.value),
+  time: (value: string) => formatTime(value, formats.value)
+})))
 function onSessionMessage(event: MessageEvent) {
   if (event.source !== window.parent || event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.session') return
   token.value = event.data.token || ''
   gateway.value = event.data.gatewayUrl || gateway.value
   locale.value = readSessionLocale(event.data)
+  formats.value = readFormats(event.data)
   if (token.value) load()
 }
 onMounted(() => {
