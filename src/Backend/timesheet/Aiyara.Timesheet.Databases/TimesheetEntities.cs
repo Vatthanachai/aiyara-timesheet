@@ -35,6 +35,16 @@ public sealed class Holiday : TenantRecord
     public bool IsDeleted { get; set; }
 }
 
+/// <summary>The organization's working weekdays; bit <c>n</c> is <see cref="DayOfWeek"/> <c>n</c>.
+/// An organization without a row works Monday to Friday.</summary>
+public sealed class WorkWeek : TenantRecord
+{
+    public const int DefaultMask = 0b0111110;
+    public int WorkingDaysMask { get; set; } = DefaultMask;
+
+    public static int[] Days(int mask) => Enumerable.Range(0, 7).Where(day => (mask & (1 << day)) != 0).ToArray();
+}
+
 public sealed class LeaveEntry : TenantRecord
 {
     public Guid OwnerId { get; set; }

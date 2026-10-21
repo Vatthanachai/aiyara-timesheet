@@ -93,6 +93,15 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> DeleteHoliday(Guid id, CancellationToken ct) =>
         Execute(actor => operations.DeleteHoliday(actor, id, ct));
 
+    /// <summary>Tenant Admin only: sets the organization's working weekdays (Sunday = 0).</summary>
+    [HttpPut("work-week", Name = "UpdateWorkWeekV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> UpdateWorkWeek([FromBody] WorkWeekRequest body, CancellationToken ct) =>
+        Execute(actor => operations.SaveWorkWeek(actor, body, ct));
+
     [HttpGet("tasks", Name = "GetPersonalTasksV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<IReadOnlyList<PersonalTask>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
