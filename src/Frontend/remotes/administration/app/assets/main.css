@@ -1,2 +1,4 @@
 @import "tailwindcss";
+@import "@fontsource/bai-jamjuree/500.css";
+@import "@fontsource/bai-jamjuree/600.css";
 @import "../../../../shared/tokens.css";
