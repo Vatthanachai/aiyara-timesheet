@@ -371,6 +371,41 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
             ReportRunId = runId, Action = action, DetailsJson = JsonSerializer.Serialize(details),
             OccurredAtUtc = DateTime.UtcNow });
 
+    /// <summary>Renders a member's month sent by the caller as a timesheet PDF. Any member may export
+    /// what their page shows; nothing is read or stored, so there is nothing to scope or audit.</summary>
+    public ServiceResponse TimesheetPdf(ReportActor actor, TimesheetPdfRequest body)
+    {
+        if (!ValidTimesheetPdf(body)) return Error(400, "VALIDATION_FAILED");
+        var lines = body.Lines.Select(x => new ReportLine(x.Date, x.Start ?? "", x.End ?? "", x.DurationMinutes,
+            x.Task.Trim(), x.Detail ?? "", x.Notes ?? "", x.Project ?? "", x.Category ?? "", x.Kind)).ToList();
+        var data = new ReportDocumentData(body.MemberName.Trim(), body.Department?.Trim() ?? "", body.Period.Trim(),
+            lines, lines.Count(x => x.Kind == "leave"),
+            new ReportFormats(body.DateFormat ?? ReportFormats.Default.DateFormat, body.TimeFormat ?? ReportFormats.Default.TimeFormat),
+            body.StandardDayMinutes ?? ReportDocumentRenderer.DefaultStandardDayMinutes);
+        return new ServiceFileResponse(ReportDocumentRenderer.RenderPdf(data), "application/pdf", "timesheet.pdf");
+    }
+
+    private static readonly string[] TimesheetPdfKinds = ["work", "leave", "holiday", "dayoff"];
+
+    private static bool ValidTimesheetPdf(TimesheetPdfRequest body)
+    {
+        static bool Text(string? value, int max, bool required = false) =>
+            required ? !string.IsNullOrWhiteSpace(value) && value.Length <= max : value is null || value.Length <= max;
+        // Work has a start and an end; a day without times leaves both empty.
+        static bool Times(string? start, string? end) =>
+            string.IsNullOrEmpty(start) && string.IsNullOrEmpty(end) ||
+            Clock(start) && Clock(end);
+        static bool Clock(string? value) => TimeOnly.TryParseExact(value, "HH:mm",
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _);
+        return body.Lines is { Count: <= TimesheetPdfRequest.MaxLines } &&
+            Text(body.MemberName, 200, required: true) && Text(body.Period, 100, required: true) &&
+            Text(body.Department, 200) && body.StandardDayMinutes is null or (> 0 and <= 1440) &&
+            body.Lines.All(line => line is not null && TimesheetPdfKinds.Contains(line.Kind) &&
+                Text(line.Task, 200) && line.Task is not null && Text(line.Detail, 4000) && Text(line.Notes, 4000) &&
+                Text(line.Project, 200) && Text(line.Category, 200) &&
+                line.DurationMinutes is >= 0 and <= 1440 && Times(line.Start, line.End));
+    }
+
     private static bool ValidDefinition(DefinitionRequest body) =>
         Enum.IsDefined(body.Kind) && Enum.IsDefined(body.Format) &&
         !string.IsNullOrWhiteSpace(body.Name) && body.Name.Length <= 160;

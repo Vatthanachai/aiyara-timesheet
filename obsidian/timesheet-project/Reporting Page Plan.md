@@ -76,6 +76,17 @@ PDF  Monthly timesheet   Somchai Staff   Waiting for September 2026 to be locked
 - [x] D2. Playwright: existing Reporting tests follow the new structure; new checks for expected hours, the to-date marker, overtime, and the month strip.
 - [x] D3. Reporting `nuxt build`; Docker Compose `reporting-remote` rebuilt and healthy. Docs: [[Project Status]], [[Timesheet Project Index]].
 
+## Phase E — Export Menu And Table Proportions
+
+Added 21 October 2026 on request: one export button with a menu, a PDF export, and tables that keep their proportions. Branch `feature/reporting-export-menu`.
+
+Decisions: Export Excel stays the one-click default; an arrow beside it opens a menu with CSV and PDF (the WAI-ARIA menu button pattern: arrow keys, Home/End, Escape back to the arrow, a click elsewhere or tabbing away closes it). The PDF is a direct download made by Report from what the page shows, in the same layout as a generated monthly report (Noto Sans Thai, signature lines), chosen over the browser's print dialog. Report reads and stores nothing for it, so it is open to every member and not audited; like the XLSX and CSV files, it holds exactly what the page sent, and is not an official record (generated reports from closed months remain that).
+
+- [x] E1. `POST /api/v1/exports/timesheet-pdf` (Gateway `/api/v1/reports/exports/timesheet-pdf`): `TimesheetPdfRequest` (member name, period, department, normal working day, the organization's formats, up to 1,000 lines of kind work, leave, holiday, or dayoff) rendered by `ReportDocumentRenderer.RenderPdf`; `400 VALIDATION_FAILED` for bad times, unknown kinds, oversized text, or too many lines.
+- [x] E2. `ExportMenu` split button in a member's month and My timesheet; a status line while the PDF is prepared; errors in the section's alert.
+- [x] E3. Tables: both ledgers share one fixed column grid (name, bar, hours, entries, leave, then members or View), so bars and figures line up between Totals by group and Member timesheets; a member's entries table gives the task the room and fixed widths to the rest; history drops to four columns (document, person, status with the signed badge and the requested/completed times, actions), so the actions sit side by side.
+- [x] E4. Tests (Phase 4 unit and HTTP, Playwright) and docs.
+
 ## Out Of Scope
 
 - New report kinds, charts beyond the ledger and the month strip, and changes to the generated PDF/XLSX documents.

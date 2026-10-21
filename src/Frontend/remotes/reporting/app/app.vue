@@ -351,6 +351,13 @@ async function reportFetch(path: string, options: RequestInit = {}) {
   }, token, config.public.shellOrigin)
 }
 
+/** Report renders a member's month, as the page shows it, into a timesheet PDF. */
+async function exportTimesheetPdf(body: unknown) {
+  const response = await reportFetch('/exports/timesheet-pdf', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  return response.blob()
+}
+
 async function timesheetGet<T>(path: string, query: Record<string, unknown>) {
   return unwrapResponse(await withRemoteRefresh(accessToken =>
     $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/timesheets${path}`, {
@@ -434,8 +441,8 @@ onMounted(() => {
       <p v-if="error" class="feedback feedback-error" role="alert">{{ error }}</p>
       <p v-if="notice" class="feedback feedback-ok" role="status">{{ notice }}</p>
 
-      <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" />
-      <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :self="{ name: myName }" />
+      <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :export-pdf="exportTimesheetPdf" />
+      <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :export-pdf="exportTimesheetPdf" :self="{ name: myName }" />
 
       <section class="card documents" aria-labelledby="documents-heading">
         <div class="card-heading">
@@ -529,12 +536,13 @@ onMounted(() => {
           <p v-if="history.items.some(run => run.status === 'Queued' || run.status === 'Running')" class="hint">{{ copy.autoRefresh }}</p>
           <p v-if="!history.items.length" class="empty">{{ copy.noRuns }}</p>
           <div v-else class="table-wrap">
-            <table class="history-table">
+            <!-- Fixed column widths keep every row in proportion: the document leads, the actions get room for two buttons side by side. -->
+            <table class="history-table" :class="{ 'with-person': isAdmin }">
+              <colgroup><col class="col-document" /><col v-if="isAdmin" class="col-person" /><col class="col-status" /><col class="col-actions" /></colgroup>
               <thead><tr>
                 <th scope="col">{{ copy.report }}</th>
                 <th v-if="isAdmin" scope="col">{{ copy.person }}</th>
                 <th scope="col">{{ copy.status }}</th>
-                <th scope="col">{{ copy.requested }}</th>
                 <th scope="col"><span class="sr-only">{{ copy.actions }}</span></th>
               </tr></thead>
               <tbody>
@@ -548,15 +556,13 @@ onMounted(() => {
                   <td v-if="isAdmin" class="person-cell">{{ personLabel(run) }}</td>
                   <td class="status-cell">
                     <span class="status" :data-status="run.statusReason === 'SOURCE_MONTH_NOT_LOCKED' ? 'Blocked' : run.status">{{ text(run.status) }}</span>
+                    <span v-if="run.signedVersion" class="badge">{{ copy.signedBadge.replace('{n}', String(run.signedVersion)) }}</span>
                     <small v-if="statusDetail(run)" class="status-detail">{{ statusDetail(run) }}</small>
-                  </td>
-                  <td class="time-cell">
-                    <span>{{ formatDateTime(run.createdAtUtc) }}</span>
-                    <small v-if="run.completedAtUtc">{{ copy.completed }} {{ formatDateTime(run.completedAtUtc) }}</small>
+                    <small class="run-times">{{ copy.requested }} {{ formatDateTime(run.createdAtUtc) }}</small>
+                    <small v-if="run.completedAtUtc" class="run-times">{{ copy.completed }} {{ formatDateTime(run.completedAtUtc) }}</small>
                   </td>
                   <td>
                     <div class="actions">
-                      <span v-if="run.signedVersion" class="badge">{{ copy.signedBadge.replace('{n}', String(run.signedVersion)) }}</span>
                       <button v-if="run.status === 'Succeeded'" type="button" class="primary-quiet" @click="download(run)">{{ copy.download }}</button>
                       <button v-if="run.status === 'Succeeded' || run.status === 'Failed'" type="button"
                         :disabled="regeneratingId === run.id" :aria-label="`${copy.regenerate}: ${run.name} ${formatPeriod(runPeriod(run), formats, locale)}`"
@@ -676,21 +682,26 @@ button.secondary{background:transparent;border-color:transparent;color:var(--col
 th,td{text-align:left;vertical-align:top;padding:.7rem .6rem;border-bottom:1px solid var(--color-border);font-size:.9rem}th{color:var(--color-muted);font-weight:600;font-size:.8rem}
 td small{display:block;color:var(--color-muted);font-size:.78rem;margin-top:.15rem}
 /* History: each report reads as a document, its file type tagged. */
-.document-cell{min-width:14rem}.document{display:flex;gap:.75rem;align-items:flex-start}
+/* History columns: fixed widths so rows keep the same proportions whatever their text. */
+.history-table{table-layout:fixed;min-width:44rem}
+.history-table .col-document{width:38%}.history-table.with-person .col-document{width:31%}
+.history-table .col-person{width:15%}.history-table .col-actions{width:15.5rem}
+.document-name strong{overflow-wrap:anywhere}.document{display:flex;gap:.75rem;align-items:flex-start}
 .file-tag{flex:0 0 auto;width:2.6rem;padding:.55rem 0 .45rem;border-radius:.3rem;font-family:var(--font-display);font-size:.7rem;font-weight:600;text-align:center;background:#fdecea;color:#9f1d14}
 .file-tag[data-format="Xlsx"]{background:#e3f4ea;color:#17663b}
 .document-name{display:grid;gap:.1rem}
 .document-period{font-family:var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap}
-.person-cell{min-width:8rem}
-.status-cell{min-width:10rem;max-width:18rem}
-.time-cell{white-space:nowrap;font-variant-numeric:tabular-nums}
+.person-cell{overflow-wrap:anywhere}
+.status-cell .badge{margin-left:.5rem}
+.run-times{font-variant-numeric:tabular-nums}
 .status{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:600;color:#334155}
 .status::before{content:"";width:.55rem;height:.55rem;border-radius:50%;background:#94a3b8}
 .status[data-status="Succeeded"]{color:#17663b}.status[data-status="Succeeded"]::before{background:#22a05a}
 .status[data-status="Running"]::before,.status[data-status="Queued"]::before{background:var(--color-brand)}
 .status[data-status="Failed"]{color:#b42318}.status[data-status="Failed"]::before{background:#b42318}
 .status[data-status="Blocked"]{color:#7a5412}.status[data-status="Blocked"]::before{background:#d29b25}
-.actions{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;justify-content:flex-end}
+.actions{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;justify-content:flex-end}
+.actions button,.actions .upload{font-size:.82rem;padding:.4rem .6rem}
 .badge{border-radius:.35rem;background:#e3f4ea;color:#17663b;font-size:.75rem;font-weight:700;padding:.2rem .45rem}
 /* The file input is invisible over its label, so the label reads as a button and still opens the picker. */
 .upload{position:relative;display:inline-flex;align-items:center;border:1px solid #cfd8e5;border-radius:.5rem;padding:.5rem .65rem;color:var(--color-ink);font-size:.88rem;font-weight:600;cursor:pointer}.upload:hover{background:#f3f6fa}.upload:focus-within{outline:2px solid var(--color-brand);outline-offset:2px}.upload input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;padding:0}
@@ -710,6 +721,8 @@ td small{display:block;color:var(--color-muted);font-size:.78rem;margin-top:.15r
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 /* On a phone each report stacks into a block instead of scrolling sideways. */
 @media (max-width:48rem){
+  .history-table{min-width:0}
+  .history-table colgroup{display:none}
   .history-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
   .history-table,.history-table tbody,.history-table tr,.history-table td{display:block;width:100%}
   .history-table tr{border-bottom:1px solid var(--color-border);padding:.75rem 0}
