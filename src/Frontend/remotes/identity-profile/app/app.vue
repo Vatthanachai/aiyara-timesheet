@@ -2,6 +2,7 @@
 import { unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
+import { nameInitials } from '../../../shared/initials'
 
 type Profile = {
   id: string
@@ -22,21 +23,37 @@ const email = ref('')
 const photoSource = ref('')
 const selectedFile = ref<File | null>(null)
 const selectedPreview = ref('')
+// Messages for the details form, and separately for the photo, each shown next to its own action.
 const error = ref('')
 const notice = ref('')
+const photoError = ref('')
+const photoNotice = ref('')
+/** The details as last loaded or saved, to tell whether the form has unsaved changes. */
+const saved = reactive({ firstName: '', lastName: '', jobTitle: '' })
+const dirty = computed(() => profile.firstName !== saved.firstName || profile.lastName !== saved.lastName ||
+  (profile.jobTitle || '') !== saved.jobTitle)
+function markSaved() {
+  Object.assign(saved, { firstName: profile.firstName, lastName: profile.lastName, jobTitle: profile.jobTitle || '' })
+}
+function cancelDetails() {
+  Object.assign(profile, { firstName: saved.firstName, lastName: saved.lastName, jobTitle: saved.jobTitle })
+  error.value = ''
+  notice.value = ''
+}
 const saving = ref(false)
 const photoBusy = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 let photoObjectUrl = ''
 
-const fullName = computed(() => [profile.firstName, profile.lastName].filter(Boolean).join(' '))
-const initials = computed(() => [profile.firstName, profile.lastName]
-  .filter(Boolean).map(name => name.trim()[0]?.toUpperCase()).join('') || 'A')
+const fullName = computed(() => [profile.firstName.trim(), profile.lastName.trim()].filter(Boolean).join(' '))
+const initials = computed(() => nameInitials(profile.firstName, profile.lastName) || email.value[0]?.toUpperCase() || '•')
 const avatarSource = computed(() => selectedPreview.value || photoSource.value)
 const copy = useLocaleText(locale, { th: {
-  title: 'ตั้งค่าโปรไฟล์', subtitle: 'จัดการข้อมูลส่วนตัวและรูปภาพที่ใช้ในระบบ',
+  title: 'ตั้งค่าโปรไฟล์', cardLabel: 'โปรไฟล์ของคุณตามที่เพื่อนร่วมงานเห็น', headerPreview: 'ที่ส่วนหัว',
+  signInEmail: 'อีเมลสำหรับเข้าสู่ระบบ', emailFixed: 'คุณใช้อีเมลนี้เข้าสู่ระบบ และเปลี่ยนไม่ได้',
+  unsaved: 'มีการแก้ไขที่ยังไม่บันทึก', cancel: 'ยกเลิก', previewMark: 'ตัวอย่าง ยังไม่ได้บันทึก',
   signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell เพื่อแก้ไขโปรไฟล์',
-  photoTitle: 'รูปโปรไฟล์', photoHelp: 'ใช้ภาพ JPEG, PNG หรือ WebP ขนาดไม่เกิน 5 MB',
+  photoTitle: 'รูปโปรไฟล์', photoHelp: 'ไฟล์ JPEG, PNG หรือ WebP ขนาดไม่เกิน 5 MB หรือลากรูปมาวางบนการ์ดนี้',
   choosePhoto: 'เลือกรูปภาพ', replacePhoto: 'เปลี่ยนรูปภาพ', uploadPhoto: 'บันทึกรูปภาพ',
   removePhoto: 'ลบรูปภาพ', firstName: 'ชื่อ', lastName: 'นามสกุล', jobTitle: 'ตำแหน่งงาน',
   accountEmail: 'อีเมลบัญชี', detailsTitle: 'ข้อมูลส่วนตัว', save: 'บันทึกข้อมูล',
@@ -45,13 +62,14 @@ const copy = useLocaleText(locale, { th: {
   fileTypeError: 'เลือกรูป JPEG, PNG หรือ WebP', fileSizeError: 'รูปภาพต้องมีขนาดไม่เกิน 5 MB',
   photoSaved: 'อัปเดตรูปโปรไฟล์แล้ว', photoError: 'อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่',
   photoRemoved: 'ลบรูปโปรไฟล์แล้ว', removeError: 'ลบรูปไม่สำเร็จ กรุณาลองใหม่',
-  dragHint: 'หรือลากรูปภาพมาวางที่นี่',
   firstNamePlaceholder: 'ระบุชื่อของคุณ', lastNamePlaceholder: 'ระบุนามสกุลของคุณ',
   jobTitlePlaceholder: 'เช่น ผู้จัดการโครงการ'
 }, en: {
-  title: 'Profile settings', subtitle: 'Manage your personal details and the photo used across Aiyara.',
+  title: 'Profile settings', cardLabel: 'Your profile as colleagues see it', headerPreview: 'In the header',
+  signInEmail: 'Sign-in email', emailFixed: 'You sign in with this email. It cannot be changed.',
+  unsaved: 'Unsaved changes', cancel: 'Cancel', previewMark: 'Preview, not saved yet',
   signIn: 'Please sign in through Aiyara Shell to edit your profile.',
-  photoTitle: 'Profile photo', photoHelp: 'JPEG, PNG, or WebP. Up to 5 MB.',
+  photoTitle: 'Profile photo', photoHelp: 'JPEG, PNG, or WebP up to 5 MB. You can also drag one onto this card.',
   choosePhoto: 'Choose photo', replacePhoto: 'Change photo', uploadPhoto: 'Save photo',
   removePhoto: 'Remove photo', firstName: 'First name', lastName: 'Last name', jobTitle: 'Job title',
   accountEmail: 'Account email', detailsTitle: 'Personal details', save: 'Save changes',
@@ -60,7 +78,6 @@ const copy = useLocaleText(locale, { th: {
   fileTypeError: 'Choose a JPEG, PNG, or WebP image.', fileSizeError: 'The image must be no larger than 5 MB.',
   photoSaved: 'Profile photo updated.', photoError: 'Could not upload the photo. Please try again.',
   photoRemoved: 'Profile photo removed.', removeError: 'Could not remove the photo. Please try again.',
-  dragHint: 'or drag an image here',
   firstNamePlaceholder: 'Enter your first name', lastNamePlaceholder: 'Enter your last name',
   jobTitlePlaceholder: 'For example, Project manager'
 } })
@@ -137,6 +154,7 @@ async function load() {
     profile.lastName = value.lastName
     profile.photoUrl = value.photoUrl
     profile.jobTitle = value.jobTitle || ''
+    markSaved()
     await displayPhoto(value.photoUrl)
   } catch {
     error.value = copy.value.loadedError
@@ -145,19 +163,28 @@ async function load() {
 
 function setPhotoFile(file: File | undefined) {
   if (!file) return
-  error.value = ''
-  notice.value = ''
+  photoError.value = ''
+  photoNotice.value = ''
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-    error.value = copy.value.fileTypeError
+    photoError.value = copy.value.fileTypeError
     return
   }
   if (file.size > 5 * 1024 * 1024) {
-    error.value = copy.value.fileSizeError
+    photoError.value = copy.value.fileSizeError
     return
   }
   if (selectedPreview.value) URL.revokeObjectURL(selectedPreview.value)
   selectedFile.value = file
   selectedPreview.value = URL.createObjectURL(file)
+}
+
+/** Drops the chosen photo without saving it. */
+function cancelPhoto() {
+  if (selectedPreview.value) URL.revokeObjectURL(selectedPreview.value)
+  selectedPreview.value = ''
+  selectedFile.value = null
+  photoError.value = ''
+  if (fileInput.value) fileInput.value.value = ''
 }
 
 function onFileChange(event: Event) {
@@ -172,8 +199,8 @@ function onPhotoDrop(event: DragEvent) {
 async function uploadPhoto() {
   if (!selectedFile.value || photoBusy.value) return
   photoBusy.value = true
-  error.value = ''
-  notice.value = ''
+  photoError.value = ''
+  photoNotice.value = ''
   try {
     const form = new FormData()
     form.append('photo', selectedFile.value)
@@ -186,10 +213,10 @@ async function uploadPhoto() {
     selectedPreview.value = ''
     profile.photoUrl = result.photoUrl
     await displayPhoto(result.photoUrl)
-    notice.value = copy.value.photoSaved
+    photoNotice.value = copy.value.photoSaved
     notifyShell()
   } catch {
-    error.value = copy.value.photoError
+    photoError.value = copy.value.photoError
   } finally {
     photoBusy.value = false
     if (fileInput.value) fileInput.value.value = ''
@@ -199,8 +226,8 @@ async function uploadPhoto() {
 async function removePhoto() {
   if (photoBusy.value) return
   photoBusy.value = true
-  error.value = ''
-  notice.value = ''
+  photoError.value = ''
+  photoNotice.value = ''
   try {
     await withRemoteRefresh(accessToken => $fetch(`${gateway.value}/api/v1/identity/profile/me/photo`, {
       method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` }
@@ -209,10 +236,10 @@ async function removePhoto() {
     releasePhotoUrls()
     photoSource.value = ''
     selectedFile.value = null
-    notice.value = copy.value.photoRemoved
+    photoNotice.value = copy.value.photoRemoved
     notifyShell()
   } catch {
-    error.value = copy.value.removeError
+    photoError.value = copy.value.removeError
   } finally {
     photoBusy.value = false
   }
@@ -229,6 +256,7 @@ async function saveProfile() {
         method: 'PUT', headers: { Authorization: `Bearer ${accessToken}` },
         body: { firstName: profile.firstName, lastName: profile.lastName, jobTitle: profile.jobTitle || null }
       }), token, config.public.shellOrigin))
+    markSaved()
     notice.value = copy.value.saved
     notifyShell()
   } catch {
@@ -252,60 +280,49 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="profile-page">
-    <header class="page-heading">
-      <span class="eyebrow">AIYARA ACCOUNT</span>
-      <h1>{{ copy.title }}</h1>
-      <p>{{ copy.subtitle }}</p>
-    </header>
+    <h1>{{ copy.title }}</h1>
 
     <p v-if="!token" class="sign-in-message">{{ copy.signIn }}</p>
 
-    <template v-else>
-      <section class="profile-card photo-card" :aria-label="copy.photoTitle" @dragover.prevent @drop="onPhotoDrop">
-        <div class="section-heading">
-          <div>
-            <h2>{{ copy.photoTitle }}</h2>
-            <p>{{ copy.photoHelp }}</p>
-          </div>
+    <div v-else class="profile-layout">
+      <!-- Your card: you as colleagues see you, drawn from what is being typed. A photo can be dropped on it. -->
+      <section class="your-card" :class="{ 'is-preview': selectedFile }" :aria-label="copy.cardLabel" @dragover.prevent @drop="onPhotoDrop">
+        <div class="photo-preview" aria-hidden="true">
+          <img v-if="avatarSource" :src="avatarSource" alt="" />
+          <span v-else>{{ initials }}</span>
         </div>
+        <p v-if="selectedFile" class="preview-mark">{{ copy.previewMark }}</p>
+        <p class="card-name">{{ fullName || email }}</p>
+        <p v-if="profile.jobTitle?.trim()" class="card-title">{{ profile.jobTitle }}</p>
 
-        <div class="photo-layout">
-          <div class="photo-preview" aria-hidden="true">
-            <img v-if="avatarSource" :src="avatarSource" alt="" />
-            <span v-else>{{ initials }}</span>
-          </div>
-          <div class="photo-actions">
-            <p class="profile-display-name">{{ fullName || email }}</p>
-            <p class="profile-email">{{ email }}</p>
-            <div class="photo-buttons">
-              <label class="button button-secondary" for="profile-photo-input">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                {{ avatarSource ? copy.replacePhoto : copy.choosePhoto }}
-              </label>
-              <button v-if="profile.photoUrl && !selectedFile" class="text-button danger-button" type="button" :disabled="photoBusy" @click="removePhoto">
-                {{ copy.removePhoto }}
-              </button>
-            </div>
-            <input id="profile-photo-input" ref="fileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" @change="onFileChange" />
-            <div v-if="selectedFile" class="selected-file-row">
-              <span>{{ selectedFile.name }}</span>
-              <button class="button button-primary" type="button" :disabled="photoBusy" @click="uploadPhoto">
-                {{ photoBusy ? copy.saving : copy.uploadPhoto }}
-              </button>
-            </div>
-            <p class="drag-hint">{{ copy.dragHint }}</p>
-          </div>
+        <div class="photo-buttons">
+          <template v-if="selectedFile">
+            <button class="button button-primary" type="button" :disabled="photoBusy" @click="uploadPhoto">{{ photoBusy ? copy.saving : copy.uploadPhoto }}</button>
+            <button class="button button-quiet" type="button" :disabled="photoBusy" @click="cancelPhoto">{{ copy.cancel }}</button>
+          </template>
+          <template v-else>
+            <label class="button button-secondary" for="profile-photo-input">{{ avatarSource ? copy.replacePhoto : copy.choosePhoto }}</label>
+            <button v-if="profile.photoUrl" class="button button-quiet danger" type="button" :disabled="photoBusy" @click="removePhoto">{{ copy.removePhoto }}</button>
+          </template>
+        </div>
+        <input id="profile-photo-input" ref="fileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" @change="onFileChange" />
+        <p class="photo-help">{{ copy.photoHelp }}</p>
+        <p v-if="photoError" class="feedback-error" role="alert">{{ photoError }}</p>
+        <p v-else-if="photoNotice" class="feedback-success" role="status">{{ photoNotice }}</p>
+
+        <!-- How the Shell's header shows you, from the same live values. -->
+        <div class="header-preview">
+          <span class="header-preview-label">{{ copy.headerPreview }}</span>
+          <span class="header-chip" aria-hidden="true">
+            <span class="chip-avatar"><img v-if="avatarSource" :src="avatarSource" alt="" /><template v-else>{{ initials }}</template></span>
+            <span class="chip-name">{{ fullName || email }}</span>
+            <svg viewBox="0 0 20 20"><path d="m5 7.5 5 5 5-5" /></svg>
+          </span>
         </div>
       </section>
 
-      <form class="profile-card details-card" @submit.prevent="saveProfile">
-        <div class="section-heading">
-          <div>
-            <h2>{{ copy.detailsTitle }}</h2>
-            <p>{{ email }}</p>
-          </div>
-          <span class="account-badge">{{ copy.accountEmail }}</span>
-        </div>
+      <form class="details" @submit.prevent="saveProfile">
+        <h2>{{ copy.detailsTitle }}</h2>
         <div class="fields-grid">
           <label class="field">
             <span>{{ copy.firstName }}</span>
@@ -319,88 +336,91 @@ onBeforeUnmount(() => {
             <span>{{ copy.jobTitle }}</span>
             <input v-model="profile.jobTitle" maxlength="160" autocomplete="organization-title" :placeholder="copy.jobTitlePlaceholder" />
           </label>
+          <div class="field field-full">
+            <span>{{ copy.signInEmail }}</span>
+            <p class="email-value">{{ email }}</p>
+            <small>{{ copy.emailFixed }}</small>
+          </div>
         </div>
         <div class="form-footer">
           <div class="feedback" aria-live="polite">
             <p v-if="error" class="feedback-error" role="alert">{{ error }}</p>
-            <p v-else-if="notice" class="feedback-success" role="status">{{ notice }}</p>
+            <p v-else-if="notice && !dirty" class="feedback-success" role="status">{{ notice }}</p>
+            <p v-else-if="dirty" class="unsaved">{{ copy.unsaved }}</p>
           </div>
-          <button class="button button-primary" type="submit" :disabled="saving">
-            {{ saving ? copy.saving : copy.save }}
-          </button>
+          <div class="form-actions">
+            <button v-if="dirty" class="button button-quiet" type="button" :disabled="saving" @click="cancelDetails">{{ copy.cancel }}</button>
+            <button class="button button-primary" type="submit" :disabled="saving || !dirty">{{ saving ? copy.saving : copy.save }}</button>
+          </div>
         </div>
       </form>
-    </template>
+    </div>
   </main>
 </template>
 
 <style scoped>
-.profile-page { box-sizing: border-box; color: var(--color-ink); margin: 0 auto; max-width: 54rem; min-width: 0; padding: clamp(1rem, 3vw, 2.5rem); width: 100%; }
-.page-heading { margin-bottom: 1.75rem; }
-.eyebrow { color: var(--color-brand); font-size: .72rem; font-weight: 750; letter-spacing: .14em; }
-.page-heading h1 { font-size: clamp(1.75rem, 4vw, 2.3rem); letter-spacing: -.035em; line-height: 1.2; margin: .55rem 0 .45rem; }
-.page-heading p, .section-heading p { color: var(--color-muted); line-height: 1.55; margin: 0; }
-.profile-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 1rem; box-shadow: 0 8px 28px rgb(25 43 75 / 5%); margin-top: 1rem; padding: clamp(1rem, 2.5vw, 1.5rem); }
-.section-heading { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; min-width: 0; }
-.section-heading > div { min-width: 0; }
-.section-heading h2 { font-size: 1.05rem; letter-spacing: -.01em; margin: 0 0 .35rem; }
-.photo-layout { align-items: center; display: flex; gap: 1.5rem; margin-top: 1.4rem; }
-.photo-preview { align-items: center; background: #eaf1ff; border: 4px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px var(--color-border); color: var(--color-brand); display: flex; flex: 0 0 7rem; font-size: 1.8rem; font-weight: 700; height: 7rem; justify-content: center; overflow: hidden; width: 7rem; }
+.profile-page { box-sizing: border-box; color: var(--color-ink); margin: 0 auto; max-width: 60rem; min-width: 0; padding: clamp(1rem, 3vw, 2.5rem); width: 100%; }
+h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); font-weight: 600; line-height: 1.2; margin: 0 0 1.5rem; }
+.profile-layout { align-items: start; display: grid; gap: 1.5rem; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); }
+/* Your card. */
+.your-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .9rem; display: grid; justify-items: center; min-width: 0; padding: 1.75rem 1.25rem 1.25rem; text-align: center; }
+.your-card.is-preview { border-color: var(--color-brand); border-style: dashed; }
+.photo-preview { align-items: center; background: var(--color-work-track); border-radius: 50%; color: var(--color-brand); display: flex; font-family: var(--font-display); font-size: 2.6rem; font-weight: 600; height: 8.5rem; justify-content: center; overflow: hidden; width: 8.5rem; }
 .photo-preview img { height: 100%; object-fit: cover; width: 100%; }
-.photo-actions { min-width: 0; }
-.profile-display-name { font-size: 1.05rem; font-weight: 700; margin: 0; overflow-wrap: anywhere; }
-.profile-email { color: var(--color-muted); font-size: .88rem; margin: .2rem 0 .85rem; overflow-wrap: anywhere; }
-.photo-buttons { align-items: center; display: flex; flex-wrap: wrap; gap: .85rem; }
-.button { align-items: center; border: 1px solid transparent; border-radius: .55rem; cursor: pointer; display: inline-flex; font: inherit; font-size: .9rem; font-weight: 650; gap: .5rem; justify-content: center; min-height: 2.65rem; padding: .6rem .9rem; text-decoration: none; transition: background 120ms ease, border-color 120ms ease, transform 120ms ease; }
-.button:hover:not(:disabled) { transform: translateY(-1px); }
-.button:focus-visible, .text-button:focus-visible, input:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
-.button:disabled { cursor: wait; opacity: .65; }
-.button svg { fill: none; height: 1rem; stroke: currentColor; stroke-linecap: round; stroke-width: 1.8; width: 1rem; }
-.button-primary { background: var(--color-brand); color: white; }
-.button-primary:hover:not(:disabled) { background: #0f4fd7; }
-.button-secondary { background: #fff; border-color: var(--color-border); color: var(--color-ink); }
-.button-secondary:hover { background: #f6f8fb; border-color: #aab6c8; }
-.text-button { background: transparent; border: 0; cursor: pointer; font: inherit; font-size: .88rem; padding: .5rem .25rem; }
-.danger-button { color: #b42318; }
-.danger-button:disabled { cursor: wait; opacity: .55; }
-.drag-hint { color: var(--color-muted); font-size: .78rem; margin: .6rem 0 0; }
-.selected-file-row { align-items: center; display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; margin-top: .9rem; }
-.selected-file-row > span { color: var(--color-muted); font-size: .82rem; max-width: 18rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.visually-hidden { height: 1px; margin: -1px; overflow: hidden; position: absolute; clip: rect(0, 0, 0, 0); white-space: nowrap; width: 1px; }
-.account-badge { background: #f1f4f9; border-radius: 999px; color: var(--color-muted); font-size: .73rem; font-weight: 600; padding: .35rem .6rem; white-space: nowrap; }
-.fields-grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1.5rem; }
-.field { display: grid; gap: .45rem; }
-.field > span { font-size: .86rem; font-weight: 650; }
-.field input { background: #fff; border: 1px solid #cbd4e1; border-radius: .55rem; color: var(--color-ink); font: inherit; min-height: 2.8rem; padding: .7rem .8rem; width: 100%; }
+.preview-mark { background: var(--color-work-track); border-radius: 999px; color: #1d3f9e; font-size: .75rem; font-weight: 600; margin: .75rem 0 0; padding: .2rem .6rem; }
+.card-name { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; line-height: 1.25; margin: 1rem 0 0; max-width: 100%; overflow-wrap: anywhere; }
+.card-title { color: var(--color-muted); margin: .25rem 0 0; max-width: 100%; overflow-wrap: anywhere; }
+.photo-buttons { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-top: 1.25rem; }
+.photo-help { color: var(--color-muted); font-size: .8rem; line-height: 1.45; margin: .75rem 0 0; }
+.your-card .feedback-error, .your-card .feedback-success { font-size: .85rem; margin: .6rem 0 0; }
+.header-preview { align-items: center; border-top: 1px solid var(--color-border); display: grid; gap: .5rem; justify-items: center; margin-top: 1.25rem; padding-top: 1rem; width: 100%; }
+.header-preview-label { color: var(--color-muted); font-size: .78rem; }
+.header-chip { align-items: center; border: 1px solid var(--color-border); border-radius: 999px; display: inline-flex; gap: .5rem; max-width: 100%; padding: .2rem .7rem .2rem .25rem; }
+.chip-avatar { align-items: center; background: #eaf1ff; border-radius: 50%; color: var(--color-brand); display: inline-flex; flex: 0 0 1.9rem; font-size: .78rem; font-weight: 700; height: 1.9rem; justify-content: center; overflow: hidden; width: 1.9rem; }
+.chip-avatar img { height: 100%; object-fit: cover; width: 100%; }
+.chip-name { font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-chip svg { fill: none; flex: 0 0 .9rem; height: .9rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: .9rem; }
+/* The details form. */
+.details { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .9rem; min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); }
+.details h2 { font-family: var(--font-display); font-size: 1.2rem; font-weight: 600; margin: 0 0 1.1rem; }
+.fields-grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.field { display: grid; gap: .4rem; min-width: 0; }
+.field > span { font-size: .86rem; font-weight: 600; }
+.field input { background: #fff; border: 1px solid #cbd4e1; border-radius: .5rem; color: var(--color-ink); font: inherit; min-height: 2.75rem; padding: .65rem .8rem; width: 100%; }
 .field input::placeholder { color: #929dad; }
 .field-full { grid-column: 1 / -1; }
-.form-footer { align-items: center; border-top: 1px solid #edf0f5; display: flex; gap: 1rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1.1rem; }
-.feedback { min-height: 1.4rem; }
-.feedback p { font-size: .86rem; margin: .2rem 0; }
+.email-value { font-weight: 500; margin: 0; overflow-wrap: anywhere; }
+.field small { color: var(--color-muted); font-size: .8rem; }
+.form-footer { align-items: center; border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: .75rem 1rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1.1rem; }
+.feedback p { font-size: .88rem; margin: 0; }
 .feedback-error { color: #b42318; }
 .feedback-success { color: #067647; }
+.unsaved { color: #7a5412; }
+.form-actions { display: flex; gap: .5rem; margin-left: auto; }
+/* Buttons: no hover lift; colour changes only. */
+.button { align-items: center; border: 1px solid transparent; border-radius: .5rem; cursor: pointer; display: inline-flex; font: inherit; font-size: .88rem; font-weight: 600; justify-content: center; min-height: 2.6rem; padding: .55rem .9rem; }
+.button:focus-visible, input:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+/* The file input is hidden, so its label shows the keyboard focus. */
+/* (it follows the buttons, so :has finds the label before it) */
+.photo-buttons:has(+ #profile-photo-input:focus-visible) .button-secondary { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+.button:disabled { cursor: not-allowed; opacity: .55; }
+.button-primary { background: var(--color-brand); color: white; }
+.button-primary:hover:not(:disabled) { background: var(--color-brand-strong); }
+.button-secondary { background: #fff; border-color: var(--color-border); color: var(--color-ink); }
+.button-secondary:hover { background: #f6f8fb; }
+.button-quiet { background: transparent; color: var(--color-muted); }
+.button-quiet:hover:not(:disabled) { background: #f3f6fa; }
+.button-quiet.danger { color: #b42318; }
+.visually-hidden { height: 1px; margin: -1px; overflow: hidden; position: absolute; clip: rect(0, 0, 0, 0); white-space: nowrap; width: 1px; }
 .sign-in-message { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .75rem; color: var(--color-muted); padding: 1.25rem; }
-@media (max-width: 38rem) {
-  .profile-page { padding: 1rem; }
-  .page-heading { margin-bottom: 1.25rem; }
-  .photo-layout { align-items: flex-start; flex-direction: column; gap: 1rem; margin-top: 1rem; }
-  .photo-preview { flex-basis: 5.5rem; height: 5.5rem; width: 5.5rem; }
-  .photo-actions { width: 100%; }
-  .photo-buttons { align-items: stretch; flex-direction: column; }
-  .photo-buttons > * { justify-content: center; text-align: center; width: 100%; }
-  .selected-file-row { align-items: stretch; flex-direction: column; }
-  .selected-file-row > span { max-width: 100%; }
-  .selected-file-row > button { width: 100%; }
-  .section-heading { flex-direction: column; gap: .65rem; }
-  .fields-grid { grid-template-columns: 1fr; }
-  .field-full { grid-column: auto; }
-  .form-footer { align-items: stretch; flex-direction: column; }
-  .form-footer > button { width: 100%; }
-  .account-badge { display: none; }
+@media (max-width: 44rem) {
+  .profile-layout { grid-template-columns: minmax(0, 1fr); }
+  .photo-preview { font-size: 2rem; height: 6.5rem; width: 6.5rem; }
 }
-@media (max-width: 22rem) {
-  .profile-page { padding: .75rem; }
-  .profile-card { border-radius: .75rem; padding: .85rem; }
-  .button { font-size: .84rem; padding-inline: .65rem; }
+@media (max-width: 30rem) {
+  .profile-page { padding: 1rem; }
+  .fields-grid { grid-template-columns: minmax(0, 1fr); }
+  .form-actions { width: 100%; }
+  .form-actions .button { flex: 1; }
 }
 </style>

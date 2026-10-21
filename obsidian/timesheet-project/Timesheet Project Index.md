@@ -26,6 +26,7 @@
 - [[Timesheet Page Plan]] — the Timesheet remote as a month time card with a day panel (phases A–E).
 - [[Reporting Page Plan]] — the Reporting remote's hours ledger, month strip, documents, and settings (phases A–D).
 - [[Administration Page Plan]] — the Administration remote as the organization's own page, in five tabs, with the week drawn (phases A–C).
+- [[Profile Page Plan]] — profile settings as your card, drawn live, beside the details form (phases A–B).
 
 ## Repository Facts
 
