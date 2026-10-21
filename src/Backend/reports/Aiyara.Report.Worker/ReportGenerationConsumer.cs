@@ -99,6 +99,8 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
         // Each snapshot with its owner; reports about several people (the whole organization or a
         // member group) need the owner to name each row.
         var snapshots = new List<(Guid? Owner, string Json)>();
+        // Holidays and working weekdays are the organization's, so any one snapshot of a month has them.
+        var daysOff = new List<ReportLine>();
         var groupMembers = run.SubjectGroupMemberIdsJson is { } membersJson
             ? JsonSerializer.Deserialize<HashSet<Guid>>(membersJson) : null;
         var http = clients.CreateClient("timesheet");
@@ -122,13 +124,16 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
                 // A group report reads the whole organization's month and keeps only its members.
                 snapshots.AddRange(owners.Where(x => groupMembers is null || groupMembers.Contains(x.OwnerId))
                     .Select(x => ((Guid?)x.OwnerId, x.PayloadJson)));
+                if (owners.FirstOrDefault() is { } any)
+                    daysOff.AddRange(ReportDocumentRenderer.ReadDaysOff(any.PayloadJson, month.Year, month.Month));
             }
             else
             {
                 var snapshot = await response.Content.ReadFromJsonAsync<SnapshotEnvelope<JsonElement>>(
                     cancellationToken: cancellationToken);
-                snapshots.Add((run.SubjectUserId, snapshot?.Result.GetRawText()
-                    ?? throw new JsonException("Missing snapshot result.")));
+                var json = snapshot?.Result.GetRawText() ?? throw new JsonException("Missing snapshot result.");
+                snapshots.Add((run.SubjectUserId, json));
+                daysOff.AddRange(ReportDocumentRenderer.ReadDaysOff(json, month.Year, month.Month));
             }
         }
 
@@ -139,6 +144,7 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
                 memberNames[member] = await MemberNameAsync(envelope.TenantId, member, run.Id, cancellationToken);
         var lines = snapshots.SelectMany(snapshot => ReportDocumentRenderer.ReadSnapshot(snapshot.Json)
                 .Select(line => !namesRows ? line : line with { Member = memberNames[snapshot.Owner!.Value] }))
+            .Concat(daysOff)
             .Where(x => x.Date >= startLocal && x.Date <= endLocal)
             .OrderBy(x => x.Date).ThenBy(x => x.Member).ThenBy(x => x.Start).ToArray();
         var payload = JsonSerializer.Serialize(new { tenantId = envelope.TenantId,

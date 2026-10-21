@@ -14,6 +14,8 @@ type Detail = {
   ownerId: string; locked: boolean; entries: Entry[]
   leaves: { id: string; date: string; kind: string; notes: string | null }[]
   holidays: { date: string; name: string }[]
+  /** Date.getDay() numbers the organization works; older API responses omit it (Monday to Friday). */
+  workingDays?: number[]
 }
 
 const props = defineProps<{
@@ -30,8 +32,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   noData: 'ยังไม่มีรายการ', formerMember: 'สมาชิกเดิม', loading: 'กำลังโหลด…', back: 'สมาชิกทั้งหมด',
   monthClosed: 'ปิดรอบแล้ว', monthOpen: 'ยังไม่ปิดรอบ (ข้อมูลอาจเปลี่ยน)', totalHours: 'ชั่วโมงรวม', daysWorked: 'วันที่ทำงาน',
   date: 'วันที่', time: 'เวลา', task: 'งาน', project: 'โครงการ', category: 'หมวดหมู่', duration: 'ชั่วโมง',
-  byProject: 'ชั่วโมงตามโครงการ', noProject: 'ไม่ระบุโครงการ', leave: 'วันลา', holidays: 'วันหยุดขององค์กร',
-  noEntries: 'ไม่มีรายการเวลาทำงานในเดือนนี้', noLeave: 'ไม่มีวันลา', noHolidays: 'ไม่มีวันหยุด', dayTotal: 'รวมวันนี้',
+  byProject: 'ชั่วโมงตามโครงการ', noProject: 'ไม่ระบุโครงการ', leave: 'วันลา', holidays: 'วันหยุด', weeklyDayOff: 'วันหยุดประจำสัปดาห์', daysOff: 'วันหยุด',
+  noEntries: 'ไม่มีรายการเวลาทำงานในเดือนนี้', noLeave: 'ไม่มีวันลา', noHolidays: 'ไม่มีวันหยุดในเดือนนี้', dayTotal: 'รวมวันนี้',
   group: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม', byGroup: 'สรุปตามกลุ่ม', members: 'สมาชิก', noMembersInGroup: 'ไม่มีสมาชิกในกลุ่มนี้'
 }, en: {
   title: 'Member timesheets', hint: "Review each member's hours and leave by month, including the current open month.",
@@ -39,8 +41,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   noData: 'No entries yet', formerMember: 'Former member', loading: 'Loading…', back: 'All members',
   monthClosed: 'Month closed', monthOpen: 'Month open (may still change)', totalHours: 'Total hours', daysWorked: 'Days worked',
   date: 'Date', time: 'Time', task: 'Task', project: 'Project', category: 'Category', duration: 'Hours',
-  byProject: 'Hours by project', noProject: 'No project', leave: 'Leave', holidays: 'Organization holidays',
-  noEntries: 'No time entries this month.', noLeave: 'No leave.', noHolidays: 'No holidays.', dayTotal: 'Day total',
+  byProject: 'Hours by project', noProject: 'No project', leave: 'Leave', holidays: 'Days off', weeklyDayOff: 'Weekly day off', daysOff: 'Days off',
+  noEntries: 'No time entries this month.', noLeave: 'No leave.', noHolidays: 'No days off this month.', dayTotal: 'Day total',
   group: 'Group', allGroups: 'All groups', noGroup: 'No group', byGroup: 'Totals by group', members: 'Members', noMembersInGroup: 'No members in this group.'
 } })
 
@@ -106,6 +108,22 @@ const dayTotals = computed(() => {
 })
 /** The last entry of each day carries that day's total. */
 const isLastOfDay = (index: number) => detail.value!.entries[index + 1]?.date !== detail.value!.entries[index]!.date
+/** Every day of the month the organization does not work: its holidays by name, then the weekdays
+ * outside its work week. */
+const daysOff = computed(() => {
+  if (!detail.value) return new Map<string, string>()
+  const holidays = new Map(detail.value.holidays.map(x => [x.date, x.name]))
+  const workingDays = detail.value.workingDays ?? [1, 2, 3, 4, 5]
+  const days = new Map<string, string>()
+  const count = new Date(Date.UTC(period.value.year, period.value.month, 0)).getUTCDate()
+  for (let day = 1; day <= count; day++) {
+    const date = `${month.value}-${String(day).padStart(2, '0')}`
+    const name = holidays.get(date)
+    if (name !== undefined) days.set(date, name)
+    else if (!workingDays.includes(new Date(`${date}T00:00:00Z`).getUTCDay())) days.set(date, copy.value.weeklyDayOff)
+  }
+  return days
+})
 const byProject = computed(() => {
   const totals = new Map<string, number>()
   for (const entry of detail.value?.entries ?? []) {
@@ -168,6 +186,7 @@ onMounted(loadSummary)
         <div><dt>{{ copy.daysWorked }}</dt><dd>{{ daysWorked }}</dd></div>
         <div><dt>{{ copy.entries }}</dt><dd>{{ detail.entries.length }}</dd></div>
         <div><dt>{{ copy.leaveDays }}</dt><dd>{{ detail.leaves.length }}</dd></div>
+        <div><dt>{{ copy.daysOff }}</dt><dd>{{ daysOff.size }}</dd></div>
       </dl>
       <p v-if="!detail.entries.length" class="empty">{{ copy.noEntries }}</p>
       <div v-else class="table-wrap">
@@ -178,7 +197,7 @@ onMounted(loadSummary)
           </tr></thead>
           <tbody>
             <tr v-for="(entry, index) in detail.entries" :key="entry.id" :class="{ 'day-end': isLastOfDay(index) }">
-              <td>{{ index === 0 || detail.entries[index - 1]!.date !== entry.date ? formatDate(entry.date) : '' }}</td>
+              <td><template v-if="index === 0 || detail.entries[index - 1]!.date !== entry.date">{{ formatDate(entry.date) }}<small v-if="daysOff.has(entry.date)" class="day-off">{{ daysOff.get(entry.date) }}</small></template></td>
               <td>{{ time(entry.startTime) }}–{{ time(entry.endTime) }}</td>
               <td><strong>{{ entry.taskName }}</strong><small v-if="entry.detail">{{ entry.detail }}</small><small v-if="entry.notes">{{ entry.notes }}</small></td>
               <td>{{ entry.projectName ?? '—' }}</td>
@@ -201,7 +220,7 @@ onMounted(loadSummary)
         </div>
         <div>
           <h3>{{ copy.holidays }}</h3>
-          <ul v-if="detail.holidays.length" class="plain-list"><li v-for="holiday in detail.holidays" :key="holiday.date"><span>{{ formatDate(holiday.date) }}</span><strong>{{ holiday.name }}</strong></li></ul>
+          <ul v-if="daysOff.size" class="plain-list"><li v-for="[date, name] in daysOff" :key="date"><span>{{ formatDate(date) }}</span><strong>{{ name }}</strong></li></ul>
           <p v-else class="muted">{{ copy.noHolidays }}</p>
         </div>
       </div>
@@ -267,6 +286,7 @@ onMounted(loadSummary)
 .detail-heading h3{margin:0;font-size:1rem;flex:1 1 14rem}
 .member-totals{margin-bottom:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr))}
 tr.day-end td{border-bottom-color:#c9d3e1}
+.day-off{display:block;width:max-content;margin-top:.2rem;padding:.05rem .45rem;border-radius:999px;background:#eef0f4;color:#5b6577;font-size:.72rem}
 .detail-lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:0 1.5rem}
 .plain-list{list-style:none;margin:0;padding:0;display:grid;gap:.35rem}
 .plain-list li{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;border-bottom:1px dashed var(--color-border);padding:.3rem 0}
