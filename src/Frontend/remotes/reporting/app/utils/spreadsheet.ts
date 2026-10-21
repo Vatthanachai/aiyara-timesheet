@@ -3,7 +3,9 @@
  * Office Open XML package with inline strings, stored in an uncompressed zip.
  */
 export type Cell = string | number
-export type Sheet = { name: string; rows: Cell[][]; boldRows?: number[] }
+/** `table` turns the rows from `headerRow` (0-based) to the last one into an Excel table with
+ * filters and banded rows; its header cells must be distinct text. `widths` are in characters. */
+export type Sheet = { name: string; rows: Cell[][]; boldRows?: number[]; table?: { headerRow: number; name: string }; widths?: number[] }
 
 const encoder = new TextEncoder()
 const escapeXml = (text: string) => text.replace(/[<>&"]/g, char => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[char]!)
@@ -15,29 +17,56 @@ const columnName = (index: number) => {
   return name
 }
 
-function sheetXml({ rows, boldRows = [] }: Sheet) {
+const main = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+const rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+/** The table's cell range; a table needs a row under its header, so an empty one gets a blank row. */
+function tableRef({ rows, table }: Sheet) {
+  const width = rows[table!.headerRow]!.length
+  const last = Math.max(rows.length, table!.headerRow + 2)
+  return `A${table!.headerRow + 1}:${columnName(width - 1)}${last}`
+}
+
+function sheetXml(sheet: Sheet) {
+  const { rows, boldRows = [], widths = [] } = sheet
   const body = rows.map((row, r) => `<row r="${r + 1}">${row.map((value, c) => {
     const ref = `${columnName(c)}${r + 1}`
     const style = boldRows.includes(r) ? ' s="1"' : ''
+    // Empty text is left out, so a blank cell stays truly empty.
+    if (value === '') return ''
     return typeof value === 'number'
       ? `<c r="${ref}"${style}><v>${value}</v></c>`
       : `<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`
   }).join('')}</row>`).join('')
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`
+  const cols = widths.length
+    ? `<cols>${widths.map((width, c) => `<col min="${c + 1}" max="${c + 1}" width="${width}" customWidth="1"/>`).join('')}</cols>` : ''
+  const tableParts = sheet.table ? '<tableParts count="1"><tablePart r:id="rId1"/></tableParts>' : ''
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${main}" xmlns:r="${rel}">${cols}<sheetData>${body}</sheetData>${tableParts}</worksheet>`
+}
+
+function tableXml(sheet: Sheet) {
+  const ref = tableRef(sheet)
+  const header = sheet.rows[sheet.table!.headerRow]!.map(String)
+  // Table names: a letter first, then letters, digits, or underscores.
+  const name = escapeXml(sheet.table!.name.replace(/[^A-Za-z0-9_]/g, '_').replace(/^(?![A-Za-z_])/, 'T'))
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><table xmlns="${main}" id="1" name="${name}" displayName="${name}" ref="${ref}" totalsRowShown="0"><autoFilter ref="${ref}"/><tableColumns count="${header.length}">${header.map((text, c) => `<tableColumn id="${c + 1}" name="${escapeXml(text)}"/>`).join('')}</tableColumns><tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>`
 }
 
 function packageFiles(sheet: Sheet): [string, string][] {
-  const main = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
-  const rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
   // Excel sheet names: at most 31 characters, none of : \ / ? * [ ].
   const name = escapeXml(sheet.name.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31) || 'Sheet1')
   return [
-    ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+    ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      (sheet.table ? '<Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>' : '') + '</Types>'],
     ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
     ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="${main}" xmlns:r="${rel}"><sheets><sheet name="${name}" sheetId="1" r:id="rId1"/></sheets></workbook>`],
     ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${rel}/styles" Target="styles.xml"/></Relationships>`],
     ['xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="${main}"><fonts count="2"><font/><font><b/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf/><xf fontId="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
-    ['xl/worksheets/sheet1.xml', sheetXml(sheet)]
+    ['xl/worksheets/sheet1.xml', sheetXml(sheet)],
+    ...(sheet.table ? [
+      ['xl/worksheets/_rels/sheet1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/table" Target="../tables/table1.xml"/></Relationships>`],
+      ['xl/tables/table1.xml', tableXml(sheet)]
+    ] as [string, string][] : [])
   ]
 }
 

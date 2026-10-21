@@ -145,8 +145,9 @@ const byProject = computed(() => {
 })
 
 /** The open member's month as a sheet: a heading and totals, then entries, leave, and days off by
- * date, with each day off named in the Remark column. */
-function exportRows(): Cell[][] {
+ * date, with each day off named in the Remark column. `groupDays` writes each date only on its
+ * day's first row, for reading; CSV keeps it on every row for importing. */
+function exportRows(groupDays: boolean): Cell[][] {
   const current = detail.value!
   const c = copy.value
   const lines: { date: string; order: number; start: string; cells: Cell[] }[] = []
@@ -159,6 +160,7 @@ function exportRows(): Cell[][] {
       Math.round(entry.durationMinutes / 60 * 100) / 100, entry.taskName, entry.detail ?? '', entry.notes ?? '',
       entry.projectName ?? '', entry.categoryName ?? '', daysOff.value.get(entry.date) ?? ''] })
   lines.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order || a.start.localeCompare(b.start))
+  if (groupDays) lines.forEach((line, index) => { if (lines[index - 1]?.date === line.date) line.cells[0] = '' })
   return [
     [props.self ? c.myTitle : c.title, `${selectedName.value} · ${monthLabel.value}`],
     [c.status, current.locked ? c.monthClosed : c.monthOpen],
@@ -169,8 +171,11 @@ function exportRows(): Cell[][] {
     ...lines.map(x => x.cells)
   ]
 }
+/** Rows above the entry table: heading, status, totals, and a gap. */
+const EXPORT_TABLE_ROW = 4
 function exportTimesheet(format: 'xlsx' | 'csv') {
-  const sheet = { name: month.value, rows: exportRows(), boldRows: [0, 4] }
+  const sheet = { name: month.value, rows: exportRows(format === 'xlsx'), boldRows: [0],
+    table: { headerRow: EXPORT_TABLE_ROW, name: 'Timesheet' }, widths: [14, 9, 9, 9, 40, 28, 24, 18, 18, 22] }
   // Keep the member's name in the file name, minus characters file systems refuse.
   const name = selectedName.value.replace(/[\\/:*?"<>|\s]+/g, '-')
   saveBlob(format === 'xlsx' ? xlsxBlob(sheet) : csvBlob(sheet), `timesheet-${name}-${month.value}.${format}`)

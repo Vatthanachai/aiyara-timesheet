@@ -160,6 +160,37 @@ public sealed class ReportFoundationTests
     }
 
     [Fact]
+    public void Xlsx_lists_rows_in_an_excel_table_with_each_date_on_its_days_first_row()
+    {
+        ReportLine Work(int day, string start, string end, int minutes, string task) =>
+            new(new DateOnly(2026, 10, day), start, end, minutes, task, "", "", "", "", "work");
+        // Out of order on purpose: the document sorts by date and time.
+        var lines = new[]
+        {
+            Work(1, "13:00", "14:54", 114, "Overview"), Work(1, "08:30", "12:00", 210, "Onboarding"),
+            Work(2, "08:30", "18:00", 570, "Study"),
+            new ReportLine(new DateOnly(2026, 10, 3), "", "", 0, "Day off", "", "Weekly day off", "", "", "dayoff")
+        };
+
+        using var workbook = new ClosedXML.Excel.XLWorkbook(new MemoryStream(
+            ReportDocumentRenderer.RenderXlsx(new ReportDocumentData("Ada", "", "October", lines, 0))));
+        var sheet = workbook.Worksheet(1);
+        var table = Assert.Single(sheet.Tables);
+
+        Assert.Equal("A7:I11", table.RangeAddress.ToString());
+        Assert.True(table.ShowAutoFilter);
+        Assert.Equal(["2026-10-01", "", "2026-10-02", "2026-10-03"],
+            Enumerable.Range(8, 4).Select(row => sheet.Cell(row, 1).GetString()));
+        Assert.Equal(["08:30", "13:00"], new[] { sheet.Cell(8, 2).GetString(), sheet.Cell(9, 2).GetString() });
+        Assert.Equal("Overview", sheet.Cell(9, 5).GetString());
+
+        // An empty period still gets a valid table: a header and one blank row.
+        using var empty = new ClosedXML.Excel.XLWorkbook(new MemoryStream(
+            ReportDocumentRenderer.RenderXlsx(new ReportDocumentData("Ada", "", "October", [], 0))));
+        Assert.Equal("A7:I8", Assert.Single(empty.Worksheet(1).Tables).RangeAddress.ToString());
+    }
+
+    [Fact]
     public void Documents_show_a_member_column_only_when_rows_name_members()
     {
         ReportLine Line(string member) => new(new DateOnly(2026, 10, 1), "09:00", "10:00", 60,
