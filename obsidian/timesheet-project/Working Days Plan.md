@@ -5,6 +5,7 @@
 ## Implementation Progress
 
 - **Phase A** (API): `work_weeks` table (migration `AddWorkWeeks`), `PUT /api/v1/work-week` (Gateway `/api/v1/timesheets/work-week`), `workingDays` in the catalog, in closed-month snapshots, and in the member month review.
+- **Phase C** (reports, `feature/report-days-off`): generated reports and the Reporting member month view show days off.
 - **Phase B** (UI): Administration **Working days** panel above Holidays; the Timesheet calendar shades the organization's non-working weekdays. Both remotes fall back to Monday–Friday when a catalog has no `workingDays`.
 
 ## Audit: What Exists On `develop`
@@ -38,6 +39,14 @@ Nothing in the backend counts working days today, so the setting only changes wh
 - [x] B2. Timesheet `MonthCalendar` takes `workingDays` from the catalog and shades the other days.
 - [x] B3. Playwright: the admin saves a work week; the timesheet shades a newly non-working weekday. Narrow-width check of the panel.
 - [x] B4. Docs: [[Project Status]], [[Timesheet Project Index]].
+
+## Phase C — Days Off In Reports
+
+Added 21 October 2026 on request: reports show the days that are not working days.
+
+- [x] C1. `ReportDocumentRenderer.ReadDaysOff` turns a month snapshot's `holidays` and `workingDays` (Monday–Friday when absent, for months closed before work weeks) into rows: a holiday by name with the remark `Holiday`, any other non-working weekday as `Day off` with the remark `Weekly day off`. The worker reads them from one snapshot per month, since they are the organization's, and adds them to PDF and XLSX reports (shaded grey, no hours, no member) with a `Days off` total. Worked days, hours, and overtime still count work rows only.
+- [x] C2. Reporting → Member timesheets: a `Days off` total, a Days off list (holidays and weekly days off) in place of Organization holidays, and a remark under the date of entries that fall on a day off.
+- [x] C3. Tests: renderer (Sunday–Thursday week with a holiday, the Monday–Friday fallback, document text), the organization report contains day-off rows, Playwright for the member view. Docs: [[Project Status]].
 
 ## Out Of Scope
 

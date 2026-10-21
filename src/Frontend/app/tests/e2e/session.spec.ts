@@ -1838,7 +1838,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
             detail: null, notes: 'On call', projectName: null, categoryName: 'Support' }
         ],
         leaves: [{ id: 'l1', date: '2026-10-09', kind: 'Vacation', notes: null }],
-        holidays: [{ date: '2026-10-13', name: 'Memorial day' }] })
+        // A Monday-to-Saturday organization; the night support shift fell on a holiday.
+        holidays: [{ date: '2026-10-06', name: 'Memorial day' }], workingDays: [1, 2, 3, 4, 5, 6] })
       return ok({ ownerId: 'x', year: 2026, month: 10, locked: true, entries: [], leaves: [], holidays: [] })
     }
     if (url.pathname.endsWith('/reports/context')) return ok({ isAdmin: role === 'TenantAdmin', timeZoneId: 'Asia/Bangkok' })
@@ -2032,6 +2033,8 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   await expect(section.locator('.member-totals')).toContainText('Total hours7:30')
   await expect(section.locator('.member-totals')).toContainText('Days worked2')
   await expect(section.locator('.member-totals')).toContainText('Leave days1')
+  // Four Sundays and the holiday.
+  await expect(section.locator('.member-totals')).toContainText('Days off5')
   const entries = section.getByRole('table', { name: 'Entries: Somchai Staff' })
   await expect(entries.locator('tbody tr')).toHaveCount(3)
   await expect(entries.locator('tbody tr').nth(0)).toContainText('09:00–12:00')
@@ -2039,10 +2042,15 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   await expect(entries.locator('tbody tr').nth(1)).toContainText('Day total 5:30')
   await expect(entries.locator('tbody tr').nth(2)).toContainText('22:00–00:00')
   await expect(entries.locator('tbody tr').nth(2)).toContainText('On call')
+  await expect(entries.locator('tbody tr').nth(2).locator('.day-off')).toHaveText('Memorial day')
+  await expect(entries.locator('tbody tr').nth(0).locator('.day-off')).toHaveCount(0)
   await expect(section).toContainText('Apollo5:30')
   await expect(section).toContainText('No project2:00')
   await expect(section).toContainText('Vacation')
-  await expect(section).toContainText('Memorial day')
+  const daysOff = section.locator('.detail-lists').getByRole('heading', { name: 'Days off' }).locator('xpath=..')
+  await expect(daysOff.getByRole('listitem')).toHaveCount(5)
+  await expect(daysOff).toContainText('Memorial day')
+  await expect(daysOff).toContainText('Weekly day off')
 
   // Changing the month reloads the open member; going back shows everyone again.
   await section.getByLabel('Month').fill('2026-09')

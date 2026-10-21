@@ -66,6 +66,8 @@ public sealed class GroupReportGenerationTests
         Assert.Contains(">Member<", document);
         Assert.Contains("Ada Lovelace", document);
         Assert.Contains("Ben task", document);
+        // September 2026's weekends, from a snapshot closed before work weeks existed.
+        Assert.Contains("Weekly day off", document);
         // Someone Identity no longer knows is shown by account ID.
         Assert.Contains(ben.ToString("D"), document);
         Assert.Equal(new[] { ada, ben }.Order(), identity.LookedUp.Order());

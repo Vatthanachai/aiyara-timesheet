@@ -125,6 +125,41 @@ public sealed class ReportFoundationTests
     }
 
     [Fact]
+    public void Days_off_are_the_months_holidays_and_weekdays_outside_the_work_week()
+    {
+        // A Sunday-to-Thursday organization: Friday and Saturday are off, and 13 October is a holiday.
+        const string snapshot = """{"entries":[],"leaves":[],"holidays":[{"Date":"2026-10-13","Name":"Memorial day"},{"Date":"2026-11-02","Name":"Next month"}],"workingDays":[0,1,2,3,4]}""";
+        // Closed before work weeks existed: Saturday and Sunday are off.
+        const string older = """{"entries":[],"leaves":[],"holidays":[]}""";
+
+        var days = ReportDocumentRenderer.ReadDaysOff(snapshot, 2026, 10);
+        var defaults = ReportDocumentRenderer.ReadDaysOff(older, 2026, 10);
+
+        Assert.Equal(new DateOnly(2026, 10, 2), days[0].Date);
+        Assert.All(days, x => Assert.True(ReportDocumentRenderer.IsDayOff(x)));
+        Assert.Equal(5 + 5 + 1, days.Count);
+        var holiday = Assert.Single(days, x => x.Kind == "holiday");
+        Assert.Equal((new DateOnly(2026, 10, 13), "Memorial day", "Holiday"), (holiday.Date, holiday.Task, holiday.Notes));
+        Assert.All(days.Where(x => x.Kind == "dayoff"), x =>
+            Assert.Contains(x.Date.DayOfWeek, new[] { DayOfWeek.Friday, DayOfWeek.Saturday }));
+        Assert.Equal(9, defaults.Count);
+        Assert.All(defaults, x => Assert.Contains(x.Date.DayOfWeek, new[] { DayOfWeek.Saturday, DayOfWeek.Sunday }));
+
+        var work = new ReportLine(new DateOnly(2026, 10, 1), "09:00", "17:00", 480, "Review", "", "", "", "", "work");
+        var data = new ReportDocumentData("Ada", "", "October", [work, .. days], 0);
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(ReportDocumentRenderer.RenderXlsx(data)));
+        var sheet = string.Concat(archive.Entries.Select(entry =>
+        {
+            using var reader = new StreamReader(entry.Open());
+            return reader.ReadToEnd();
+        }));
+        Assert.Contains(">Days off<", sheet);
+        Assert.Contains("Memorial day", sheet);
+        Assert.Contains("Weekly day off", sheet);
+        Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(ReportDocumentRenderer.RenderPdf(data), 0, 5));
+    }
+
+    [Fact]
     public void Documents_show_a_member_column_only_when_rows_name_members()
     {
         ReportLine Line(string member) => new(new DateOnly(2026, 10, 1), "09:00", "10:00", 60,
