@@ -11,7 +11,7 @@ type ProfileSummary = {
 type OrganizationSummary = { name: string; logoUrl: string | null; dateFormat?: string; timeFormat?: string }
 
 const { visibleNavigation } = useRemoteNavigation()
-const { locale, setLocale } = useLocale()
+const { locale } = useLocale()
 const { token, role, logout, restore } = useSession()
 const authorizedFetch = useAuthorizedFetch()
 const config = useRuntimeConfig()
@@ -155,7 +155,7 @@ onUnmounted(() => {
         </NuxtLink>
       </nav>
       <div class="header-actions">
-        <button class="locale-button" type="button" @click="setLocale(locale === 'th' ? 'en' : 'th')">{{ locale === 'th' ? 'EN' : 'TH' }}</button>
+        <LocaleSwitch />
         <details v-if="token" ref="profileMenu" class="profile-menu">
           <summary class="profile-trigger" :aria-label="profileName">
             <img v-if="profile?.photoUrl" class="profile-avatar" :src="profile.photoUrl" alt="" />
@@ -186,7 +186,6 @@ onUnmounted(() => {
 .brand-logo { flex: 0 0 auto; height: 2.25rem; max-width: 7rem; object-fit: contain; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(22rem, 45vw); }
 .header-actions { align-items: center; }
-.header-actions .locale-button { border: 1px solid var(--color-border); border-radius: .5rem; background: white; padding: .5rem .7rem; }
 .profile-menu { position: relative; }
 .profile-menu summary { list-style: none; }
 .profile-menu summary::-webkit-details-marker { display: none; }
@@ -211,7 +210,6 @@ onUnmounted(() => {
 }
 @media (max-width: 22rem) {
   .header-actions { gap: .4rem; }
-  .header-actions .locale-button { padding: .45rem .55rem; }
   .profile-trigger { padding-right: .5rem; }
   .profile-avatar { flex-basis: 2rem; height: 2rem; width: 2rem; }
   .profile-name { max-width: 5.5rem; }

@@ -1131,7 +1131,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   // The Shell resends the session on every locale change and every minute; that must not reload the
   // page and overwrite what the administrator is typing.
   await minimumLength.fill('20')
-  await page.getByRole('button', { name: 'TH' }).click()
+  await page.getByRole('radio', { name: 'ไทย' }).click()
   await expect(frame.getByRole('heading', { name: 'จัดการองค์กร', level: 1 })).toBeVisible()
   await expect(frame.getByRole('spinbutton', { name: 'ความยาวขั้นต่ำ' })).toHaveValue('20')
   expect(catalogCalls).toBe(1)

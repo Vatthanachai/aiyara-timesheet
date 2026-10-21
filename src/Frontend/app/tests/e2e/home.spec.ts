@@ -141,3 +141,26 @@ test('the signed-in home has no sideways scroll on a phone', async ({ page }) =>
   await expect(page.getByText('3 h 30 m logged today of 7 h')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
 })
+
+test('the language switch shows both languages with flags and switches by click or arrow keys', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => Boolean((document.querySelector('button') as HTMLElement & { __vnode?: unknown } | null)?.__vnode))
+  const languages = page.getByRole('radiogroup', { name: 'ภาษา / Language' })
+  const thai = languages.getByRole('radio', { name: 'ไทย' })
+  const english = languages.getByRole('radio', { name: 'English' })
+  await expect(languages.locator('svg.flag')).toHaveCount(2)
+  await expect(english).toHaveAttribute('aria-checked', 'true')
+  await expect(thai).toHaveAttribute('tabindex', '-1')
+
+  await thai.click()
+  await expect(thai).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^วันทำงานของคุณ\s?ทีละชั่วโมง$/)
+
+  // Arrow keys move the choice and the focus together; only the chosen language is a tab stop.
+  await thai.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(english).toBeFocused()
+  await expect(english).toHaveAttribute('aria-checked', 'true')
+  await expect(english).toHaveAttribute('tabindex', '0')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your working day, hour by hour.')
+})
