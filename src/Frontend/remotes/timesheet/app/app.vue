@@ -3,7 +3,7 @@ import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale } from '../../../shared/i18n'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
-import { readDroppedTrayItem, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
+import { defaultWorkHours, readDroppedTrayItem, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
 const config = useRuntimeConfig()
@@ -14,11 +14,12 @@ const month = ref(new Date().toISOString().slice(0, 7))
 const entries = ref<Entry[]>([])
 const tasks = ref<Task[]>([])
 const leaves = ref<Leave[]>([])
-const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
+const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5], workHours: defaultWorkHours })
+let workHoursApplied = false
 const error = ref('')
 const notice = ref('')
 const editingId = ref<string | null>(null)
-const form = reactive<EntryForm>({ date: new Date().toISOString().slice(0, 10), startTime: '09:00', endTime: '17:00', taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
+const form = reactive<EntryForm>({ date: new Date().toISOString().slice(0, 10), ...defaultWorkHours, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
 const taskName = ref('')
 const view = ref<'entries' | 'board'>('entries')
 const leaveDate = ref(new Date().toISOString().slice(0, 10))
@@ -37,6 +38,9 @@ const daysWithLeave = computed(() => new Set(leaves.value.map(leave => leave.dat
 const daysWithHoliday = computed(() => new Set(catalog.value.holidays.filter(holiday => holiday.date.startsWith(month.value)).map(holiday => holiday.date)))
 const copy = useTimesheetText(locale)
 const { text, labels } = copy
+const workHoursLabel = computed(() => labels.value.workHours
+  .replace('{start}', formatTime(catalog.value.workHours.startTime, formats.value))
+  .replace('{end}', formatTime(catalog.value.workHours.endTime, formats.value)))
 provide(timesheetTextKey, copy)
 provide(timesheetDatesKey, computed(() => ({
   date: (value: string) => formatDate(value, formats.value, locale.value),
@@ -71,7 +75,10 @@ async function load() {
       api<Catalog>('/catalog'),
       api<{ currentMonth: string; locked: boolean }>('/context')
     ])
-    entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, workingDays: c.workingDays ?? [1, 2, 3, 4, 5] }
+    entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
+    // The first time the organization's hours are known, an untouched new entry starts with them.
+    if (!workHoursApplied && !editingId.value && !form.taskName) Object.assign(form, catalog.value.workHours)
+    workHoursApplied = true
     currentMonth.value = context.currentMonth; locked.value = context.locked
     if (!entries.value.length && month.value === new Date().toISOString().slice(0, 7) &&
         month.value !== context.currentMonth) month.value = context.currentMonth
@@ -85,7 +92,7 @@ watch(month, value => {
 })
 function resetForm(date = form.date) {
   editingId.value = null
-  Object.assign(form, { date, startTime: '09:00', endTime: '17:00', taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
+  Object.assign(form, { date, ...catalog.value.workHours, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
 }
 function moveMonth(offset: number) {
   const [year, monthNumber] = month.value.split('-').map(Number)
@@ -199,7 +206,7 @@ async function updateLeave(leave: Leave) {
         <div class="work-layout">
           <div class="main-column">
             <MonthCalendar v-if="canEdit" v-model:selected="form.date" :month="month" :month-label="monthLabel" :locale="locale"
-              :entry-days="daysWithEntries" :leave-days="daysWithLeave" :holiday-days="daysWithHoliday" :working-days="catalog.workingDays" @drop="dropTask" />
+              :entry-days="daysWithEntries" :leave-days="daysWithLeave" :holiday-days="daysWithHoliday" :working-days="catalog.workingDays" :work-hours-label="workHoursLabel" @drop="dropTask" />
             <EntryComposer v-if="canEdit && !editingId" :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd"
               @save="saveEntry" @cancel="resetForm()" @drop="dropTask" />
           </div>

@@ -89,6 +89,69 @@ public sealed class WorkWeekTests : IAsyncLifetime
         Assert.Equal(new[] { 1, 2, 3, 4, 5 }, Days(await Result(member)));
     }
 
+    [Fact]
+    public async Task Admins_set_the_working_hours_and_every_view_returns_them()
+    {
+        Assert.Equal(("09:00", "17:00"), await CatalogHours("Employee"));
+
+        using var saved = await SendJson(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin",
+            new { workingDays = new[] { 1, 2, 3, 4, 5 }, startTime = "08:30:00", endTime = "17:30:00" });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        Assert.Equal(("08:30", "17:30"), Hours(await Result(saved)));
+        Assert.Equal(("08:30", "17:30"), await CatalogHours("Employee"));
+        // Leaving the times out changes the days only.
+        using (var daysOnly = await Send(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin", [1, 2, 3, 4]))
+            Assert.Equal(("08:30", "17:30"), Hours(await Result(daysOnly)));
+        Assert.Equal(("09:00", "17:00"), await CatalogHours("Employee", tenantB));
+
+        using var me = await Send(HttpMethod.Get, $"/api/v1/me/timesheet?year={DateTime.UtcNow.Year}&month={DateTime.UtcNow.Month}", "Employee");
+        Assert.Equal(("08:30", "17:30"), Hours(await Result(me)));
+        var previous = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-1);
+        using (var locked = await Send(HttpMethod.Post, $"/api/v1/months/{previous.Year}/{previous.Month}/lock", "TenantAdmin"))
+            Assert.Equal(HttpStatusCode.OK, locked.StatusCode);
+        using var snapshot = await Send(HttpMethod.Get,
+            $"/api/v1/months/{previous.Year}/{previous.Month}/snapshot?ownerId={Guid.Empty}", "TenantAdmin");
+        Assert.Equal(("08:30", "17:30"), Hours(await Result(snapshot)));
+    }
+
+    [Theory]
+    [InlineData("17:00:00", "09:00:00")]
+    [InlineData("09:00:00", "09:00:00")]
+    [InlineData("09:00:30", "17:00:00")]
+    [InlineData("09:00:00", null)]
+    [InlineData(null, "17:00:00")]
+    public async Task Working_hours_must_be_whole_minutes_with_the_end_after_the_start(string? start, string? end)
+    {
+        using var response = await SendJson(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin",
+            new { workingDays = new[] { 1, 2, 3, 4, 5 }, startTime = start, endTime = end });
+        using var byEmployee = await SendJson(HttpMethod.Put, "/api/v1/work-week", "Employee",
+            new { workingDays = new[] { 1, 2, 3, 4, 5 }, startTime = "08:00:00", endTime = "16:00:00" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byEmployee.StatusCode);
+        Assert.Equal(("09:00", "17:00"), await CatalogHours("Employee"));
+    }
+
+    private async Task<(string, string)> CatalogHours(string role, Guid? tenant = null)
+    {
+        using var response = await Send(HttpMethod.Get, "/api/v1/catalog", role, tenant: tenant);
+        return Hours(await Result(response));
+    }
+
+    private static (string, string) Hours(JsonElement result)
+    {
+        var hours = result.GetProperty("workHours");
+        return (hours.GetProperty("startTime").GetString()!, hours.GetProperty("endTime").GetString()!);
+    }
+
+    private async Task<HttpResponseMessage> SendJson(HttpMethod method, string path, string role, object body)
+    {
+        using var request = new HttpRequestMessage(method, path) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-Test-Tenant", tenantA.ToString());
+        request.Headers.Add("X-Test-Role", role);
+        return await client.SendAsync(request);
+    }
+
     /// <summary>Uses in-memory SQLite, or a throwaway PostgreSQL database built from the real
     /// migrations when AIYARA_TEST_POSTGRES holds a server connection string.</summary>
     public async Task InitializeAsync()

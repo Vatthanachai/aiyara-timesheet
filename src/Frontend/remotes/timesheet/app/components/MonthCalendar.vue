@@ -2,7 +2,7 @@
 import type { Locale } from '../../../../shared/i18n'
 import { injectTimesheetText } from '../utils/timesheet'
 
-const props = defineProps<{ month: string; monthLabel: string; locale: Locale; entryDays: Set<string>; leaveDays: Set<string>; holidayDays: Set<string>; workingDays: number[] }>()
+const props = defineProps<{ month: string; monthLabel: string; locale: Locale; entryDays: Set<string>; leaveDays: Set<string>; holidayDays: Set<string>; workingDays: number[]; workHoursLabel: string }>()
 const selected = defineModel<string>('selected', { required: true })
 const emit = defineEmits<{ drop: [event: DragEvent, day: string] }>()
 const { text, labels } = injectTimesheetText()
@@ -23,7 +23,7 @@ const weekdayLabels = computed(() => props.locale === 'th'
 
 <template>
   <section class="panel calendar-panel">
-    <div class="panel-heading"><div><span class="eyebrow">{{ labels.selectedDate }}</span><h2>{{ monthLabel }}</h2></div><div class="calendar-legend"><span><i class="legend-work"></i>{{ labels.entryList }}</span><span><i class="legend-leave"></i>{{ text.leaves }}</span></div></div>
+    <div class="panel-heading"><div><span class="eyebrow">{{ labels.selectedDate }}</span><h2>{{ monthLabel }}</h2></div><div class="calendar-legend"><span><i class="legend-work"></i>{{ labels.entryList }}</span><span><i class="legend-leave"></i>{{ text.leaves }}</span><span class="work-hours-label">{{ workHoursLabel }}</span></div></div>
     <div class="calendar-grid" :aria-label="text.chooseDay">
       <span v-for="(weekday, index) in weekdayLabels" :key="index" class="weekday">{{ weekday }}</span>
       <span v-for="(day, index) in calendarCells" :key="day || `blank-${index}`" class="calendar-cell">
