@@ -39,7 +39,8 @@ The week is the memorable element: the organization's working time drawn as seve
 - **Colour**: shared tokens. Ledger blue `#155EEF` (selected tab, primary actions), working-hours tint `#DCE6FD` (the band), break hatch `#94A3B8`, day-off fill `#EEF1F5`, ink `#172033`, warning `#B42318` (deactivate, delete, close a month).
 - **Type**: Bai Jamjuree for the organization name, tab labels, panel headings, and the week's hour numerals; the Inter/system stack for forms. No all-caps eyebrows.
 - **Layout**: left-aligned; a tab bar under the heading; one column of panels per tab, two columns where two short panels sit together (projects and categories). Tables align their columns; phones stack.
-- **Phones**: the tab bar scrolls and keeps the chosen tab in view; members stack one per block; the week keeps its bars with every other hour labelled; group rows and invitations wrap instead of pushing buttons off the edge.
+- **Tabs never scroll** (changed on request the same day, `fix/administration-tabs-fit`): a single underlined row while the five fit (wider than 56rem); five equal buttons below that; on phones (under 36rem) three on the first row and the two longer ones sharing the second. The Thai "โครงการ|และหมวดหมู่" marks where it may break, since Thai has no spaces.
+- **Phones**: members stack one per block; the week keeps its bars with every other hour labelled; group rows and invitations wrap instead of pushing buttons off the edge.
 - **Motion**: the tab underline moves to the chosen tab; nothing animates on load.
 
 ```
