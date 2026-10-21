@@ -1844,6 +1844,10 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
           detail: null, notes: null, projectName: 'Apollo', categoryName: null }],
         leaves: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
     }
+    // A Monday-to-Friday organization working 09:00–17:00 with an hour's break: a 7-hour day.
+    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [], categories: [],
+      holidays: [{ id: 'h1', date: '2026-10-13', name: 'Memorial day' }], workingDays: [1, 2, 3, 4, 5],
+      workHours: { startTime: '09:00', endTime: '17:00', breakStart: '12:00', breakEnd: '13:00' } })
     if (url.pathname.includes('/timesheets/members/')) {
       state.timesheetQueries.push(`${url.pathname.replace(/^.*\/timesheets/, '')}?${url.searchParams}`)
       if (role !== 'TenantAdmin') return route.fulfill({ status: 403, headers: cors })
@@ -1920,7 +1924,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
 test('reporting shows names and reasons, requests a member report by calendar period, and refreshes progress', async ({ page }) => {
   const { frame, state } = await openReporting(page, 'TenantAdmin')
 
-  await expect(frame.locator('.summary').first()).toContainText('Needs attention2')
+  await expect(frame.locator('.doc-status')).toHaveText('1 ready to download, 1 being generated, 2 need attention.')
+  await expect(frame.locator('.doc-status .count-attention')).toHaveText('2 need attention.')
   const history = frame.getByRole('region', { name: 'Report history' }).locator('table')
   await expect(history).toContainText('Somchai Staff')
   await expect(history).toContainText('Former member')
@@ -2034,6 +2039,15 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   const month = await section.getByLabel('Month').inputValue()
   const [year, monthNumber] = month.split('-').map(Number)
   expect(state.timesheetQueries[0]).toBe(`/members/summary?year=${year}&month=${monthNumber}`)
+  // Each member's hours are drawn against what the month expects: its weekdays less the holiday on
+  // 13 October, at 7 hours a day, less the member's leave days.
+  const workingDates = Array.from({ length: new Date(year, monthNumber, 0).getDate() }, (_, index) => new Date(year, monthNumber - 1, index + 1))
+    .filter(date => date.getDay() > 0 && date.getDay() < 6 && !(date.getMonth() === 9 && date.getDate() === 13 && year === 2026))
+  const expectedHours = (leaveDays: number) => `${(workingDates.length - leaveDays) * 7}:00`
+  await expect(table.getByRole('img', { name: `Somchai Staff: 7:30 of ${expectedHours(1)} hours logged` })).toHaveCount(1)
+  await expect(table.getByRole('img', { name: `Anong Admin: 0:00 of ${expectedHours(0)} hours logged` })).toHaveCount(1)
+  // Former members have no expectation, so no bar.
+  await expect(table.locator('tbody tr').nth(1).getByRole('img')).toHaveCount(0)
 
   // Totals by group: busiest first, members in no group last, former members left out.
   const byGroup = section.getByRole('table', { name: 'Totals by group' })
@@ -2058,7 +2072,9 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   await expect(table.locator('tbody tr')).toHaveCount(4)
 
   await section.getByRole('button', { name: 'View timesheet: Somchai Staff' }).click()
-  await expect(section.getByRole('heading', { name: /Somchai Staff · / })).toBeVisible()
+  await expect(section.getByRole('heading', { name: /^Somchai Staff \w+ \d{4}$/ })).toBeVisible()
+  // The month strip draws one bar per day of the month.
+  await expect(section.getByRole('img', { name: 'Hours per day for Somchai Staff' }).locator('li')).toHaveCount(new Date(year, monthNumber, 0).getDate())
   await expect(section.locator('.member-totals')).toContainText('Total hours7:30')
   await expect(section.locator('.member-totals')).toContainText('Days worked2')
   await expect(section.locator('.member-totals')).toContainText('Leave days1')
@@ -2140,7 +2156,7 @@ test('employees request only their own reports and never load the member directo
 
   // Their own month shows live, before it is closed, and can be exported.
   const mine = frame.getByRole('region', { name: 'My timesheet' })
-  await expect(mine.getByRole('heading', { name: /^Mali Member · / })).toBeVisible()
+  await expect(mine.getByRole('heading', { name: /^Mali Member / })).toBeVisible()
   await expect(mine.getByText('Month open (may still change)')).toBeVisible()
   await expect(mine.locator('.member-totals')).toContainText('Total hours2:30')
   await expect(mine.getByRole('table', { name: 'Entries: Mali Member' })).toContainText('Sprint planning')
@@ -2311,7 +2327,7 @@ test('reporting shows dates and times in the organization\'s format', async ({ p
   await expect(history).toContainText('01/10/2569 9:01 AM')
   await expect(history).toContainText('Waiting for September 2569 to be locked')
   const mine = frame.getByRole('region', { name: 'My timesheet' })
-  await expect(mine.getByRole('heading', { name: /^Mali Member · \w+ 25\d\d$/ })).toBeVisible()
+  await expect(mine.getByRole('heading', { name: /^Mali Member \w+ 25\d\d$/ })).toBeVisible()
   const entries = mine.getByRole('table', { name: 'Entries: Mali Member' })
   await expect(entries).toContainText('9:00 AM–11:30 AM')
   await expect(entries).toContainText('Wed 07/10/2569')

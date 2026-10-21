@@ -24,6 +24,7 @@
 - [[Date And Time Format Plan]] — how a Tenant Admin chooses how dates and times appear everywhere (phases A–C).
 - [[Home Page Plan]] — the Shell's signed-out welcome and the signed-in Today page (phases A–C).
 - [[Timesheet Page Plan]] — the Timesheet remote as a month time card with a day panel (phases A–E).
+- [[Reporting Page Plan]] — the Reporting remote's hours ledger, month strip, documents, and settings (phases A–D).
 
 ## Repository Facts
 
