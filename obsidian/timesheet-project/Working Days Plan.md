@@ -1,6 +1,11 @@
 # Working Days Plan
 
-> Drafted 21 October 2026 from a code audit of `develop` at `4536301`. Covers how an organization's Tenant Admin sets which weekdays the organization works. Branch `feature/working-days`.
+> Drafted 21 October 2026 from a code audit of `develop` at `4536301` and implemented the same day on `feature/working-days` (phases A and B). Covers how an organization's Tenant Admin sets which weekdays the organization works.
+
+## Implementation Progress
+
+- **Phase A** (API): `work_weeks` table (migration `AddWorkWeeks`), `PUT /api/v1/work-week` (Gateway `/api/v1/timesheets/work-week`), `workingDays` in the catalog, in closed-month snapshots, and in the member month review.
+- **Phase B** (UI): Administration **Working days** panel above Holidays; the Timesheet calendar shades the organization's non-working weekdays. Both remotes fall back to Monday–Friday when a catalog has no `workingDays`.
 
 ## Audit: What Exists On `develop`
 
@@ -29,10 +34,10 @@ Nothing in the backend counts working days today, so the setting only changes wh
 
 ## Phase B — UI
 
-- [ ] B1. Administration remote **Working days** panel: seven weekday toggles (Thai and English labels), Save, success and error messages; the last checked day cannot be cleared.
-- [ ] B2. Timesheet `MonthCalendar` takes `workingDays` from the catalog and shades the other days.
-- [ ] B3. Playwright: the admin saves a work week; the timesheet shades a newly non-working weekday. Narrow-width check of the panel.
-- [ ] B4. Docs: [[Project Status]], [[Timesheet Project Index]].
+- [x] B1. Administration remote **Working days** panel: seven weekday toggles (Thai and English labels), Save, success and error messages; the last checked day cannot be cleared.
+- [x] B2. Timesheet `MonthCalendar` takes `workingDays` from the catalog and shades the other days.
+- [x] B3. Playwright: the admin saves a work week; the timesheet shades a newly non-working weekday. Narrow-width check of the panel.
+- [x] B4. Docs: [[Project Status]], [[Timesheet Project Index]].
 
 ## Out Of Scope
 

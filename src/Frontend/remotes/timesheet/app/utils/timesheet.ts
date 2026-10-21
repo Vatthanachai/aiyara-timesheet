@@ -8,7 +8,7 @@ export type TaskStatus = typeof taskStatuses[number]
 export type Task = { id: string; name: string; status: TaskStatus; projectId: string | null; categoryId: string | null }
 export type Leave = { id: string; date: string; kind: string; notes: string | null }
 export type CatalogItem = { id: string; name: string }
-export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[] }
+export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[]; workingDays: number[] }
 export type TrayItem = { name: string; projectId?: string | null; categoryId?: string | null; personalTaskId?: string | null }
 export type EntryForm = { date: string; startTime: string; endTime: string; taskName: string; detail: string; notes: string; projectId: string; categoryId: string; personalTaskId: string }
 
