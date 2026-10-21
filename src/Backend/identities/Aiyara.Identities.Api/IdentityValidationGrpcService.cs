@@ -67,6 +67,18 @@ internal sealed class IdentityValidationGrpcService(
             IsActive = true, Roles = { membership.Role.ToString() } };
     }
 
+    public override async Task<GetOrganizationSettingsResponse> GetOrganizationSettings(
+        GetOrganizationSettingsRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.TenantId, out var tenantId)) return new GetOrganizationSettingsResponse();
+        tenantScope.TenantId = tenantId;
+        var tenant = await db.Tenants.AsNoTracking().SingleOrDefaultAsync(x => x.Id == tenantId, context.CancellationToken);
+        return tenant is null ? new GetOrganizationSettingsResponse() : new GetOrganizationSettingsResponse
+        {
+            Found = true, DateFormat = tenant.DateFormat, TimeFormat = tenant.TimeFormat, TimeZoneId = tenant.TimeZoneId
+        };
+    }
+
     public override async Task<ListGroupMembersResponse> ListGroupMembers(
         ListGroupMembersRequest request, ServerCallContext context)
     {

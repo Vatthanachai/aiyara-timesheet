@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Aiyara.Identities.Api.Controllers;
 
 public sealed record OrganizationNameRequest(string Name);
+public sealed record OrganizationFormatsRequest(string DateFormat, string TimeFormat);
 
 /// <summary>The caller's organization as the Shell header shows it: every member reads the name
 /// and logo; only a Tenant Admin changes them. Gateway exposes these under
@@ -39,6 +40,21 @@ public sealed class OrganizationController(IdentityDbContext db, AuthenticatedMe
         AsAdmin(async admin =>
         {
             await branding.RenameAsync(admin.TenantId, admin.Account.Id, admin.SessionVersion, body.Name, ct);
+            return Current(View(await db.Tenants.SingleAsync(ct)));
+        }, ct);
+
+    /// <summary>Sets how every member sees dates (<c>dd/MM/yyyy</c>, <c>dd/MM/bbbb</c>, <c>d MMM yyyy</c>,
+    /// <c>yyyy-MM-dd</c>, <c>MM/dd/yyyy</c>) and times (<c>HH:mm</c>, <c>h:mm a</c>).</summary>
+    [HttpPut("formats", Name = "UpdateMyOrganizationFormatsV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> UpdateFormats([FromBody] OrganizationFormatsRequest body, CancellationToken ct) =>
+        AsAdmin(async admin =>
+        {
+            await branding.SetFormatsAsync(admin.TenantId, admin.Account.Id, admin.SessionVersion,
+                body.DateFormat, body.TimeFormat, ct);
             return Current(View(await db.Tenants.SingleAsync(ct)));
         }, ct);
 
@@ -116,7 +132,7 @@ public sealed class OrganizationController(IdentityDbContext db, AuthenticatedMe
 
     private static object View(Tenant tenant) => new
     {
-        tenant.Name, tenant.OrganizationCode,
+        tenant.Name, tenant.OrganizationCode, tenant.DateFormat, tenant.TimeFormat,
         LogoUrl = tenant.LogoKey is null ? null : $"{LogoPath}?v={tenant.LogoUpdatedAtUtc?.Ticks ?? 0}"
     };
 

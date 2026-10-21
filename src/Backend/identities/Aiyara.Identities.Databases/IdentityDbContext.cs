@@ -32,6 +32,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired();
             entity.Property(x => x.LogoKey).HasMaxLength(200);
+            entity.Property(x => x.DateFormat).HasMaxLength(20).IsRequired().HasDefaultValue(OrganizationFormats.DefaultDateFormat);
+            entity.Property(x => x.TimeFormat).HasMaxLength(20).IsRequired().HasDefaultValue(OrganizationFormats.DefaultTimeFormat);
             entity.HasQueryFilter(x => CurrentTenantId != null && x.Id == CurrentTenantId);
         });
 

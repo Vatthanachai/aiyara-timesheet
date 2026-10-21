@@ -431,6 +431,13 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DateFormat")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("dd/MM/yyyy");
+
                     b.Property<string>("LogoKey")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -478,6 +485,13 @@ namespace Aiyara.Identities.Databases.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<string>("TimeFormat")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("HH:mm");
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
