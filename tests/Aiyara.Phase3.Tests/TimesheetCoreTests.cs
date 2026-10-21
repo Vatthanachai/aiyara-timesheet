@@ -14,6 +14,24 @@ public sealed class TimesheetCoreTests
     public void Duration_handles_same_day_and_overnight(string start, string end, int expected) =>
         Assert.Equal(expected, TimesheetRules.DurationMinutes(TimeOnly.Parse(start), TimeOnly.Parse(end)));
 
+    [Theory]
+    [InlineData("08:30", "17:30", false, 480)] // the whole day: the lunch hour is not work
+    [InlineData("08:30", "17:30", true, 540)]  // worked through lunch
+    [InlineData("11:00", "12:00", false, 30)]  // runs into the break
+    [InlineData("12:15", "13:30", false, 60)]  // starts inside the break
+    [InlineData("13:00", "15:00", false, 120)] // after the break
+    [InlineData("11:30", "12:30", false, 0)]   // wholly inside the break
+    [InlineData("11:30", "12:30", true, 60)]   // a meeting over lunch
+    [InlineData("22:00", "12:00", false, 810)] // overnight, ending halfway through the break: 14 h less 30 min
+    public void Worked_minutes_leave_out_the_break_unless_it_was_worked(string start, string end, bool includesBreak,
+        int expected) =>
+        Assert.Equal(expected, TimesheetRules.WorkedMinutes(TimeOnly.Parse(start), TimeOnly.Parse(end),
+            new TimeOnly(11, 30), new TimeOnly(12, 30), includesBreak));
+
+    [Fact]
+    public void Without_a_break_worked_minutes_are_the_whole_entry() =>
+        Assert.Equal(540, TimesheetRules.WorkedMinutes(new TimeOnly(8, 30), new TimeOnly(17, 30), null, null, false));
+
     [Fact]
     public void Zero_duration_is_rejected() => Assert.Throws<ArgumentException>(() =>
         TimesheetRules.DurationMinutes(new TimeOnly(9, 0), new TimeOnly(9, 0)));

@@ -60,6 +60,22 @@ Decisions: the hours live on the same `work_weeks` row (`StartTime`, `EndTime`; 
 - [x] D3. Timesheet: a new entry starts at the organization's hours, and the calendar shows them.
 - [x] D4. Tests (API, Playwright, phase 3 smoke) and docs.
 
+## Phase E — Break Time
+
+Added 21 October 2026 on request: a break inside the working day (for example lunch 11:30–12:30) that does not count as work, unless a member says they worked through it. Branch `feature/work-breaks`, built on `feature/work-hours`.
+
+Decisions:
+1. The work week gets an optional break (`BreakStart`, `BreakEnd`); none is the default, so nothing changes until an admin sets one. A break lies within the working hours and ends after it starts. It is saved together with the hours: a `PUT /work-week` that sends `startTime` / `endTime` also sets the break (both break times, or neither for no break), and one that leaves the hours out keeps the hours and the break.
+2. An entry that overlaps the break has the overlap deducted from its duration (08:30–17:30 with 11:30–12:30 is 8 hours), including both halves of an overnight entry. A new `includesBreak` flag on the entry counts the break as work, for a meeting over lunch or work that ran into it. An entry entirely inside the break without the flag would be worth nothing, so it is refused (`400 ENTRY_IN_BREAK`).
+3. Durations are worked out when an entry is saved, so a later change to the break does not rewrite existing entries; closed months are already frozen.
+4. The standard working day is the working hours minus the break. Generated reports count overtime days against it, read from the month's snapshot, instead of a fixed 8 hours. Months closed before working hours existed keep 8 hours.
+
+- [x] E1. API: break on the work week and `includesBreak` on entries (migration `AddWorkBreaks`), duration rules, validation, `workHours.breakStart` / `breakEnd`, the flag in snapshots and member views.
+- [ ] E2. Administration: break start and end (quarter hours, optional) in Working days and hours.
+- [ ] E3. Timesheet: the entry form's duration preview deducts the break, and a "worked through the break" checkbox appears when an entry overlaps it (new and edited entries); the calendar shows the break.
+- [ ] E4. Reports: overtime against the standard working day.
+- [ ] E5. Tests and docs.
+
 ## Out Of Scope
 
 - Shifts, breaks, and expected-hours or utilization reports.

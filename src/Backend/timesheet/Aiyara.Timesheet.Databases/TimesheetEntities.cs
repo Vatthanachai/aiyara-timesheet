@@ -45,6 +45,9 @@ public sealed class WorkWeek : TenantRecord
     public int WorkingDaysMask { get; set; } = DefaultMask;
     public TimeOnly StartTime { get; set; } = DefaultStartTime;
     public TimeOnly EndTime { get; set; } = DefaultEndTime;
+    /// <summary>A break inside the working day that does not count as work; null when there is none.</summary>
+    public TimeOnly? BreakStart { get; set; }
+    public TimeOnly? BreakEnd { get; set; }
 
     public static int[] Days(int mask) => Enumerable.Range(0, 7).Where(day => (mask & (1 << day)) != 0).ToArray();
 }
@@ -71,6 +74,8 @@ public sealed class TimeEntry : TenantRecord
     public Guid? ProjectId { get; set; }
     public Guid? CategoryId { get; set; }
     public Guid? PersonalTaskId { get; set; }
+    /// <summary>The member worked through the organization's break, so it counts as work.</summary>
+    public bool IncludesBreak { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 }
