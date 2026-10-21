@@ -73,7 +73,7 @@ Decisions:
 - [x] E1. API: break on the work week and `includesBreak` on entries (migration `AddWorkBreaks`), duration rules, validation, `workHours.breakStart` / `breakEnd`, the flag in snapshots and member views.
 - [ ] E2. Administration: break start and end (quarter hours, optional) in Working days and hours.
 - [ ] E3. Timesheet: the entry form's duration preview deducts the break, and a "worked through the break" checkbox appears when an entry overlaps it (new and edited entries); the calendar shows the break.
-- [ ] E4. Reports: overtime against the standard working day.
+- [x] E4. Reports: overtime against the standard working day.
 - [ ] E5. Tests and docs.
 
 ## Out Of Scope

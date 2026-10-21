@@ -13,8 +13,11 @@ namespace Aiyara.Report.Services;
 public sealed record ReportLine(DateOnly Date, string Start, string End, int DurationMinutes,
     string Task, string Detail, string Notes, string Project, string Category, string Kind, string Member = "");
 
+/// <summary><paramref name="StandardDayMinutes"/> is a normal working day (the working hours less the
+/// break); a day with more work than that counts as overtime.</summary>
 public sealed record ReportDocumentData(string EmployeeName, string Department, string Period,
-    IReadOnlyList<ReportLine> Lines, int LeaveDays, ReportFormats? Formats = null);
+    IReadOnlyList<ReportLine> Lines, int LeaveDays, ReportFormats? Formats = null,
+    int StandardDayMinutes = ReportDocumentRenderer.DefaultStandardDayMinutes);
 
 /// <summary>The organization's date and time formats (Identity's <c>OrganizationFormats</c>):
 /// <c>bbbb</c> is the Buddhist year; documents are in English, so <c>MMM</c> is an English month.
@@ -39,6 +42,12 @@ public sealed record ReportFormats(string DateFormat = "dd/MM/yyyy", string Time
 
 public static class ReportDocumentRenderer
 {
+    /// <summary>A normal working day for months closed before working hours existed.</summary>
+    public const int DefaultStandardDayMinutes = 8 * 60;
+
+    private static int OvertimeDays(ReportDocumentData data) => data.Lines.Where(x => x.Kind == "work")
+        .GroupBy(x => x.Date).Count(group => group.Sum(x => x.DurationMinutes) > data.StandardDayMinutes);
+
     /// <summary>The weekdays an organization works when its snapshot predates work weeks.</summary>
     private static readonly int[] DefaultWorkingDays = [1, 2, 3, 4, 5];
 
@@ -63,8 +72,7 @@ public static class ReportDocumentRenderer
         sheet.Cell(5, 3).Value = "Days off"; sheet.Cell(5, 4).Value = DaysOff(data);
         sheet.Cell(6, 1).Value = "Worked days"; sheet.Cell(6, 2).Value = data.Lines.Where(x => x.Kind == "work").Select(x => x.Date).Distinct().Count();
         sheet.Cell(6, 3).Value = "Work hours"; sheet.Cell(6, 4).Value = Math.Round(data.Lines.Where(x => x.Kind == "work").Sum(x => x.DurationMinutes) / 60m, 2);
-        sheet.Cell(6, 5).Value = "Overtime days"; sheet.Cell(6, 6).Value = data.Lines.Where(x => x.Kind == "work")
-            .GroupBy(x => x.Date).Count(group => group.Sum(x => x.DurationMinutes) > 480);
+        sheet.Cell(6, 5).Value = "Overtime days"; sheet.Cell(6, 6).Value = OvertimeDays(data);
         var showMember = data.Lines.Any(x => x.Member.Length > 0);
         string[] headers = showMember
             ? ["Date", "Member", "Start", "End", "Hours", "Task", "Detail", "Notes", "Project", "Category"]
@@ -127,7 +135,7 @@ public static class ReportDocumentRenderer
         var workLines = data.Lines.Where(x => x.Kind == "work").ToArray();
         var workedDays = workLines.Select(x => x.Date).Distinct().Count();
         var hours = workLines.Sum(x => x.DurationMinutes) / 60d;
-        var overtimeDays = workLines.GroupBy(x => x.Date).Count(group => group.Sum(x => x.DurationMinutes) > 480);
+        var overtimeDays = OvertimeDays(data);
         gfx.DrawString($"Leave days: {data.LeaveDays}    Days off: {DaysOff(data)}    Worked days: {workedDays}    Work hours: {hours:0.##}    Overtime days: {overtimeDays}",
             body, XBrushes.Black, left, 91);
         var y = 112d;
@@ -249,6 +257,23 @@ public static class ReportDocumentRenderer
                 lines.Add(new ReportLine(date, "", "", 0, "Day off", "", "Weekly day off", "", "", "dayoff"));
         }
         return lines;
+    }
+
+    /// <summary>A normal working day from a month snapshot's <c>workHours</c> (the hours less the
+    /// break), or null for a month closed before working hours existed.</summary>
+    public static int? ReadStandardDayMinutes(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("workHours", out var hours) || hours.ValueKind != JsonValueKind.Object)
+            return null;
+        static int? Minutes(JsonElement hours, string name) =>
+            hours.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
+            TimeOnly.TryParse(value.GetString(), CultureInfo.InvariantCulture, out var time)
+                ? time.Hour * 60 + time.Minute : null;
+        if (Minutes(hours, "startTime") is not { } start || Minutes(hours, "endTime") is not { } end) return null;
+        var breakMinutes = Minutes(hours, "breakStart") is { } breakStart && Minutes(hours, "breakEnd") is { } breakEnd
+            ? breakEnd - breakStart : 0;
+        return end - start - breakMinutes;
     }
 
     public static int CountLeaveDays(string json)
