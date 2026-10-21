@@ -104,6 +104,17 @@ public sealed class ReportController(ReportOperations operations) : BaseControll
     public Task<IActionResult> UploadSignedDocument(Guid id, IFormFile file, CancellationToken ct) =>
         WithActorAsync(actor => operations.UploadSignedDocument(actor, id, file, ct), adminOnly: true);
 
+    /// <summary>A member's month as the caller sends it, rendered as the same PDF as a generated monthly
+    /// report (Noto Sans Thai, signature lines). Open to every member; Report reads and stores nothing.
+    /// 400 VALIDATION_FAILED for more than 1,000 lines, an unknown kind, times that are not HH:mm, or
+    /// text over its limit.</summary>
+    [HttpPost("exports/timesheet-pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK, "application/pdf")]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    public IActionResult TimesheetPdf([FromBody] TimesheetPdfRequest body) =>
+        WithActor(actor => operations.TimesheetPdf(actor, body));
+
     [HttpGet("schedules")]
     [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]

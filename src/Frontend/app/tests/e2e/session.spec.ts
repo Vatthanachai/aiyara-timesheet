@@ -1790,6 +1790,7 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     timesheetQueries: [] as string[],
     myQueries: [] as string[],
     regenerated: [] as string[],
+    pdfRequests: [] as Record<string, unknown>[],
     scheduleRequests: [] as Record<string, unknown>[],
     schedules: [] as Record<string, unknown>[]
   }
@@ -1895,6 +1896,10 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     }
     if (url.pathname.endsWith('/reports/schedules')) return ok(state.schedules)
     if (url.pathname.endsWith('/reports/retention')) return ok({ years: 7 })
+    if (url.pathname.endsWith('/reports/exports/timesheet-pdf')) {
+      state.pdfRequests.push(request.postDataJSON())
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/pdf', body: '%PDF-1.7 %%EOF' })
+    }
     if (url.pathname.endsWith('/reports/runs')) {
       if (request.method() === 'POST') {
         state.created.push(request.postDataJSON())
@@ -2052,9 +2057,11 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   // Totals by group: busiest first, members in no group last, former members left out.
   const byGroup = section.getByRole('table', { name: 'Totals by group' })
   await expect(byGroup.locator('tbody tr')).toHaveCount(3)
-  await expect(byGroup.locator('tbody tr').nth(0)).toContainText('Outsource17:3031')
-  await expect(byGroup.locator('tbody tr').nth(1)).toContainText('Permanent staff10:0000')
-  await expect(byGroup.locator('tbody tr').nth(2)).toContainText('No group10:0000')
+  // Columns: group, bar, hours, entries, leave days, members (the member table's grid, so the two line up).
+  const groupCells = (row: number) => byGroup.locator('tbody tr').nth(row).locator('td')
+  await expect(groupCells(0)).toHaveText(['Outsource', '', '7:30', '3', '1', '1'])
+  await expect(groupCells(1)).toHaveText(['Permanent staff', '', '0:00', '0', '0', '1'])
+  await expect(groupCells(2)).toHaveText(['No group', '', '0:00', '0', '0', '1'])
   await expect(table.locator('tbody tr').filter({ hasText: 'Somchai Staff' })).toContainText('Outsource')
   // Filtering by a group shows only its members and hides the group totals.
   await section.getByLabel('Group', { exact: true }).selectOption({ label: 'Outsource' })
@@ -2097,9 +2104,16 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   await expect(daysOff).toContainText('Memorial day')
   await expect(daysOff).toContainText('Weekly day off')
 
-  // Both exports download the month on the spot, open month included, days off named in Remark.
+  // Export Excel is the main button; CSV and PDF are in its menu. The CSV and Excel files download the
+  // month on the spot, open month included, days off named in Remark.
   const exportGroup = section.getByRole('group', { name: 'Export the timesheet of Somchai Staff' })
-  const [csvDownload] = await Promise.all([page.waitForEvent('download'), exportGroup.getByRole('button', { name: 'Export CSV' }).click()])
+  const moreFormats = exportGroup.getByRole('button', { name: 'Export as another file type' })
+  await expect(moreFormats).toHaveAttribute('aria-expanded', 'false')
+  await moreFormats.click()
+  await expect(moreFormats).toHaveAttribute('aria-expanded', 'true')
+  await expect(exportGroup.getByRole('menuitem')).toHaveText(['CSV (.csv)', 'PDF (.pdf)'])
+  const [csvDownload] = await Promise.all([page.waitForEvent('download'), exportGroup.getByRole('menuitem', { name: 'CSV (.csv)' }).click()])
+  await expect(exportGroup.getByRole('menu')).toBeHidden()
   expect(csvDownload.suggestedFilename()).toBe('timesheet-Somchai-Staff-2026-10.csv')
   const csv = readFileSync(await csvDownload.path(), 'utf8')
   expect(csv.charCodeAt(0)).toBe(0xFEFF)
@@ -2113,7 +2127,7 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   expect(csvLines).toContain('2026-10-09,,,,Vacation,,,,,Leave')
   // Five days off, one leave day, three entries, after five heading rows.
   expect(csvLines).toHaveLength(5 + 5 + 1 + 3)
-  const [xlsxDownload] = await Promise.all([page.waitForEvent('download'), exportGroup.getByRole('button', { name: 'Export XLSX' }).click()])
+  const [xlsxDownload] = await Promise.all([page.waitForEvent('download'), exportGroup.getByRole('button', { name: 'Export Excel' }).click()])
   expect(xlsxDownload.suggestedFilename()).toBe('timesheet-Somchai-Staff-2026-10.xlsx')
   // Entries are stored uncompressed, so the sheet's text is readable in the raw package.
   const xlsx = readFileSync(await xlsxDownload.path())
@@ -2123,6 +2137,30 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   // An Excel table over the entry rows, and 5 October's two entries carry the date once (CSV: on both).
   expect(xlsxText).toContain('<tablePart r:id="rId1"/>')
   expect(xlsxText).toContain('ref="A5:J14"')
+
+  // PDF comes from Report: the keyboard opens the menu, Escape closes it, and the month is sent as lines.
+  await moreFormats.focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(exportGroup.getByRole('menuitem', { name: 'CSV (.csv)' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(exportGroup.getByRole('menu')).toBeHidden()
+  await expect(moreFormats).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await expect(exportGroup.getByRole('menuitem', { name: 'PDF (.pdf)' })).toBeFocused()
+  const [pdfDownload] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Enter')])
+  expect(pdfDownload.suggestedFilename()).toBe('timesheet-Somchai-Staff-2026-10.pdf')
+  expect(readFileSync(await pdfDownload.path()).subarray(0, 5).toString()).toBe('%PDF-')
+  const pdfRequest = state.pdfRequests[0] as { lines: { kind: string; date: string; start: string | null; task: string }[] }
+  expect(pdfRequest).toMatchObject({ memberName: 'Somchai Staff', period: 'October 2026', department: 'Outsource',
+    standardDayMinutes: 420, dateFormat: 'dd/MM/yyyy', timeFormat: 'HH:mm' })
+  // Five days off, one leave day, and three entries, as in the spreadsheet.
+  expect(pdfRequest.lines).toHaveLength(9)
+  expect(pdfRequest.lines).toContainEqual(expect.objectContaining({ date: '2026-10-06', kind: 'holiday', task: 'Memorial day' }))
+  expect(pdfRequest.lines).toContainEqual(expect.objectContaining({ date: '2026-10-04', kind: 'dayoff' }))
+  expect(pdfRequest.lines).toContainEqual(expect.objectContaining({ date: '2026-10-09', kind: 'leave', task: 'Vacation' }))
+  expect(pdfRequest.lines).toContainEqual(expect.objectContaining({ date: '2026-10-05', kind: 'work', start: '09:00', end: '12:00',
+    durationMinutes: 180, task: 'Design review', project: 'Apollo' }))
   // XLSX dates follow the organization's format (here the default dd/MM/yyyy); CSV stays ISO.
   expect(xlsxText.split('05/10/2026').length - 1).toBe(1)
   expect(xlsxText).not.toContain('2026-10-05')
@@ -2163,7 +2201,8 @@ test('employees request only their own reports and never load the member directo
   await expect(mine.getByRole('button', { name: /All members/ })).toHaveCount(0)
   await expect(mine.getByLabel('Group', { exact: true })).toHaveCount(0)
   expect(state.myQueries[0]).toMatch(/^year=\d{4}&month=\d{1,2}$/)
-  const [download] = await Promise.all([page.waitForEvent('download'), mine.getByRole('button', { name: 'Export CSV' }).click()])
+  await mine.getByRole('button', { name: 'Export as another file type' }).click()
+  const [download] = await Promise.all([page.waitForEvent('download'), mine.getByRole('menuitem', { name: 'CSV (.csv)' }).click()])
   expect(download.suggestedFilename()).toMatch(/^timesheet-Mali-Member-\d{4}-\d{2}\.csv$/)
   expect(readFileSync(await download.path(), 'utf8')).toContain('My timesheet,Mali Member · ')
 

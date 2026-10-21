@@ -127,6 +127,17 @@ public sealed class ReportApiWorkflowTests
             var download = await client.GetAsync($"/api/v1/runs/{runId}/download");
             Assert.Equal(HttpStatusCode.OK, download.StatusCode);
             Assert.Equal(latestSignedPdf, await download.Content.ReadAsByteArrayAsync());
+
+            // Export PDF: the month the caller sends comes back as a PDF file; a bad line is refused.
+            var month = new TimesheetPdfRequest("Ada", "September 2026",
+                [new TimesheetPdfLine(new DateOnly(2026, 9, 1), "09:00", "17:00", 420, "Review")]);
+            using var pdf = await client.PostAsJsonAsync("/api/v1/exports/timesheet-pdf", month);
+            Assert.Equal(HttpStatusCode.OK, pdf.StatusCode);
+            Assert.Equal("application/pdf", pdf.Content.Headers.ContentType?.MediaType);
+            Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(await pdf.Content.ReadAsByteArrayAsync(), 0, 5));
+            using var invalidPdf = await client.PostAsJsonAsync("/api/v1/exports/timesheet-pdf",
+                month with { Lines = [new TimesheetPdfLine(new DateOnly(2026, 9, 1), "9am", "5pm", 420, "Review")] });
+            Assert.Equal(HttpStatusCode.BadRequest, invalidPdf.StatusCode);
             await using var auditScope = app.Services.CreateAsyncScope();
             auditScope.ServiceProvider.GetRequiredService<ReportingTenantScope>().TenantId = tenantId;
             var auditDb = auditScope.ServiceProvider.GetRequiredService<ReportingDbContext>();

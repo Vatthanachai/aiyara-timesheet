@@ -33,6 +33,8 @@ const props = defineProps<{
   formats: Formats
   /** Set for a member who is not an admin: shows only their own month, read live. */
   self?: { name: string }
+  /** Renders a month as a timesheet PDF through Report, returning the file. */
+  exportPdf: (body: unknown) => Promise<Blob>
 }>()
 
 const copy = useLocaleText(toRef(props, 'locale'), { th: {
@@ -44,7 +46,7 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   byProject: 'ชั่วโมงตามโครงการ', noProject: 'ไม่ระบุโครงการ', leave: 'วันลา', holidays: 'วันหยุด', weeklyDayOff: 'วันหยุดประจำสัปดาห์', daysOff: 'วันหยุด',
   noEntries: 'ไม่มีรายการเวลาทำงานในเดือนนี้', noLeave: 'ไม่มีวันลา', noHolidays: 'ไม่มีวันหยุดในเดือนนี้', dayTotal: 'รวมวันนี้',
   group: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม', byGroup: 'สรุปตามกลุ่ม', members: 'สมาชิก', noMembersInGroup: 'ไม่มีสมาชิกในกลุ่มนี้',
-  exportXlsx: 'ส่งออก XLSX', exportCsv: 'ส่งออก CSV', exportLabel: 'ส่งออก timesheet ของ {name}', start: 'เริ่ม', end: 'สิ้นสุด',
+  exportExcel: 'ส่งออก Excel', moreFormats: 'ส่งออกเป็นไฟล์แบบอื่น', asCsv: 'CSV (.csv)', asPdf: 'PDF (.pdf)', preparingPdf: 'กำลังสร้าง PDF…', exportLabel: 'ส่งออก timesheet ของ {name}', start: 'เริ่ม', end: 'สิ้นสุด',
   detail: 'รายละเอียด', notes: 'บันทึก', remark: 'หมายเหตุ', status: 'สถานะ',
   expectedOpen: 'ถึงวันนี้ควรมี {toDate} จาก {total} ชั่วโมงต่อคน', expectedClosed: '{month} ต้องการ {total} ชั่วโมงต่อคน',
   ofHours: 'จาก {expected}', hoursLabel: '{name}: บันทึก {logged} จาก {expected} ชั่วโมง', strip: 'ชั่วโมงรายวันของ {name}',
@@ -58,7 +60,7 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   byProject: 'Hours by project', noProject: 'No project', leave: 'Leave', holidays: 'Days off', weeklyDayOff: 'Weekly day off', daysOff: 'Days off',
   noEntries: 'No time entries this month.', noLeave: 'No leave.', noHolidays: 'No days off this month.', dayTotal: 'Day total',
   group: 'Group', allGroups: 'All groups', noGroup: 'No group', byGroup: 'Totals by group', members: 'Members', noMembersInGroup: 'No members in this group.',
-  exportXlsx: 'Export XLSX', exportCsv: 'Export CSV', exportLabel: 'Export the timesheet of {name}', start: 'Start', end: 'End',
+  exportExcel: 'Export Excel', moreFormats: 'Export as another file type', asCsv: 'CSV (.csv)', asPdf: 'PDF (.pdf)', preparingPdf: 'Preparing the PDF…', exportLabel: 'Export the timesheet of {name}', start: 'Start', end: 'End',
   detail: 'Detail', notes: 'Notes', remark: 'Remark', status: 'Status',
   expectedOpen: 'Expected so far: {toDate} of {total} hours per member.', expectedClosed: '{month} expects {total} hours per member.',
   ofHours: 'of {expected}', hoursLabel: '{name}: {logged} of {expected} hours logged', strip: 'Hours per day for {name}',
@@ -213,12 +215,43 @@ function exportRows(forReading: boolean): Cell[][] {
 }
 /** Rows above the entry table: heading, status, totals, and a gap. */
 const EXPORT_TABLE_ROW = 4
+/** "timesheet-<member>-<YYYY-MM>", keeping the member's name minus characters file systems refuse. */
+const fileStem = computed(() => `timesheet-${selectedName.value.replace(/[\\/:*?"<>|\s]+/g, '-')}-${month.value}`)
 function exportTimesheet(format: 'xlsx' | 'csv') {
   const sheet = { name: month.value, rows: exportRows(format === 'xlsx'), boldRows: [0],
     table: { headerRow: EXPORT_TABLE_ROW, name: 'Timesheet' }, widths: [14, 9, 9, 9, 40, 28, 24, 18, 18, 22] }
-  // Keep the member's name in the file name, minus characters file systems refuse.
-  const name = selectedName.value.replace(/[\\/:*?"<>|\s]+/g, '-')
-  saveBlob(format === 'xlsx' ? xlsxBlob(sheet) : csvBlob(sheet), `timesheet-${name}-${month.value}.${format}`)
+  saveBlob(format === 'xlsx' ? xlsxBlob(sheet) : csvBlob(sheet), `${fileStem.value}.${format}`)
+}
+
+/** The open month for Report's PDF, in the same rows as the spreadsheet: days off, leave, then work. */
+function pdfRequest() {
+  const current = detail.value!
+  const holidays = new Set(current.holidays.map(x => x.date))
+  return {
+    memberName: selectedName.value, period: monthLabel.value,
+    department: props.self ? null : memberById(selectedId.value)?.groupName ?? null,
+    standardDayMinutes: detailSchedule.value?.standardMinutes ?? null,
+    dateFormat: props.formats.dateFormat, timeFormat: props.formats.timeFormat,
+    lines: [
+      ...[...daysOff.value].map(([date, name]) => ({ date, start: null, end: null, durationMinutes: 0, task: name,
+        notes: holidays.has(date) ? copy.value.holidays : copy.value.weeklyDayOff, kind: holidays.has(date) ? 'holiday' : 'dayoff' })),
+      ...current.leaves.map(leave => ({ date: leave.date, start: null, end: null, durationMinutes: 0, task: leave.kind,
+        notes: leave.notes, kind: 'leave' })),
+      ...current.entries.map(entry => ({ date: entry.date, start: entry.startTime.slice(0, 5), end: entry.endTime.slice(0, 5),
+        durationMinutes: entry.durationMinutes, task: entry.taskName, detail: entry.detail, notes: entry.notes,
+        project: entry.projectName, category: entry.categoryName, kind: 'work' }))
+    ]
+  }
+}
+const preparingPdf = ref(false)
+async function exportAs(format: string) {
+  if (format === 'csv') return exportTimesheet('csv')
+  if (format !== 'pdf') return
+  preparingPdf.value = true
+  error.value = ''
+  try { saveBlob(await props.exportPdf(pdfRequest()), `${fileStem.value}.pdf`) }
+  catch (cause) { error.value = safeError(cause, props.locale) }
+  finally { preparingPdf.value = false }
 }
 
 async function run(action: () => Promise<void>) {
@@ -277,8 +310,9 @@ onMounted(async () => {
         <h3>{{ selectedName }} <span class="detail-month">{{ monthLabel }}</span></h3>
         <span class="status" :data-status="detail.locked ? 'Succeeded' : 'Blocked'">{{ detail.locked ? copy.monthClosed : copy.monthOpen }}</span>
         <div class="export-actions" role="group" :aria-label="copy.exportLabel.replace('{name}', selectedName)">
-          <button type="button" @click="exportTimesheet('xlsx')">{{ copy.exportXlsx }}</button>
-          <button type="button" class="secondary" @click="exportTimesheet('csv')">{{ copy.exportCsv }}</button>
+          <ExportMenu :label="copy.exportExcel" :more-label="copy.moreFormats" :busy="preparingPdf"
+            :items="[{ key: 'csv', label: copy.asCsv }, { key: 'pdf', label: copy.asPdf }]" @run="exportTimesheet('xlsx')" @select="exportAs" />
+          <span v-if="preparingPdf" class="muted" role="status">{{ copy.preparingPdf }}</span>
         </div>
       </div>
       <MonthStrip v-if="detailSchedule" :month="month" :minutes-by-day="dayTotals" :leave-days="leaveDates" :schedule="detailSchedule"
@@ -292,7 +326,8 @@ onMounted(async () => {
       </dl>
       <p v-if="!detail.entries.length" class="empty">{{ copy.noEntries }}</p>
       <div v-else class="table-wrap">
-        <table :aria-label="`${copy.entries}: ${selectedName}`">
+        <table class="entries-table" :aria-label="`${copy.entries}: ${selectedName}`">
+          <colgroup><col class="col-date" /><col class="col-time" /><col /><col class="col-tag" /><col class="col-tag" /><col class="col-hours" /></colgroup>
           <thead><tr>
             <th scope="col">{{ copy.date }}</th><th scope="col">{{ copy.time }}</th><th scope="col">{{ copy.task }}</th>
             <th scope="col">{{ copy.project }}</th><th scope="col">{{ copy.category }}</th><th scope="col" class="number">{{ copy.duration }}</th>
@@ -330,24 +365,25 @@ onMounted(async () => {
 
     <template v-else-if="summary">
       <div v-if="groups.length && !groupFilter" class="table-wrap group-totals">
-        <table :aria-label="copy.byGroup">
+        <table class="ledger" :aria-label="copy.byGroup">
           <caption>{{ copy.byGroup }}</caption>
+          <colgroup><col class="col-name" /><col v-if="schedule" /><col class="col-hours" /><col class="col-count" /><col class="col-leave" /><col class="col-last" /></colgroup>
           <thead><tr>
-            <th scope="col">{{ copy.group }}</th><th scope="col" class="number">{{ copy.members }}</th>
+            <th scope="col">{{ copy.group }}</th>
             <th v-if="schedule" scope="col" class="bar-cell"><span class="sr-only">{{ copy.hours }}</span></th>
             <th scope="col" class="number">{{ copy.hours }}</th><th scope="col" class="number optional">{{ copy.entries }}</th>
-            <th scope="col" class="number optional">{{ copy.leaveDays }}</th>
+            <th scope="col" class="number optional">{{ copy.leaveDays }}</th><th scope="col" class="number">{{ copy.members }}</th>
           </tr></thead>
           <tbody>
             <tr v-for="group in groupTotals" :key="group.key">
               <td><button type="button" class="link-button" @click="groupFilter = group.key">{{ group.name }}</button>
                 <HoursBar v-if="schedule" class="inline-bar" :logged="group.totalMinutes" :expected="group.expected" :to-date="group.toDate"
                   :label="hoursLabel(group.name, group.totalMinutes, group.expected)" /></td>
-              <td class="number">{{ group.members }}</td>
               <td v-if="schedule" class="bar-cell"><HoursBar :logged="group.totalMinutes" :expected="group.expected" :to-date="group.toDate"
                 :label="hoursLabel(group.name, group.totalMinutes, group.expected)" /></td>
               <td class="number">{{ hours(group.totalMinutes) }}</td>
               <td class="number optional">{{ group.entryCount }}</td><td class="number optional">{{ group.leaveDays }}</td>
+              <td class="number">{{ group.members }}</td>
             </tr>
           </tbody>
         </table>
@@ -355,7 +391,8 @@ onMounted(async () => {
       <p class="month-state"><span class="status" :data-status="summary.locked ? 'Succeeded' : 'Blocked'">{{ summary.locked ? copy.monthClosed : copy.monthOpen }}</span>
         <span v-if="expectedSentence" class="expected-sentence">{{ expectedSentence }}</span></p>
       <div class="table-wrap">
-        <table class="member-table" :aria-label="copy.title">
+        <table class="member-table ledger" :aria-label="copy.title">
+          <colgroup><col class="col-name" /><col v-if="schedule" /><col class="col-hours" /><col class="col-count" /><col class="col-leave" /><col class="col-last" /></colgroup>
           <thead><tr>
             <th scope="col">{{ copy.member }}</th>
             <th v-if="schedule" scope="col" class="bar-cell"><span class="sr-only">{{ copy.hours }}</span></th>
@@ -391,13 +428,16 @@ onMounted(async () => {
 
 <style scoped>
 .member-timesheets .card-heading p{margin:.3rem 0 0;max-width:36rem}
-.member-table{min-width:34rem}
 .member-filters{display:flex;flex-wrap:wrap;gap:.6rem}
 .group-totals{margin-bottom:1.25rem}
-.group-totals table{min-width:30rem}
 .group-totals caption{text-align:left;font-family:var(--font-display);font-weight:600;padding-bottom:.4rem}
 /* The ledger: each row's hours as a bar against what the month expects. */
-.bar-cell{width:42%;min-width:8rem;vertical-align:middle}
+/* Both ledgers share one column grid, so bars and figures line up from table to table. */
+.ledger{table-layout:fixed;min-width:40rem}
+.ledger .col-name{width:26%}.ledger .col-hours{width:7rem}.ledger .col-count{width:5.5rem}
+.ledger .col-leave{width:6.5rem}.ledger .col-last{width:9.5rem}
+.ledger td:first-child{overflow-wrap:anywhere}
+.bar-cell{vertical-align:middle}
 .member-timesheets .inline-bar{display:none}
 .link-button{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:600;text-align:left;text-decoration:underline;cursor:pointer}
 .number{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -418,12 +458,17 @@ onMounted(async () => {
 .member-totals dd{margin:.15rem 0 0;font-family:var(--font-display);font-size:1.5rem;font-weight:600;font-variant-numeric:tabular-nums}
 tr.day-end td{border-bottom-color:#c9d3e1}
 .day-off{display:block;width:max-content;margin-top:.2rem;padding:.05rem .45rem;border-radius:999px;background:var(--color-day-off);color:#475569;font-size:.72rem}
-.detail-lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:0 1.5rem}
+/* A member's entries: the task takes the room, the rest keep steady widths. */
+.entries-table{table-layout:fixed;min-width:44rem}
+.entries-table .col-date{width:9.5rem}.entries-table .col-time{width:8.5rem}.entries-table .col-tag{width:8.5rem}.entries-table .col-hours{width:6.5rem}
+.entries-table td{overflow-wrap:anywhere}
+.detail-lists{margin-top:1.5rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:0 1.5rem}
 .detail-lists h3{font-family:var(--font-display);font-weight:600}
 .plain-list{list-style:none;margin:0;padding:0;display:grid;gap:.35rem}
 .plain-list li{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;border-bottom:1px solid var(--color-border);padding:.35rem 0}
 @media (max-width:40rem){
-  .member-table,.group-totals table{min-width:0}
+  .ledger{table-layout:auto;min-width:0}
+  .ledger col[class]{width:auto}
   /* On a phone the counts give way to the bar; a member's own view still lists them. */
   .bar-cell,.optional,.view-long{display:none}
   .view-short{display:inline}

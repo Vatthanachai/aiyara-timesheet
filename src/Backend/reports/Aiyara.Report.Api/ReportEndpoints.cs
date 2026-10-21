@@ -22,6 +22,20 @@ public sealed record RunRequest(Guid DefinitionId, DateTimeOffset PeriodStartUtc
 public sealed record ScheduleRequest(Guid ReportDefinitionId, string TimeZoneId, TimeOnly LocalTime,
     Guid? GroupId = null);
 public sealed record RetentionRequest(int Years);
+/// <summary>One member's month as the caller already sees it in Reporting, rendered as the same PDF as
+/// a generated monthly report. Report reads and stores nothing for it: like the page's XLSX and CSV
+/// exports, the file holds exactly what the caller sent. DateFormat and TimeFormat are the
+/// organization's (<see cref="Services.ReportFormats"/>); StandardDayMinutes is its normal working day,
+/// which marks overtime days.</summary>
+public sealed record TimesheetPdfRequest(string MemberName, string Period, IReadOnlyList<TimesheetPdfLine> Lines,
+    string? Department = null, int? StandardDayMinutes = null, string? DateFormat = null, string? TimeFormat = null)
+{
+    public const int MaxLines = 1000;
+}
+/// <summary>Kind is work, leave, holiday, or dayoff. Start and End are HH:mm for work and empty
+/// otherwise; Task names the work, the leave kind, or the day off.</summary>
+public sealed record TimesheetPdfLine(DateOnly Date, string? Start, string? End, int DurationMinutes, string Task,
+    string? Detail = null, string? Notes = null, string? Project = null, string? Category = null, string Kind = "work");
 /// <summary>SubjectUserIds, when given, keeps only runs about those members (at most
 /// <see cref="MaxSubjectUserIds"/>), so a caller can show one member group's reports; runs about
 /// the whole organization have no subject and are then left out.</summary>
