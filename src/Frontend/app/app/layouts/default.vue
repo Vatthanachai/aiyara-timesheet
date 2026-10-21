@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
+import { DEFAULT_FORMATS, readFormats, type Formats } from '../../../shared/date-format'
 type ProfileSummary = {
   email: string
   firstName: string
   lastName: string
   photoUrl: string | null
 }
-type OrganizationSummary = { name: string; logoUrl: string | null }
+type OrganizationSummary = { name: string; logoUrl: string | null; dateFormat?: string; timeFormat?: string }
 
 const { visibleNavigation } = useRemoteNavigation()
 const { locale, setLocale } = useLocale()
@@ -23,6 +24,8 @@ let avatarObjectUrl = ''
 // The signed-in organization's name and logo replace the product name in the header.
 const organization = ref<OrganizationSummary | null>(null)
 const organizationLogo = ref('')
+// The organization's date and time formats, which the remote page passes to every remote.
+const formats = useState<Formats>('organization-formats', () => DEFAULT_FORMATS)
 
 const profileName = computed(() => {
   const fullName = [profile.value?.firstName, profile.value?.lastName]
@@ -91,6 +94,7 @@ function onProfileUpdated(event: MessageEvent) {
 
 function clearOrganization() {
   organization.value = null
+  formats.value = DEFAULT_FORMATS
   if (organizationLogo.value) URL.revokeObjectURL(organizationLogo.value)
   organizationLogo.value = ''
 }
@@ -110,6 +114,7 @@ async function loadOrganization() {
     if (organizationLogo.value) URL.revokeObjectURL(organizationLogo.value)
     organizationLogo.value = logo
     organization.value = value
+    formats.value = readFormats(value)
   } catch { clearOrganization() } // The product name stays when branding cannot load.
 }
 

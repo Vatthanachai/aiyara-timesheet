@@ -50,7 +50,7 @@ public sealed class GroupReportGenerationTests
         var identity = new Profiles(new()
         {
             [ada] = new LookupProfileResponse { Found = true, FirstName = "Ada", LastName = "Lovelace" }
-        });
+        }, new GetOrganizationSettingsResponse { Found = true, DateFormat = "dd/MM/bbbb", TimeFormat = "h:mm a" });
         var storage = new MemoryStorage();
         var consumer = new ReportGenerationConsumer(provider.GetRequiredService<IServiceScopeFactory>(),
             new ConfigurationBuilder().Build(), storage,
@@ -68,6 +68,11 @@ public sealed class GroupReportGenerationTests
         Assert.Contains("Ben task", document);
         // September 2026's weekends, from a snapshot closed before work weeks existed.
         Assert.Contains("Weekly day off", document);
+        // Identity's formats: the period and every date in the Buddhist year, times on a 12-hour clock.
+        Assert.Contains("01/09/2569 – 30/09/2569", document);
+        Assert.Contains("07/09/2569", document);
+        Assert.Contains("9:00 AM", document);
+        Assert.Equal(tenantId.ToString(), Assert.Single(identity.SettingsRequests));
         // Someone Identity no longer knows is shown by account ID.
         Assert.Contains(ben.ToString("D"), document);
         Assert.Equal(new[] { ada, ben }.Order(), identity.LookedUp.Order());
@@ -139,6 +144,8 @@ public sealed class GroupReportGenerationTests
         Assert.Contains("Member", document);
         Assert.Contains("Ada Lovelace", document);
         Assert.Contains("ben@acme.test", document);
+        // Identity did not answer for formats, so the report still rendered, with the defaults.
+        Assert.Contains("01/09/2026 – 30/09/2026", document);
         Assert.Equal(new[] { ada, ben }.Order(), identity.LookedUp.Order());
     }
 
@@ -181,10 +188,23 @@ public sealed class GroupReportGenerationTests
     }
 
     /// <summary>Answers profile lookups from a dictionary instead of calling Identity.</summary>
-    private sealed class Profiles(Dictionary<Guid, LookupProfileResponse> profiles)
+    private sealed class Profiles(Dictionary<Guid, LookupProfileResponse> profiles,
+        GetOrganizationSettingsResponse? settings = null)
         : IdentityValidationService.IdentityValidationServiceClient
     {
         public List<Guid> LookedUp { get; } = [];
+        public List<string> SettingsRequests { get; } = [];
+
+        /// <summary>Answers with the given formats, or fails like an unreachable Identity.</summary>
+        public override AsyncUnaryCall<GetOrganizationSettingsResponse> GetOrganizationSettingsAsync(
+            GetOrganizationSettingsRequest request, Metadata? headers = null, DateTime? deadline = null,
+            CancellationToken cancellationToken = default)
+        {
+            SettingsRequests.Add(request.TenantId);
+            if (settings is null) throw new RpcException(new Status(StatusCode.Unavailable, "Identity is down."));
+            return new AsyncUnaryCall<GetOrganizationSettingsResponse>(Task.FromResult(settings),
+                Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => [], () => { });
+        }
 
         public override AsyncUnaryCall<LookupProfileResponse> LookupProfileAsync(LookupProfileRequest request,
             Metadata? headers = null, DateTime? deadline = null, CancellationToken cancellationToken = default)

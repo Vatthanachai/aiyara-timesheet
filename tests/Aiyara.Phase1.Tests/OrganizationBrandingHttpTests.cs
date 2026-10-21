@@ -72,6 +72,44 @@ public sealed class OrganizationBrandingHttpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Members_read_the_date_and_time_formats_and_only_admins_change_them()
+    {
+        var admin = Token(adminId, acme, "TenantAdmin");
+        using var read = await Send(HttpMethod.Get, "/api/v1/organization", Token(employeeId, acme, "Employee"));
+        var defaults = await Result(read);
+        Assert.Equal(("dd/MM/yyyy", "HH:mm"),
+            (defaults.GetProperty("dateFormat").GetString(), defaults.GetProperty("timeFormat").GetString()));
+
+        using var byEmployee = await Send(HttpMethod.Put, "/api/v1/organization/formats", Token(employeeId, acme, "Employee"),
+            JsonContent.Create(new { dateFormat = "dd/MM/bbbb", timeFormat = "h:mm a" }));
+        using var badDate = await Send(HttpMethod.Put, "/api/v1/organization/formats", admin,
+            JsonContent.Create(new { dateFormat = "dddd", timeFormat = "HH:mm" }));
+        using var badTime = await Send(HttpMethod.Put, "/api/v1/organization/formats", admin,
+            JsonContent.Create(new { dateFormat = "dd/MM/yyyy", timeFormat = "hh:mm:ss" }));
+        using var missing = await Send(HttpMethod.Put, "/api/v1/organization/formats", admin, JsonContent.Create(new { }));
+        using var saved = await Send(HttpMethod.Put, "/api/v1/organization/formats", admin,
+            JsonContent.Create(new { dateFormat = "dd/MM/bbbb", timeFormat = "h:mm a" }));
+        using var again = await Send(HttpMethod.Put, "/api/v1/organization/formats", admin,
+            JsonContent.Create(new { dateFormat = "dd/MM/bbbb", timeFormat = "h:mm a" }));
+
+        Assert.Equal(HttpStatusCode.Forbidden, byEmployee.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, badDate.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, badTime.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        Assert.Equal("dd/MM/bbbb", (await Result(saved)).GetProperty("dateFormat").GetString());
+        using var reread = await Send(HttpMethod.Get, "/api/v1/organization", Token(employeeId, acme, "Employee"));
+        Assert.Equal("h:mm a", (await Result(reread)).GetProperty("timeFormat").GetString());
+        using var otherTenant = await Send(HttpMethod.Get, "/api/v1/organization", Token(betaAdminId, beta, "TenantAdmin"));
+        Assert.Equal("dd/MM/yyyy", (await Result(otherTenant)).GetProperty("dateFormat").GetString());
+        // Saving the same formats again records nothing new.
+        var audit = await Audits("organization.formats_updated").SingleAsync();
+        Assert.Equal(adminId, audit.ActorAccountId);
+        Assert.Contains("dd/MM/yyyy", audit.BeforeJson);
+        Assert.Contains("h:mm a", audit.AfterJson);
+    }
+
+    [Fact]
     public async Task Admin_uploads_and_removes_a_logo_that_every_member_can_load()
     {
         var admin = Token(adminId, acme, "TenantAdmin");

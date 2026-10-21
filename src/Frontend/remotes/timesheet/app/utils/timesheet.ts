@@ -1,4 +1,4 @@
-import { inject, type InjectionKey, type Ref } from 'vue'
+import { inject, type ComputedRef, type InjectionKey, type Ref } from 'vue'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 
 export type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null }
@@ -61,6 +61,16 @@ export type TimesheetText = ReturnType<typeof useTimesheetText>
 
 /** app.vue provides its copy once so each panel reads the same locale-keyed text. */
 export const timesheetTextKey: InjectionKey<TimesheetText> = Symbol('timesheet-text')
+
+/** Dates and times in the organization's formats, which app.vue provides from the session. */
+export type TimesheetDates = ComputedRef<{ date: (value: string) => string; time: (value: string) => string }>
+export const timesheetDatesKey: InjectionKey<TimesheetDates> = Symbol('timesheet-dates')
+
+export function injectTimesheetDates() {
+  const value = inject(timesheetDatesKey)
+  if (!value) throw new Error('Timesheet dates were not provided.')
+  return value
+}
 
 export function injectTimesheetText() {
   const value = inject(timesheetTextKey)

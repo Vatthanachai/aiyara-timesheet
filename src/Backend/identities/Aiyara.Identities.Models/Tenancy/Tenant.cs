@@ -23,4 +23,19 @@ public sealed class Tenant
     public string? LogoKey { get; set; }
     /// <summary>When the logo last changed; versions its URL so browsers fetch the new one.</summary>
     public DateTime? LogoUpdatedAtUtc { get; set; }
+    /// <summary>How every member sees dates; one of <see cref="OrganizationFormats.DateFormats"/>.</summary>
+    public string DateFormat { get; set; } = OrganizationFormats.DefaultDateFormat;
+    /// <summary>How every member sees times; one of <see cref="OrganizationFormats.TimeFormats"/>.</summary>
+    public string TimeFormat { get; set; } = OrganizationFormats.DefaultTimeFormat;
+}
+
+/// <summary>The date and time formats a Tenant Admin may choose. <c>bbbb</c> is the Buddhist year
+/// (Gregorian + 543); <c>MMM</c> is the month name in the viewer's language.</summary>
+public static class OrganizationFormats
+{
+    public const string DefaultDateFormat = "dd/MM/yyyy";
+    public const string DefaultTimeFormat = "HH:mm";
+    public static readonly IReadOnlyList<string> DateFormats =
+        [DefaultDateFormat, "dd/MM/bbbb", "d MMM yyyy", "yyyy-MM-dd", "MM/dd/yyyy"];
+    public static readonly IReadOnlyList<string> TimeFormats = [DefaultTimeFormat, "h:mm a"];
 }

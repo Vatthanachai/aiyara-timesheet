@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Aiyara.Identities.Models.Tenancy;
 using Aiyara.Identities.Databases;
 using Aiyara.Identities.Services.Authentication;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,24 @@ public sealed class OrganizationBrandingService(IdentityDbContext db, TenantScop
         tenant.Name = name;
         PlatformOrganizationService.Audit(db, tenantId, actorAccountId, "organization.updated", null,
             before, JsonSerializer.Serialize(new { tenant.Name }));
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Sets how every member sees dates and times (<see cref="OrganizationFormats"/>).</summary>
+    public async Task SetFormatsAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
+        string? dateFormat, string? timeFormat, CancellationToken cancellationToken)
+    {
+        if (dateFormat is null || !OrganizationFormats.DateFormats.Contains(dateFormat) ||
+            timeFormat is null || !OrganizationFormats.TimeFormats.Contains(timeFormat))
+            throw new TenantMemberException(TenantMemberFailure.InvalidInput);
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+        var tenant = await db.Tenants.SingleAsync(cancellationToken);
+        if (tenant.DateFormat == dateFormat && tenant.TimeFormat == timeFormat) return;
+        var before = JsonSerializer.Serialize(new { tenant.DateFormat, tenant.TimeFormat });
+        tenant.DateFormat = dateFormat;
+        tenant.TimeFormat = timeFormat;
+        PlatformOrganizationService.Audit(db, tenantId, actorAccountId, "organization.formats_updated", null,
+            before, JsonSerializer.Serialize(new { tenant.DateFormat, tenant.TimeFormat }));
         await db.SaveChangesAsync(cancellationToken);
     }
 

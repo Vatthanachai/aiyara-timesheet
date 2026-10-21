@@ -501,6 +501,8 @@ body {
   margin-top: 0;
 }
 .table-wrap {
+  /* Contains visually hidden labels, which are absolutely positioned, inside the scroll area. */
+  position: relative;
   overflow-x: auto;
 }
 table {

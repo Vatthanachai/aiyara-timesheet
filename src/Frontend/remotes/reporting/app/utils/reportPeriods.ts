@@ -2,6 +2,9 @@
  * Report periods as calendar dates (YYYY-MM-DD) in the tenant time zone, matching the server's
  * ReportCalendar: weeks start on Monday, months and years follow the calendar. `end` is exclusive.
  */
+import { formatDate, type Formats } from '../../../../shared/date-format'
+import type { Locale } from '../../../../shared/i18n'
+
 export type ReportKind = 'Weekly' | 'Monthly' | 'Annual' | 'Performance'
 export type CalendarPeriod = { start: string; end: string }
 
@@ -75,8 +78,7 @@ export function zonedDate(utc: string, zone: string) {
   return zonedToday(zone, new Date(utc))
 }
 
-/** "1 Sep 2026 – 30 Sep 2026" for an exclusive-end period. */
-export function formatPeriod(period: CalendarPeriod, locale: string) {
-  const format = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
-  return `${format.format(toDate(period.start))} – ${format.format(toDate(addDays(period.end, -1)))}`
+/** "01/09/2026 – 30/09/2026" for an exclusive-end period, in the organization's date format. */
+export function formatPeriod(period: CalendarPeriod, formats: Formats, locale: Locale) {
+  return `${formatDate(period.start, formats, locale)} – ${formatDate(addDays(period.end, -1), formats, locale)}`
 }

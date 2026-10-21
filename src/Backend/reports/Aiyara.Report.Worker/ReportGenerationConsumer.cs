@@ -165,9 +165,9 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
                 ? $"{profile.FirstName} {profile.LastName}".Trim() : owner.ToString("D");
             if (profile.Found && profile.IsActive) employeeEmail = profile.Email;
         }
-        var data = new ReportDocumentData(employeeName, department,
-            $"{startLocal:yyyy-MM-dd} – {endLocal:yyyy-MM-dd}", lines,
-            snapshots.Sum(x => ReportDocumentRenderer.CountLeaveDays(x.Json)));
+        var formats = await FormatsAsync(envelope.TenantId, run.Id, cancellationToken);
+        var data = new ReportDocumentData(employeeName, department, formats.Period(startLocal, endLocal), lines,
+            snapshots.Sum(x => ReportDocumentRenderer.CountLeaveDays(x.Json)), formats);
         var bytes = definition.Format == ReportFormat.Pdf
             ? ReportDocumentRenderer.RenderPdf(data) : ReportDocumentRenderer.RenderXlsx(data);
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
@@ -225,6 +225,26 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
         if (!profile.Found) return accountId.ToString("D");
         var name = $"{profile.FirstName} {profile.LastName}".Trim();
         return name.Length > 0 ? name : profile.Email;
+    }
+
+    /// <summary>The organization's date and time formats. They only change how the document reads,
+    /// so a failed lookup renders with the defaults instead of failing the report.</summary>
+    private async Task<ReportFormats> FormatsAsync(Guid tenantId, Guid runId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var settings = await identity.GetOrganizationSettingsAsync(new GetOrganizationSettingsRequest
+            {
+                TenantId = tenantId.ToString(), CorrelationId = runId.ToString()
+            }, cancellationToken: cancellationToken);
+            return settings.Found ? new ReportFormats(settings.DateFormat, settings.TimeFormat) : ReportFormats.Default;
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            logger.LogWarning("Organization formats were not available for run {ReportRunId}: {FailureType}",
+                runId, error.GetType().Name);
+            return ReportFormats.Default;
+        }
     }
 
     private sealed record SnapshotPayload(Guid OwnerId, string PayloadJson, DateTime CreatedAtUtc);

@@ -14,7 +14,28 @@ public sealed record ReportLine(DateOnly Date, string Start, string End, int Dur
     string Task, string Detail, string Notes, string Project, string Category, string Kind, string Member = "");
 
 public sealed record ReportDocumentData(string EmployeeName, string Department, string Period,
-    IReadOnlyList<ReportLine> Lines, int LeaveDays);
+    IReadOnlyList<ReportLine> Lines, int LeaveDays, ReportFormats? Formats = null);
+
+/// <summary>The organization's date and time formats (Identity's <c>OrganizationFormats</c>):
+/// <c>bbbb</c> is the Buddhist year; documents are in English, so <c>MMM</c> is an English month.
+/// An unknown value falls back to the default.</summary>
+public sealed record ReportFormats(string DateFormat = "dd/MM/yyyy", string TimeFormat = "HH:mm")
+{
+    public static readonly ReportFormats Default = new();
+
+    public string Date(DateOnly date) => DateFormat switch
+    {
+        "dd/MM/bbbb" => $"{date.Day:00}/{date.Month:00}/{date.Year + 543}",
+        "d MMM yyyy" or "yyyy-MM-dd" or "MM/dd/yyyy" => date.ToString(DateFormat, CultureInfo.InvariantCulture),
+        _ => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+    };
+
+    /// <summary>A clock time given as <c>HH:mm</c>; empty stays empty.</summary>
+    public string Time(string value) => value.Length == 0 || TimeFormat != "h:mm a" ? value
+        : TimeOnly.Parse(value, CultureInfo.InvariantCulture).ToString("h:mm tt", CultureInfo.InvariantCulture);
+
+    public string Period(DateOnly start, DateOnly end) => $"{Date(start)} – {Date(end)}";
+}
 
 public static class ReportDocumentRenderer
 {
@@ -51,16 +72,17 @@ public static class ReportDocumentRenderer
         for (var column = 0; column < headers.Length; column++) sheet.Cell(7, column + 1).Value = headers[column];
         var row = 8;
         DateOnly? previous = null;
+        var formats = data.Formats ?? ReportFormats.Default;
         foreach (var line in Ordered(data))
         {
             var column = 1;
             // A day's date only on its first row; the rows under it show their own times.
-            if (line.Date != previous) sheet.Cell(row, column).Value = line.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            if (line.Date != previous) sheet.Cell(row, column).Value = formats.Date(line.Date);
             previous = line.Date;
             column++;
             if (showMember) sheet.Cell(row, column++).Value = line.Member;
-            sheet.Cell(row, column++).Value = line.Start;
-            sheet.Cell(row, column++).Value = line.End;
+            sheet.Cell(row, column++).Value = formats.Time(line.Start);
+            sheet.Cell(row, column++).Value = formats.Time(line.End);
             if (IsDayOff(line)) column++;
             else sheet.Cell(row, column).Value = Math.Round(line.DurationMinutes / 60m, 2);
             column++;
@@ -125,6 +147,7 @@ public static class ReportDocumentRenderer
         }
         y += 20;
         DateOnly? previousDate = null;
+        var formats = data.Formats ?? ReportFormats.Default;
         foreach (var line in Ordered(data))
         {
             var description = string.Join(" · ", new[] { line.Task, line.Detail, line.Project, line.Category }
@@ -143,7 +166,7 @@ public static class ReportDocumentRenderer
             // A day's date only on its first row, and again at the top of a new page.
             var day = line.Date != previousDate || y == 45 ? line.Date.Day.ToString(CultureInfo.InvariantCulture) : "";
             previousDate = line.Date;
-            var time = line.Start.Length > 0 ? $"{line.Start} - {line.End}" : "";
+            var time = line.Start.Length > 0 ? $"{formats.Time(line.Start)} - {formats.Time(line.End)}" : "";
             var values = showMember
                 ? new[] { day, line.Member, time, description, line.Notes }
                 : new[] { day, time, description, line.Notes };

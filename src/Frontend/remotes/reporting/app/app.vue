@@ -2,6 +2,7 @@
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
+import { formatDateTime as formatInstant, formatMonth, readFormats } from '../../../shared/date-format'
 import {
   addDays, formatPeriod, monthPeriod, previousPeriod, rangePeriod, weekPeriod, yearPeriod, zonedDate,
   zonedMidnight, zonedToday, type CalendarPeriod, type ReportKind
@@ -101,6 +102,9 @@ const copy = useLocaleText(locale, { th: {
 } })
 const text = (key: string) => (copy.value as Record<string, string>)[key] ?? key
 const dateLocale = computed(() => locale.value === 'th' ? 'th-TH' : 'en')
+const formats = ref(readFormats(null))
+// File names keep one fixed, readable date style whatever the organization chose.
+const FILE_NAME_FORMATS = readFormats({ dateFormat: 'd MMM yyyy' })
 
 // ---- Request -------------------------------------------------------------------------------
 const selectedDefinitionId = ref('')
@@ -195,13 +199,12 @@ function runPeriod(run: Run): CalendarPeriod {
 }
 function statusDetail(run: Run) {
   if (run.statusReason === 'SOURCE_MONTH_NOT_LOCKED' && run.blockedMonth)
-    return copy.value.blockedReason.replace('{month}', run.blockedMonth)
+    return copy.value.blockedReason.replace('{month}', formatMonth(run.blockedMonth, formats.value, locale.value))
   if (run.statusReason === 'GENERATION_FAILED') return copy.value.failedReason
   return ''
 }
 const formatDateTime = (value: string | null) => value
-  ? new Intl.DateTimeFormat(dateLocale.value, { dateStyle: 'medium', timeStyle: 'short', timeZone: timeZoneId.value }).format(new Date(value))
-  : '—'
+  ? formatInstant(value, timeZoneId.value, formats.value, locale.value) : '—'
 
 async function loadHistory() {
   // A group filter becomes the group's current members; whole-organization reports have no member.
@@ -239,7 +242,7 @@ async function download(run: Run) {
     const response = await reportFetch(`/runs/${run.id}/download`)
     const objectUrl = URL.createObjectURL(await response.blob())
     const anchor = document.createElement('a')
-    const label = `${run.name} ${formatPeriod(runPeriod(run), 'en')}`.replace(/[\\/:*?"<>|]+/g, '-')
+    const label = `${run.name} ${formatPeriod(runPeriod(run), FILE_NAME_FORMATS, 'en')}`.replace(/[\\/:*?"<>|]+/g, '-')
     anchor.href = objectUrl
     anchor.download = `${label}.${run.format === 'Pdf' ? 'pdf' : 'xlsx'}`
     anchor.click()
@@ -398,6 +401,7 @@ onMounted(() => {
     token.value = event.data.token || ''
     gateway.value = event.data.gatewayUrl || gateway.value
     locale.value = readSessionLocale(event.data)
+    formats.value = readFormats(event.data)
     if (token.value && firstSession) load()
   })
   // The Shell's first session message can arrive before hydration; ask for it once listening.
@@ -469,14 +473,14 @@ onMounted(() => {
             </select>
           </label>
           <p v-if="requestPeriod" class="preview">
-            {{ copy.periodPreview.replace('{period}', formatPeriod(requestPeriod, dateLocale)).replace('{zone}', timeZoneId) }}
+            {{ copy.periodPreview.replace('{period}', formatPeriod(requestPeriod, formats, locale)).replace('{zone}', timeZoneId) }}
           </p>
           <button class="primary" type="submit" :disabled="busy || !requestPeriod">{{ busy ? copy.generating : copy.generate }}</button>
         </form>
       </section>
 
-      <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :time-zone-id="timeZoneId" :load="timesheetGet" />
-      <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :time-zone-id="timeZoneId" :load="timesheetGet" :self="{ name: myName }" />
+      <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" />
+      <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :self="{ name: myName }" />
 
       <section class="card" aria-labelledby="history-heading">
         <div class="card-heading">
@@ -520,7 +524,7 @@ onMounted(() => {
               <tr v-for="run in history.items" :key="run.id">
                 <td><strong>{{ run.name }}</strong><small>{{ text(run.kind) }} · {{ text(run.format) }}</small></td>
                 <td v-if="isAdmin">{{ personLabel(run) }}</td>
-                <td>{{ formatPeriod(runPeriod(run), dateLocale) }}</td>
+                <td>{{ formatPeriod(runPeriod(run), formats, locale) }}</td>
                 <td>
                   <span class="status" :data-status="run.statusReason === 'SOURCE_MONTH_NOT_LOCKED' ? 'Blocked' : run.status">{{ text(run.status) }}</span>
                   <small v-if="statusDetail(run)" class="status-detail">{{ statusDetail(run) }}</small>
@@ -531,7 +535,7 @@ onMounted(() => {
                   <span v-if="run.signedVersion" class="badge">{{ copy.signedBadge.replace('{n}', String(run.signedVersion)) }}</span>
                   <button v-if="run.status === 'Succeeded'" type="button" @click="download(run)">{{ copy.download }}</button>
                   <button v-if="run.status === 'Succeeded' || run.status === 'Failed'" type="button"
-                    :disabled="regeneratingId === run.id" :aria-label="`${copy.regenerate}: ${run.name} ${formatPeriod(runPeriod(run), dateLocale)}`"
+                    :disabled="regeneratingId === run.id" :aria-label="`${copy.regenerate}: ${run.name} ${formatPeriod(runPeriod(run), formats, locale)}`"
                     @click="regenerate(run)">{{ copy.regenerate }}</button>
                   <label v-if="isAdmin && run.status === 'Succeeded' && run.kind === 'Monthly' && run.format === 'Pdf'" class="upload">
                     {{ copy.uploadSigned }}<input type="file" accept="application/pdf,.pdf" @change="uploadSigned(run, $event)" />

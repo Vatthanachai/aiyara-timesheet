@@ -1765,7 +1765,8 @@ test('console pages stay restricted for non platform admins', async ({ page }) =
   }
 })
 
-async function openReporting(page: import('@playwright/test').Page, role: 'TenantAdmin' | 'Employee') {
+async function openReporting(page: import('@playwright/test').Page, role: 'TenantAdmin' | 'Employee',
+  formats?: { dateFormat: string; timeFormat: string }) {
   const cors = {
     'access-control-allow-origin': 'http://127.0.0.1:3103',
     'access-control-allow-headers': 'authorization,content-type',
@@ -1823,6 +1824,8 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
           groupId: null, groupName: null }
       ])
     }
+    if (url.pathname.endsWith('/identity/organization') && formats)
+      return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null, ...formats })
     if (url.pathname.endsWith('/identity/profile/me')) return ok({ email: 'mali@acme.test', firstName: 'Mali', lastName: 'Member', photoUrl: null })
     if (url.pathname.endsWith('/timesheets/me/timesheet')) {
       state.myQueries.push(url.searchParams.toString())
@@ -1913,10 +1916,12 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await expect(history).toContainText('Former member')
   await expect(history).toContainText('Whole organization')
   await expect(history).toContainText('Group: Outsource')
-  await expect(history).toContainText('Waiting for 2026-09 to be locked')
+  await expect(history).toContainText('Waiting for September 2026 to be locked')
+  // The organization's default formats: dd/MM/yyyy and 24-hour times in the tenant's time zone.
+  await expect(history).toContainText('01/09/2026 – 30/09/2026')
+  await expect(history).toContainText('01/10/2026 09:01')
   await expect(history).toContainText('Request it again')
   await expect(history).toContainText('Signed v2')
-  await expect(history).toContainText('Sep 1, 2026 – Sep 30, 2026')
   await expect(history).not.toContainText('member-')
 
   // Monthly report: month + year pickers, a member subject, and an exact period preview.
@@ -1926,7 +1931,7 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   await expect(frame.getByLabel('Report on', { exact: true }).locator('option'))
     .toHaveText(['Whole organization', 'Outsource', 'Permanent staff', 'Anong Admin', 'Somchai Staff'])
   await frame.getByLabel('Report on', { exact: true }).selectOption({ label: 'Somchai Staff' })
-  await expect(frame.locator('.preview')).toHaveText(`Period: Jan 1, ${year} – Jan 31, ${year} (Asia/Bangkok)`)
+  await expect(frame.locator('.preview')).toHaveText(`Period: 01/01/${year} – 31/01/${year} (Asia/Bangkok)`)
   await frame.getByRole('button', { name: 'Generate report' }).click()
   await expect.poll(() => state.created).toEqual([{
     definitionId: 'def-month', subjectUserId: 'member-somchai',
@@ -1945,7 +1950,7 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   // Weekly report: any day picks its Monday-to-Sunday week.
   await frame.locator('.request-form select').first().selectOption('def-week')
   await frame.getByLabel('Week containing').fill('2026-10-14')
-  await expect(frame.locator('.preview')).toHaveText('Period: Oct 12, 2026 – Oct 18, 2026 (Asia/Bangkok)')
+  await expect(frame.locator('.preview')).toHaveText('Period: 12/10/2026 – 18/10/2026 (Asia/Bangkok)')
 
   // Filters are sent to the API.
   await frame.locator('.filters').getByLabel('Status').selectOption('Failed')
@@ -2092,7 +2097,9 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   // An Excel table over the entry rows, and 5 October's two entries carry the date once (CSV: on both).
   expect(xlsxText).toContain('<tablePart r:id="rId1"/>')
   expect(xlsxText).toContain('ref="A5:J14"')
-  expect(xlsxText.split('2026-10-05').length - 1).toBe(1)
+  // XLSX dates follow the organization's format (here the default dd/MM/yyyy); CSV stays ISO.
+  expect(xlsxText.split('05/10/2026').length - 1).toBe(1)
+  expect(xlsxText).not.toContain('2026-10-05')
   expect(csv.split('2026-10-05').length - 1).toBe(2)
 
   // Changing the month reloads the open member; going back shows everyone again.
@@ -2243,4 +2250,128 @@ test('timesheet calendar shades the days the organization does not work', async 
   await expect(cell(firstDay(6))).toHaveClass(/weekend/)
   await expect(cell(firstDay(0))).not.toHaveClass(/weekend/)
   await expect(cell(firstDay(1))).not.toHaveClass(/weekend/)
+})
+
+test('reporting shows dates and times in the organization\'s format', async ({ page }) => {
+  const { frame } = await openReporting(page, 'Employee', { dateFormat: 'dd/MM/bbbb', timeFormat: 'h:mm a' })
+
+  const history = frame.getByRole('region', { name: 'Report history' }).locator('table')
+  // Buddhist years and 12-hour times, in the tenant's time zone (Asia/Bangkok).
+  await expect(history).toContainText('01/09/2569 – 30/09/2569')
+  await expect(history).toContainText('01/10/2569 9:01 AM')
+  await expect(history).toContainText('Waiting for September 2569 to be locked')
+  const mine = frame.getByRole('region', { name: 'My timesheet' })
+  await expect(mine.getByRole('heading', { name: /^Mali Member · \w+ 25\d\d$/ })).toBeVisible()
+  const entries = mine.getByRole('table', { name: 'Entries: Mali Member' })
+  await expect(entries).toContainText('9:00 AM–11:30 AM')
+  await expect(entries).toContainText('Wed 07/10/2569')
+})
+
+test('tenant admin chooses the date and time format and every remote follows it', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const organization = { name: 'Acme', organizationCode: 'ACME123', logoUrl: null, dateFormat: 'dd/MM/yyyy', timeFormat: 'HH:mm' }
+  const saved: unknown[] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown) => route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
+    if (path === `/identity/tenants/${tenantId}/password-policy`)
+      return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
+    if (path === '/identity/members' || path === '/identity/members/groups') return ok([])
+    if (path === '/identity/members/invitations') return ok([{ id: 'i1', email: 'later@example.test', role: 'Employee',
+      invitedByEmail: 'admin@example.test', createdAtUtc: '2026-10-20T08:00:00Z', expiresAtUtc: '2026-10-27T08:00:00Z', groupName: null }])
+    if (path === '/identity/organization/formats') {
+      saved.push(request.postDataJSON())
+      Object.assign(organization, request.postDataJSON())
+      return ok(organization)
+    }
+    if (path === '/identity/organization') return ok(organization)
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+
+  const frame = page.frameLocator('iframe')
+  const panel = frame.getByRole('region', { name: 'Date and time format' })
+  const year = new Date().getFullYear()
+  await expect(panel.getByLabel('Date format')).toHaveValue('dd/MM/yyyy')
+  await expect(panel.getByLabel('Date format').locator('option')).toHaveText([
+    `31/12/${year}`, `31/12/${year + 543} · Buddhist year`, `31 Dec ${year} · month name`, `${year}-12-31`, `12/31/${year}`])
+  await expect(panel.getByLabel('Time format').locator('option')).toHaveText(['13:30 · 24-hour', '1:30 PM · 12-hour (AM/PM)'])
+  // Pending invitations use the organization's format too.
+  await expect(frame.getByText('27/10/2026')).toBeVisible()
+
+  await panel.getByLabel('Date format').selectOption('dd/MM/bbbb')
+  await panel.getByLabel('Time format').selectOption('h:mm a')
+  await expect(panel.locator('.format-preview strong')).toHaveText(/^\d{2}\/\d{2}\/25\d\d \d{1,2}:\d{2} (AM|PM)$/)
+  await panel.getByRole('button', { name: 'Save format' }).click()
+  await expect(frame.getByText('Date and time format saved.')).toBeVisible()
+  expect(saved).toEqual([{ dateFormat: 'dd/MM/bbbb', timeFormat: 'h:mm a' }])
+  // The Shell reloads the organization and sends the new formats, so the page updates without a reload.
+  await expect(frame.getByText('27/10/2569')).toBeVisible()
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await expect(panel.getByRole('button', { name: 'Save format' })).toBeVisible()
+  }
+})
+
+test('timesheet shows dates and times in the organization\'s format', async ({ page }) => {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3102',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown) => route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'timesheet-token', refreshToken: 'timesheet-refresh', mustChangePassword: false, tenantId, role: 'Employee',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null, dateFormat: 'd MMM yyyy', timeFormat: 'h:mm a' })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], workingDays: [1, 2, 3, 4, 5],
+      holidays: [{ id: 'h1', date: `${currentMonth}-12`, name: 'Founders day' }] })
+    if (path === '/timesheets/entries') return ok([{ id: 'e1', date: `${currentMonth}-05`, startTime: '13:00:00', endTime: '14:30:00', durationMinutes: 90,
+      taskName: 'Afternoon review', detail: null, notes: null, projectId: null, categoryId: null, personalTaskId: null }])
+    if (path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('employee@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+
+  const timesheet = page.frameLocator('iframe')
+  const month = new Intl.DateTimeFormat('en-GB', { month: 'short' }).format(now)
+  const row = timesheet.locator('tbody tr').filter({ hasText: 'Afternoon review' })
+  await expect(row).toContainText(`5 ${month} ${now.getFullYear()}`)
+  await expect(row).toContainText('1:00 PM–2:30 PM')
+  await expect(timesheet.locator('.holiday-list')).toContainText(`12 ${month} ${now.getFullYear()}`)
 })
