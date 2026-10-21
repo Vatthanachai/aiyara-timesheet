@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { injectTimesheetDates, injectTimesheetText, type Catalog, type EntryForm } from '../utils/timesheet'
+import { injectTimesheetDates, injectTimesheetText, workedMinutes, type Catalog, type EntryForm } from '../utils/timesheet'
 
 const props = defineProps<{ form: EntryForm; catalog: Catalog; monthStart: string; monthEnd: string }>()
 const emit = defineEmits<{ save: []; cancel: []; drop: [event: DragEvent] }>()
 const { text, labels } = injectTimesheetText()
 const dates = injectTimesheetDates()
 
+// What the entry will count as work: overnight entries wrap, and the break is left out unless worked.
 const durationPreview = computed(() => {
-  const [startHour, startMinute] = props.form.startTime.split(':').map(Number)
-  const [endHour, endMinute] = props.form.endTime.split(':').map(Number)
-  const duration = endHour * 60 + endMinute - (startHour * 60 + startMinute)
+  const duration = workedMinutes(props.form, props.catalog.workHours)
   return duration > 0 ? `${(duration / 60).toFixed(2)} ${text.value.duration}` : ''
 })
 </script>
@@ -21,6 +20,7 @@ const durationPreview = computed(() => {
     <form class="entry-grid" @submit.prevent="emit('save')">
       <label>{{ text.task }}<input v-model="form.taskName" required maxlength="200" :placeholder="labels.taskPlaceholder" /></label>
       <div class="time-fields"><label>{{ text.start }}<input v-model="form.startTime" type="time" required /></label><span aria-hidden="true">→</span><label>{{ text.end }}<input v-model="form.endTime" type="time" required /></label></div>
+      <BreakToggle :form="form" :work-hours="catalog.workHours" />
       <label>{{ text.date }}<input v-model="form.date" type="date" required :min="monthStart" :max="monthEnd" /></label>
       <label>{{ text.project }}<select v-model="form.projectId"><option value="">—</option><option v-for="project in catalog.projects" :key="project.id" :value="project.id">{{ project.name }}</option></select></label>
       <label>{{ text.category }}<select v-model="form.categoryId"><option value="">—</option><option v-for="category in catalog.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>

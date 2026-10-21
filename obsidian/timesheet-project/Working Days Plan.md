@@ -5,6 +5,7 @@
 ## Implementation Progress
 
 - **Phase A** (API): `work_weeks` table (migration `AddWorkWeeks`), `PUT /api/v1/work-week` (Gateway `/api/v1/timesheets/work-week`), `workingDays` in the catalog, in closed-month snapshots, and in the member month review.
+- **Phase E** (break, `feature/work-breaks`): an optional break in the working day; entries overlapping it have it deducted unless marked "worked through the break"; report overtime counts against the working day less the break.
 - **Phase D** (working hours, `feature/work-hours`): start and end of the working day on the work week; Administration → Working days and hours; new Timesheet entries start at them and the calendar shows them.
 - **Phase C** (reports, `feature/report-days-off`): generated reports and the Reporting member month view show days off.
 - **Phase B** (UI): Administration **Working days** panel above Holidays; the Timesheet calendar shades the organization's non-working weekdays. Both remotes fall back to Monday–Friday when a catalog has no `workingDays`.
@@ -71,10 +72,10 @@ Decisions:
 4. The standard working day is the working hours minus the break. Generated reports count overtime days against it, read from the month's snapshot, instead of a fixed 8 hours. Months closed before working hours existed keep 8 hours.
 
 - [x] E1. API: break on the work week and `includesBreak` on entries (migration `AddWorkBreaks`), duration rules, validation, `workHours.breakStart` / `breakEnd`, the flag in snapshots and member views.
-- [ ] E2. Administration: break start and end (quarter hours, optional) in Working days and hours.
-- [ ] E3. Timesheet: the entry form's duration preview deducts the break, and a "worked through the break" checkbox appears when an entry overlaps it (new and edited entries); the calendar shows the break.
+- [x] E2. Administration: break start and end (quarter hours, optional) in Working days and hours.
+- [x] E3. Timesheet: the entry form's duration preview deducts the break, and a "worked through the break" checkbox appears when an entry overlaps it (new and edited entries); the calendar shows the break.
 - [x] E4. Reports: overtime against the standard working day.
-- [ ] E5. Tests and docs.
+- [x] E5. Tests and docs.
 
 ## Out Of Scope
 

@@ -72,9 +72,11 @@ $category = Expect (Request Post '/api/v1/timesheets/categories' @{ name = 'Deli
 Expect (Request Post '/api/v1/timesheets/holidays' @{ date = $date; name = 'Team holiday' } $admin) 201 'holiday' | Out-Null
 $workWeek = Expect (Request Put '/api/v1/timesheets/work-week' @{
     workingDays = @(1, 2, 3, 4, 5, 6); startTime = '08:30:00'; endTime = '17:30:00'
+    breakStart = '11:30:00'; breakEnd = '12:30:00'
 } $admin) 200 'work week'
 if (($workWeek.workingDays -join ',') -ne '1,2,3,4,5,6') { throw 'Work week did not persist.' }
 if ($workWeek.workHours.startTime -ne '08:30' -or $workWeek.workHours.endTime -ne '17:30') { throw 'Working hours did not persist.' }
+if ($workWeek.workHours.breakStart -ne '11:30' -or $workWeek.workHours.breakEnd -ne '12:30') { throw 'Break did not persist.' }
 Expect (Request Put '/api/v1/timesheets/work-week' @{
     workingDays = @(1, 2, 3, 4, 5, 6); startTime = '18:00:00'; endTime = '09:00:00'
 } $admin) 400 'working day ending before it starts' | Out-Null
@@ -103,6 +105,12 @@ $catalog = Expect (Request Get '/api/v1/timesheets/catalog' $null $employee) 200
 if (($catalog.workingDays -join ',') -ne '1,2,3,4,5,6') { throw 'Catalog did not return the work week.' }
 if ($catalog.workHours.startTime -ne '08:30') { throw 'Catalog did not return the working hours.' }
 Expect (Request Get "/api/v1/identity/tenants/$($tenant.tenantId)/password-policy" $null $employee) 403 'employee password policy permission' | Out-Null
+
+# A lunch-hour entry that was not worked through counts for nothing, so it is refused (and not stored).
+$lunchOnly = Request Post '/api/v1/timesheets/entries' @{ date = $date; startTime = '11:30:00'; endTime = '12:30:00'
+    taskName = 'Lunch'; detail = $null; notes = $null; projectId = $null; categoryId = $null; personalTaskId = $null
+    reason = $null; includesBreak = $false } $employee
+if ($lunchOnly.StatusCode -ne 400 -or $lunchOnly.Content -notmatch 'ENTRY_IN_BREAK') { throw 'A lunch-only entry was not refused.' }
 
 $entryBody = @{ date = $date; startTime = '22:00:00'; endTime = '02:00:00';
     taskName = 'Overnight rollout'; detail = 'Deployment'; notes = 'Phase 3';
