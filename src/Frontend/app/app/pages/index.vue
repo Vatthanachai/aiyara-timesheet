@@ -93,7 +93,8 @@ function backToSignIn() {
     <section class="welcome-intro" aria-labelledby="welcome-title">
       <p class="welcome-product">Aiyara Timesheet</p>
       <!-- Thai has no spaces to break at, so each phrase is kept on one line. -->
-      <h1 id="welcome-title"><span v-for="phrase in text.heroTitle.split('|')" :key="phrase">{{ phrase }} </span></h1>
+      <!-- The space goes between the spans: Vue trims one left at the end of a span's text. -->
+      <h1 id="welcome-title"><template v-for="(phrase, index) in text.heroTitle.split('|')" :key="phrase"><span>{{ phrase }}</span>{{ index ? '' : ' ' }}</template></h1>
       <p class="welcome-lede">{{ text.heroSubtitle }}</p>
     </section>
 
