@@ -48,9 +48,20 @@ Added 21 October 2026 on request: reports show the days that are not working day
 - [x] C2. Reporting → Member timesheets: a `Days off` total, a Days off list (holidays and weekly days off) in place of Organization holidays, and a remark under the date of entries that fall on a day off.
 - [x] C3. Tests: renderer (Sunday–Thursday week with a holiday, the Monday–Friday fallback, document text), the organization report contains day-off rows, Playwright for the member view. Docs: [[Project Status]].
 
+## Phase D — Working Hours
+
+Added 21 October 2026 on request: a Tenant Admin sets when the working day starts and ends. Branch `feature/work-hours`.
+
+Decisions: the hours live on the same `work_weeks` row (`StartTime`, `EndTime`; no row means 09:00–17:00, the times new entries used to start with). The start must be before the end, so shifts that cross midnight are not supported. `PUT /work-week` takes optional `startTime` / `endTime`, and an omitted pair keeps the current hours, so existing callers keep working. The catalog returns `workHours` to every member; closed-month snapshots and the member month views include them. Overtime in reports stays "more than 8 hours worked in a day", because the hours include breaks.
+
+- [x] D1. `WorkWeek.StartTime` / `EndTime` (migration `AddWorkHours`), validation (`VALIDATION_FAILED` for start ≥ end or seconds), audit, `workHours` in the catalog, snapshots, `members/{ownerId}/timesheet`, and `me/timesheet`.
+- [ ] D2. Administration: the panel becomes **Working days and hours**, with start and end chosen in 15-minute steps and shown in the organization's time format.
+- [ ] D3. Timesheet: a new entry starts at the organization's hours, and the calendar shows them.
+- [ ] D4. Tests (API, Playwright, phase 3 smoke) and docs.
+
 ## Out Of Scope
 
-- Daily working hours, shifts, and expected-hours or utilization reports.
+- Shifts, breaks, and expected-hours or utilization reports.
 - Per-member or per-group schedules.
 - Blocking time entries on non-working days (members may still log weekend work).
 

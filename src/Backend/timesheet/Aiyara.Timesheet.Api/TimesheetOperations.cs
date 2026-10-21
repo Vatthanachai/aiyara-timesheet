@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Text.Json;
 using Aiyara.Timesheet.Component.Abstractions.ServiceResponses;
 using Aiyara.Timesheet.Contracts.Messaging.V1;
@@ -18,13 +19,17 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             timeZoneId = actor.TimeZoneId, locked, isAdmin = actor.IsAdmin });
     }
 
-    public async Task<ServiceResponse> Catalog(Actor actor, CancellationToken ct) => Ok(new
+    public async Task<ServiceResponse> Catalog(Actor actor, CancellationToken ct)
     {
-        projects = await db.Projects.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
-        categories = await db.Categories.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
-        holidays = await db.Holidays.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToListAsync(ct),
-        workingDays = await WorkingDays(ct)
-    });
+        var (workingDays, workHours) = await ScheduleAsync(ct);
+        return Ok(new
+        {
+            projects = await db.Projects.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
+            categories = await db.Categories.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
+            holidays = await db.Holidays.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToListAsync(ct),
+            workingDays, workHours
+        });
+    }
 
     public async Task<ServiceResponse> SaveCatalog(Actor actor, NameRequest body,
         string kind, CancellationToken ct)
@@ -116,6 +121,11 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         var days = body.WorkingDays ?? [];
         if (days.Length is 0 or > 7 || days.Any(day => day is < 0 or > 6) || days.Distinct().Count() != days.Length)
             return Error(400, "VALIDATION_FAILED");
+        // Both times or neither; whole minutes; the day ends after it starts (no overnight shifts).
+        if (body.StartTime.HasValue != body.EndTime.HasValue ||
+            body.StartTime is { } start && body.EndTime is { } end &&
+            (start >= end || start.Second != 0 || end.Second != 0 || start.Millisecond != 0 || end.Millisecond != 0))
+            return Error(400, "VALIDATION_FAILED");
         var workWeek = await db.WorkWeeks.SingleOrDefaultAsync(ct);
         var before = workWeek is null ? null : JsonSerializer.Serialize(workWeek);
         if (workWeek is null)
@@ -124,9 +134,14 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             db.WorkWeeks.Add(workWeek);
         }
         workWeek.WorkingDaysMask = days.Aggregate(0, (mask, day) => mask | 1 << day);
+        if (body.StartTime is { } startTime && body.EndTime is { } endTime)
+        {
+            workWeek.StartTime = startTime;
+            workWeek.EndTime = endTime;
+        }
         Audit(actor, "work_week", workWeek.Id, before is null ? "created" : "updated", before, workWeek);
         await db.SaveChangesAsync(ct);
-        return Ok(new { workingDays = WorkWeek.Days(workWeek.WorkingDaysMask) });
+        return Ok(new { workingDays = WorkWeek.Days(workWeek.WorkingDaysMask), workHours = Hours(workWeek) });
     }
 
     public async Task<ServiceResponse> Tasks(Actor actor, CancellationToken ct) =>
@@ -293,7 +308,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
         var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
             x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
-        var workingDays = await WorkingDays(ct);
+        var (workingDays, workHours) = await ScheduleAsync(ct);
         var projects = await db.Projects.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
         var categories = await db.Categories.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
         var entrySnapshots = entries.Select(entry => new
@@ -310,12 +325,12 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         }).ToArray();
         db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId,
             OwnerId = Guid.Empty, Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
-            PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots, leaves, holidays, workingDays }) });
+            PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots, leaves, holidays, workingDays, workHours }) });
         foreach (var ownerId in entries.Select(x => x.OwnerId).Concat(leaves.Select(x => x.OwnerId)).Distinct())
             db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId, OwnerId = ownerId,
                 Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
                 PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots.Where(x => x.OwnerId == ownerId),
-                    leaves = leaves.Where(x => x.OwnerId == ownerId), holidays, workingDays }) });
+                    leaves = leaves.Where(x => x.OwnerId == ownerId), holidays, workingDays, workHours }) });
         var monthLock = new MonthLock { TenantId = actor.TenantId, Year = year, Month = month,
             LockedBy = actor.UserId, LockedAtUtc = DateTime.UtcNow };
         db.MonthLocks.Add(monthLock);
@@ -400,13 +415,23 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
                 x.Date.Year == year && x.Date.Month == month)
             .OrderBy(x => x.Date).Select(x => new { x.Date, x.Name }).ToListAsync(ct);
+        var (workingDays, workHours) = await ScheduleAsync(ct);
         return Ok(new { ownerId, year, month, locked = await IsLocked(year, month, ct), entries, leaves, holidays,
-            workingDays = await WorkingDays(ct) });
+            workingDays, workHours });
     }
 
-    private async Task<int[]> WorkingDays(CancellationToken ct) => WorkWeek.Days(
-        await db.WorkWeeks.AsNoTracking().Select(x => (int?)x.WorkingDaysMask).SingleOrDefaultAsync(ct)
-        ?? WorkWeek.DefaultMask);
+    /// <summary>The working weekdays and hours; an organization without a work week gets the defaults.</summary>
+    private async Task<(int[] WorkingDays, object WorkHours)> ScheduleAsync(CancellationToken ct)
+    {
+        var week = await db.WorkWeeks.AsNoTracking().SingleOrDefaultAsync(ct) ?? new WorkWeek();
+        return (WorkWeek.Days(week.WorkingDaysMask), Hours(week));
+    }
+
+    private static object Hours(WorkWeek week) => new
+    {
+        startTime = week.StartTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+        endTime = week.EndTime.ToString("HH:mm", CultureInfo.InvariantCulture)
+    };
 
     private Task<bool> IsLocked(int year, int month, CancellationToken ct) =>
         db.MonthLocks.AnyAsync(x => x.Year == year && x.Month == month, ct);
