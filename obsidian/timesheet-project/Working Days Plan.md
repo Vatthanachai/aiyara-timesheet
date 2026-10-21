@@ -5,6 +5,7 @@
 ## Implementation Progress
 
 - **Phase A** (API): `work_weeks` table (migration `AddWorkWeeks`), `PUT /api/v1/work-week` (Gateway `/api/v1/timesheets/work-week`), `workingDays` in the catalog, in closed-month snapshots, and in the member month review.
+- **Phase D** (working hours, `feature/work-hours`): start and end of the working day on the work week; Administration → Working days and hours; new Timesheet entries start at them and the calendar shows them.
 - **Phase C** (reports, `feature/report-days-off`): generated reports and the Reporting member month view show days off.
 - **Phase B** (UI): Administration **Working days** panel above Holidays; the Timesheet calendar shades the organization's non-working weekdays. Both remotes fall back to Monday–Friday when a catalog has no `workingDays`.
 
@@ -55,9 +56,9 @@ Added 21 October 2026 on request: a Tenant Admin sets when the working day start
 Decisions: the hours live on the same `work_weeks` row (`StartTime`, `EndTime`; no row means 09:00–17:00, the times new entries used to start with). The start must be before the end, so shifts that cross midnight are not supported. `PUT /work-week` takes optional `startTime` / `endTime`, and an omitted pair keeps the current hours, so existing callers keep working. The catalog returns `workHours` to every member; closed-month snapshots and the member month views include them. Overtime in reports stays "more than 8 hours worked in a day", because the hours include breaks.
 
 - [x] D1. `WorkWeek.StartTime` / `EndTime` (migration `AddWorkHours`), validation (`VALIDATION_FAILED` for start ≥ end or seconds), audit, `workHours` in the catalog, snapshots, `members/{ownerId}/timesheet`, and `me/timesheet`.
-- [ ] D2. Administration: the panel becomes **Working days and hours**, with start and end chosen in 15-minute steps and shown in the organization's time format.
-- [ ] D3. Timesheet: a new entry starts at the organization's hours, and the calendar shows them.
-- [ ] D4. Tests (API, Playwright, phase 3 smoke) and docs.
+- [x] D2. Administration: the panel becomes **Working days and hours**, with start and end chosen in 15-minute steps and shown in the organization's time format.
+- [x] D3. Timesheet: a new entry starts at the organization's hours, and the calendar shows them.
+- [x] D4. Tests (API, Playwright, phase 3 smoke) and docs.
 
 ## Out Of Scope
 

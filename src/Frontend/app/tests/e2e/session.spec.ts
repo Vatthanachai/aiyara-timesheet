@@ -2149,14 +2149,15 @@ test('employees request only their own reports and never load the member directo
   }
 })
 
-test('tenant admin sets the working days from Administration and cannot clear the last one', async ({ page }) => {
+test('tenant admin sets the working days and hours from Administration and cannot clear the last day', async ({ page }) => {
   const cors = {
     'access-control-allow-origin': 'http://127.0.0.1:3104',
     'access-control-allow-headers': 'authorization,content-type',
     'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
   }
   let workingDays = [1, 2, 3, 4, 5]
-  const saved: number[][] = []
+  let workHours = { startTime: '09:00', endTime: '17:00' }
+  const saved: unknown[] = []
   await page.route('**/api/v1/**', route => {
     const request = route.request()
     const ok = (result: unknown) => route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
@@ -2167,11 +2168,13 @@ test('tenant admin sets the working days from Administration and cannot clear th
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
-    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays, workHours })
     if (path === '/timesheets/work-week') {
-      workingDays = [...request.postDataJSON().workingDays].sort()
-      saved.push(workingDays)
-      return ok({ workingDays })
+      const body = request.postDataJSON()
+      workingDays = [...body.workingDays].sort()
+      workHours = { startTime: body.startTime.slice(0, 5), endTime: body.endTime.slice(0, 5) }
+      saved.push(body)
+      return ok({ workingDays, workHours })
     }
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
@@ -2188,7 +2191,7 @@ test('tenant admin sets the working days from Administration and cannot clear th
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
 
   const frame = page.frameLocator('iframe')
-  const panel = frame.getByRole('region', { name: 'Working days' })
+  const panel = frame.getByRole('region', { name: 'Working days and hours' })
   const day = (name: string) => panel.getByRole('checkbox', { name })
   await expect(day('Monday')).toBeChecked()
   await expect(day('Friday')).toBeChecked()
@@ -2199,9 +2202,22 @@ test('tenant admin sets the working days from Administration and cannot clear th
   await expect(day('Monday')).toBeDisabled()
   await day('Saturday').check()
   await expect(day('Monday')).toBeEnabled()
-  await panel.getByRole('button', { name: 'Save working days' }).click()
-  await expect(frame.getByText('Working days saved.')).toBeVisible()
-  expect(saved).toEqual([[1, 6]])
+
+  // Hours in quarter-hour steps; the day must end after it starts.
+  const start = panel.getByLabel('Start of work')
+  const end = panel.getByLabel('End of work')
+  await expect(start).toHaveValue('09:00')
+  await expect(end).toHaveValue('17:00')
+  await expect(start.locator('option')).toHaveCount(96)
+  await end.selectOption('08:00')
+  await expect(panel.getByRole('alert')).toHaveText('The working day must end after it starts.')
+  await expect(panel.getByRole('button', { name: 'Save working days and hours' })).toBeDisabled()
+  await start.selectOption('08:30')
+  await end.selectOption('17:30')
+  await expect(panel.getByRole('alert')).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Save working days and hours' }).click()
+  await expect(frame.getByText('Working days and hours saved.')).toBeVisible()
+  expect(saved).toEqual([{ workingDays: [1, 6], startTime: '08:30:00', endTime: '17:30:00' }])
 
   for (const width of [375, 320]) {
     await page.setViewportSize({ width, height: 850 })
@@ -2210,7 +2226,7 @@ test('tenant admin sets the working days from Administration and cannot clear th
   }
 })
 
-test('timesheet calendar shades the days the organization does not work', async ({ page }) => {
+test('timesheet calendar shades the days the organization does not work and new entries start at its hours', async ({ page }) => {
   const now = new Date()
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const firstDay = (weekday: number) => Array.from({ length: 7 }, (_, index) => `${currentMonth}-0${index + 1}`)
@@ -2231,7 +2247,8 @@ test('timesheet calendar shades the days the organization does not work', async 
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
     // A Sunday-to-Thursday organization.
-    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [0, 1, 2, 3, 4] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [0, 1, 2, 3, 4],
+      workHours: { startTime: '08:30', endTime: '17:30' } })
     if (path === '/timesheets/entries' || path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
     if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
@@ -2250,6 +2267,9 @@ test('timesheet calendar shades the days the organization does not work', async 
   await expect(cell(firstDay(6))).toHaveClass(/weekend/)
   await expect(cell(firstDay(0))).not.toHaveClass(/weekend/)
   await expect(cell(firstDay(1))).not.toHaveClass(/weekend/)
+  await expect(timesheet.locator('.work-hours-label')).toHaveText('Working hours 08:30–17:30')
+  await expect(timesheet.getByLabel('Start', { exact: true }).first()).toHaveValue('08:30')
+  await expect(timesheet.getByLabel('End', { exact: true }).first()).toHaveValue('17:30')
 })
 
 test('reporting shows dates and times in the organization\'s format', async ({ page }) => {

@@ -70,8 +70,14 @@ Expect (Request Get "/api/v1/identity/tenants/$($tenant.tenantId)/password-polic
 $project = Expect (Request Post '/api/v1/timesheets/projects' @{ name = 'Customer rollout' } $admin) 201 'project'
 $category = Expect (Request Post '/api/v1/timesheets/categories' @{ name = 'Delivery' } $admin) 201 'category'
 Expect (Request Post '/api/v1/timesheets/holidays' @{ date = $date; name = 'Team holiday' } $admin) 201 'holiday' | Out-Null
-$workWeek = Expect (Request Put '/api/v1/timesheets/work-week' @{ workingDays = @(1, 2, 3, 4, 5, 6) } $admin) 200 'work week'
+$workWeek = Expect (Request Put '/api/v1/timesheets/work-week' @{
+    workingDays = @(1, 2, 3, 4, 5, 6); startTime = '08:30:00'; endTime = '17:30:00'
+} $admin) 200 'work week'
 if (($workWeek.workingDays -join ',') -ne '1,2,3,4,5,6') { throw 'Work week did not persist.' }
+if ($workWeek.workHours.startTime -ne '08:30' -or $workWeek.workHours.endTime -ne '17:30') { throw 'Working hours did not persist.' }
+Expect (Request Put '/api/v1/timesheets/work-week' @{
+    workingDays = @(1, 2, 3, 4, 5, 6); startTime = '18:00:00'; endTime = '09:00:00'
+} $admin) 400 'working day ending before it starts' | Out-Null
 $task = Expect (Request Post '/api/v1/timesheets/tasks' @{
     name = 'Prepare rollout'; status = 'todo'; projectId = $project.id; categoryId = $category.id
 } $admin) 201 'personal task'
@@ -95,6 +101,7 @@ Expect (Request Post '/api/v1/timesheets/projects' @{ name = 'Denied' } $employe
 Expect (Request Put '/api/v1/timesheets/work-week' @{ workingDays = @(1) } $employee) 403 'employee work week permission' | Out-Null
 $catalog = Expect (Request Get '/api/v1/timesheets/catalog' $null $employee) 200 'employee catalog'
 if (($catalog.workingDays -join ',') -ne '1,2,3,4,5,6') { throw 'Catalog did not return the work week.' }
+if ($catalog.workHours.startTime -ne '08:30') { throw 'Catalog did not return the working hours.' }
 Expect (Request Get "/api/v1/identity/tenants/$($tenant.tenantId)/password-policy" $null $employee) 403 'employee password policy permission' | Out-Null
 
 $entryBody = @{ date = $date; startTime = '22:00:00'; endTime = '02:00:00';

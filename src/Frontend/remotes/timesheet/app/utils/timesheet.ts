@@ -8,7 +8,10 @@ export type TaskStatus = typeof taskStatuses[number]
 export type Task = { id: string; name: string; status: TaskStatus; projectId: string | null; categoryId: string | null }
 export type Leave = { id: string; date: string; kind: string; notes: string | null }
 export type CatalogItem = { id: string; name: string }
-export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[]; workingDays: number[] }
+export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[]; workingDays: number[]; workHours: WorkHours }
+/** When the organization's working day starts and ends, as HH:mm. */
+export type WorkHours = { startTime: string; endTime: string }
+export const defaultWorkHours: WorkHours = { startTime: '09:00', endTime: '17:00' }
 export type TrayItem = { name: string; projectId?: string | null; categoryId?: string | null; personalTaskId?: string | null }
 export type EntryForm = { date: string; startTime: string; endTime: string; taskName: string; detail: string; notes: string; projectId: string; categoryId: string; personalTaskId: string }
 
@@ -42,14 +45,14 @@ export function useTimesheetText(locale: Ref<Locale>) {
   const labels = useLocaleText(locale, { th: {
     hoursLogged: 'ชั่วโมงที่บันทึก', daysTracked: 'วันที่มีรายการ', leaveDays: 'วันลา',
     previousMonth: 'เดือนก่อนหน้า', nextMonth: 'เดือนถัดไป', selectedDate: 'วันที่เลือก',
-    estimate: 'รวมเวลารายการนี้', entryList: 'รายการเวลาทำงาน', allMonth: 'สรุปของเดือน',
+    workHours: 'เวลาทำงาน {start}–{end}', estimate: 'รวมเวลารายการนี้', entryList: 'รายการเวลาทำงาน', allMonth: 'สรุปของเดือน',
     taskPlaceholder: 'เช่น ประชุมทีม ออกแบบหน้าจอ', detailPlaceholder: 'เพิ่มรายละเอียดที่ช่วยให้กลับมาทบทวนได้',
     notesPlaceholder: 'บันทึกข้อมูลเพิ่มเติม (ไม่บังคับ)', emptyTitle: 'ยังไม่มีเวลาที่บันทึก',
     emptyHint: 'เริ่มเพิ่มรายการแรกของเดือนนี้ได้จากแบบฟอร์มด้านบน'
   }, en: {
     hoursLogged: 'Hours logged', daysTracked: 'Days with entries', leaveDays: 'Leave days',
     previousMonth: 'Previous month', nextMonth: 'Next month', selectedDate: 'Selected date',
-    estimate: 'Entry total', entryList: 'Time entries', allMonth: 'Month summary',
+    workHours: 'Working hours {start}–{end}', estimate: 'Entry total', entryList: 'Time entries', allMonth: 'Month summary',
     taskPlaceholder: 'e.g. Team meeting, design review', detailPlaceholder: 'Add a detail that will help later',
     notesPlaceholder: 'Extra notes (optional)', emptyTitle: 'No time logged yet',
     emptyHint: 'Add your first entry for this month using the form above'
