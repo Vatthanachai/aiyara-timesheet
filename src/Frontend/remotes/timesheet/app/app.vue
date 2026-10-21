@@ -19,7 +19,8 @@ let workHoursApplied = false
 const error = ref('')
 const notice = ref('')
 const editingId = ref<string | null>(null)
-const form = reactive<EntryForm>({ date: new Date().toISOString().slice(0, 10), ...defaultWorkHours, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
+const form = reactive<EntryForm>({ date: new Date().toISOString().slice(0, 10), startTime: defaultWorkHours.startTime,
+  endTime: defaultWorkHours.endTime, includesBreak: false, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
 const taskName = ref('')
 const view = ref<'entries' | 'board'>('entries')
 const leaveDate = ref(new Date().toISOString().slice(0, 10))
@@ -38,9 +39,13 @@ const daysWithLeave = computed(() => new Set(leaves.value.map(leave => leave.dat
 const daysWithHoliday = computed(() => new Set(catalog.value.holidays.filter(holiday => holiday.date.startsWith(month.value)).map(holiday => holiday.date)))
 const copy = useTimesheetText(locale)
 const { text, labels } = copy
-const workHoursLabel = computed(() => labels.value.workHours
-  .replace('{start}', formatTime(catalog.value.workHours.startTime, formats.value))
-  .replace('{end}', formatTime(catalog.value.workHours.endTime, formats.value)))
+const workHoursLabel = computed(() => {
+  const { startTime, endTime, breakStart, breakEnd } = catalog.value.workHours
+  const hours = labels.value.workHours.replace('{start}', formatTime(startTime, formats.value)).replace('{end}', formatTime(endTime, formats.value))
+  return breakStart && breakEnd
+    ? `${hours} · ${labels.value.breakHours.replace('{start}', formatTime(breakStart, formats.value)).replace('{end}', formatTime(breakEnd, formats.value))}`
+    : hours
+})
 provide(timesheetTextKey, copy)
 provide(timesheetDatesKey, computed(() => ({
   date: (value: string) => formatDate(value, formats.value, locale.value),
@@ -77,7 +82,8 @@ async function load() {
     ])
     entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
     // The first time the organization's hours are known, an untouched new entry starts with them.
-    if (!workHoursApplied && !editingId.value && !form.taskName) Object.assign(form, catalog.value.workHours)
+    if (!workHoursApplied && !editingId.value && !form.taskName)
+      Object.assign(form, { startTime: catalog.value.workHours.startTime, endTime: catalog.value.workHours.endTime })
     workHoursApplied = true
     currentMonth.value = context.currentMonth; locked.value = context.locked
     if (!entries.value.length && month.value === new Date().toISOString().slice(0, 7) &&
@@ -92,7 +98,8 @@ watch(month, value => {
 })
 function resetForm(date = form.date) {
   editingId.value = null
-  Object.assign(form, { date, ...catalog.value.workHours, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
+  Object.assign(form, { date, startTime: catalog.value.workHours.startTime, endTime: catalog.value.workHours.endTime,
+    includesBreak: false, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
 }
 function moveMonth(offset: number) {
   const [year, monthNumber] = month.value.split('-').map(Number)
@@ -106,7 +113,8 @@ function edit(entry: Entry) {
   editingId.value = entry.id
   Object.assign(form, { date: entry.date, startTime: entry.startTime.slice(0, 5), endTime: entry.endTime.slice(0, 5),
     taskName: entry.taskName, detail: entry.detail || '', notes: entry.notes || '',
-    projectId: entry.projectId || '', categoryId: entry.categoryId || '', personalTaskId: entry.personalTaskId || '' })
+    projectId: entry.projectId || '', categoryId: entry.categoryId || '', personalTaskId: entry.personalTaskId || '',
+    includesBreak: entry.includesBreak ?? false })
 }
 function prefill(task: TrayItem, date?: string) {
   if (!canEdit.value) return
@@ -131,7 +139,10 @@ async function saveEntry() {
         projectId: form.projectId || null, categoryId: form.categoryId || null, personalTaskId: form.personalTaskId || null } })
     notice.value = text.value.saved
     resetForm(savedDate); await load()
-  } catch (cause) { error.value = safeError(cause, locale.value) }
+  } catch (cause) {
+    const code = (cause as { data?: { errorCode?: string } })?.data?.errorCode
+    error.value = code === 'ENTRY_IN_BREAK' ? labels.value.entryInBreak : safeError(cause, locale.value)
+  }
 }
 async function removeEntry(id: string) {
   if (!canEdit.value || !confirm(text.value.confirmDeleteEntry)) return

@@ -122,9 +122,13 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         if (days.Length is 0 or > 7 || days.Any(day => day is < 0 or > 6) || days.Distinct().Count() != days.Length)
             return Error(400, "VALIDATION_FAILED");
         // Both times or neither; whole minutes; the day ends after it starts (no overnight shifts).
-        if (body.StartTime.HasValue != body.EndTime.HasValue ||
-            body.StartTime is { } start && body.EndTime is { } end &&
-            (start >= end || start.Second != 0 || end.Second != 0 || start.Millisecond != 0 || end.Millisecond != 0))
+        // A break comes only with the hours, both of its times or neither, inside the working day.
+        if (body.StartTime.HasValue != body.EndTime.HasValue || body.BreakStart.HasValue != body.BreakEnd.HasValue ||
+            body.BreakStart.HasValue && !body.StartTime.HasValue ||
+            !new[] { body.StartTime, body.EndTime, body.BreakStart, body.BreakEnd }.All(WholeMinutes) ||
+            body.StartTime is { } start && body.EndTime is { } end && start >= end ||
+            body.BreakStart is { } breakStart && body.BreakEnd is { } breakEnd &&
+            (breakStart >= breakEnd || breakStart < body.StartTime || breakEnd > body.EndTime))
             return Error(400, "VALIDATION_FAILED");
         var workWeek = await db.WorkWeeks.SingleOrDefaultAsync(ct);
         var before = workWeek is null ? null : JsonSerializer.Serialize(workWeek);
@@ -138,6 +142,8 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         {
             workWeek.StartTime = startTime;
             workWeek.EndTime = endTime;
+            workWeek.BreakStart = body.BreakStart;
+            workWeek.BreakEnd = body.BreakEnd;
         }
         Audit(actor, "work_week", workWeek.Id, before is null ? "created" : "updated", before, workWeek);
         await db.SaveChangesAsync(ct);
@@ -212,8 +218,15 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
                 x.Id == body.PersonalTaskId && x.OwnerId == actor.UserId && !x.IsDeleted, ct))
             return Error(400, "VALIDATION_FAILED");
         int duration;
-        try { duration = TimesheetRules.DurationMinutes(body.StartTime, body.EndTime); }
+        var week = await db.WorkWeeks.AsNoTracking().SingleOrDefaultAsync(ct);
+        try
+        {
+            duration = TimesheetRules.WorkedMinutes(body.StartTime, body.EndTime, week?.BreakStart, week?.BreakEnd,
+                body.IncludesBreak);
+        }
         catch (ArgumentException) { return Error(400, "INVALID_TIME_RANGE"); }
+        // Wholly inside the break and not worked through it: the entry would count for nothing.
+        if (duration == 0) return Error(400, "ENTRY_IN_BREAK");
         var before = entry is null ? null : JsonSerializer.Serialize(entry);
         entry ??= new TimeEntry { TenantId = actor.TenantId, OwnerId = actor.UserId,
             TaskName = body.TaskName.Trim() };
@@ -222,7 +235,8 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         entry.DurationMinutes = duration; entry.TaskName = body.TaskName.Trim();
         entry.Detail = body.Detail; entry.Notes = body.Notes;
         entry.ProjectId = body.ProjectId; entry.CategoryId = body.CategoryId;
-        entry.PersonalTaskId = body.PersonalTaskId; entry.UpdatedAtUtc = DateTime.UtcNow;
+        entry.PersonalTaskId = body.PersonalTaskId; entry.IncludesBreak = body.IncludesBreak;
+        entry.UpdatedAtUtc = DateTime.UtcNow;
         Audit(actor, "entry", entry.Id, id is null ? "created" : "updated", before, entry, body.Reason);
         Changed(actor, body.Date);
         await db.SaveChangesAsync(ct);
@@ -321,7 +335,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             entry.CategoryId,
             CategoryName = entry.CategoryId is { } categoryId && categories.TryGetValue(categoryId, out var categoryName)
                 ? categoryName : "",
-            entry.PersonalTaskId, entry.IsDeleted, entry.UpdatedAtUtc
+            entry.PersonalTaskId, entry.IncludesBreak, entry.IsDeleted, entry.UpdatedAtUtc
         }).ToArray();
         db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId,
             OwnerId = Guid.Empty, Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
@@ -407,7 +421,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
                 ProjectName = x.ProjectId is { } projectId && projects.TryGetValue(projectId, out var project) ? project : null,
                 x.CategoryId,
                 CategoryName = x.CategoryId is { } categoryId && categories.TryGetValue(categoryId, out var category) ? category : null,
-                x.UpdatedAtUtc
+                x.IncludesBreak, x.UpdatedAtUtc
             }).ToArray();
         var leaves = await db.LeaveEntries.AsNoTracking().Where(x => x.OwnerId == ownerId &&
                 !x.IsDeleted && x.Date.Year == year && x.Date.Month == month)
@@ -430,8 +444,12 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
     private static object Hours(WorkWeek week) => new
     {
         startTime = week.StartTime.ToString("HH:mm", CultureInfo.InvariantCulture),
-        endTime = week.EndTime.ToString("HH:mm", CultureInfo.InvariantCulture)
+        endTime = week.EndTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+        breakStart = week.BreakStart?.ToString("HH:mm", CultureInfo.InvariantCulture),
+        breakEnd = week.BreakEnd?.ToString("HH:mm", CultureInfo.InvariantCulture)
     };
+
+    private static bool WholeMinutes(TimeOnly? time) => time is not { } value || value is { Second: 0, Millisecond: 0 };
 
     private Task<bool> IsLocked(int year, int month, CancellationToken ct) =>
         db.MonthLocks.AnyAsync(x => x.Year == year && x.Month == month, ct);

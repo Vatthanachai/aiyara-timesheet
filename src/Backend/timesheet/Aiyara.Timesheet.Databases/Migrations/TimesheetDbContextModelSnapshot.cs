@@ -261,6 +261,9 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     b.Property<TimeOnly>("EndTime")
                         .HasColumnType("time without time zone");
 
+                    b.Property<bool>("IncludesBreak")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
@@ -392,6 +395,12 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<TimeOnly?>("BreakEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("BreakStart")
+                        .HasColumnType("time without time zone");
 
                     b.Property<TimeOnly>("EndTime")
                         .HasColumnType("time without time zone");

@@ -1,7 +1,7 @@
 import { inject, type ComputedRef, type InjectionKey, type Ref } from 'vue'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 
-export type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null }
+export type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null; includesBreak?: boolean }
 /** Kanban columns in board order; the Timesheet API accepts exactly these task statuses. */
 export const taskStatuses = ['todo', 'doing', 'done'] as const
 export type TaskStatus = typeof taskStatuses[number]
@@ -9,11 +9,33 @@ export type Task = { id: string; name: string; status: TaskStatus; projectId: st
 export type Leave = { id: string; date: string; kind: string; notes: string | null }
 export type CatalogItem = { id: string; name: string }
 export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[]; workingDays: number[]; workHours: WorkHours }
-/** When the organization's working day starts and ends, as HH:mm. */
-export type WorkHours = { startTime: string; endTime: string }
+/** When the organization's working day starts and ends, and its break (null for none), as HH:mm. */
+export type WorkHours = { startTime: string; endTime: string; breakStart?: string | null; breakEnd?: string | null }
 export const defaultWorkHours: WorkHours = { startTime: '09:00', endTime: '17:00' }
+
+const minutesOf = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
+const overlap = (from: number, to: number, breakFrom: number, breakTo: number) =>
+  Math.max(0, Math.min(to, breakTo) - Math.max(from, breakFrom))
+
+/** Minutes of an entry inside the organization's break (both halves of an overnight entry);
+ * the same rule as the Timesheet API's TimesheetRules.BreakOverlapMinutes. */
+export function breakOverlapMinutes(startTime: string, endTime: string, hours: WorkHours) {
+  if (!hours.breakStart || !hours.breakEnd || !startTime || !endTime) return 0
+  const [start, end, breakStart, breakEnd] = [startTime, endTime, hours.breakStart, hours.breakEnd].map(minutesOf) as [number, number, number, number]
+  return end > start ? overlap(start, end, breakStart, breakEnd)
+    : overlap(start, 24 * 60, breakStart, breakEnd) + overlap(0, end, breakStart, breakEnd)
+}
+
+/** The minutes an entry counts as work: its length less the break, unless it was worked through. */
+export function workedMinutes(form: Pick<EntryForm, 'startTime' | 'endTime' | 'includesBreak'>, hours: WorkHours) {
+  if (!form.startTime || !form.endTime) return 0
+  let minutes = minutesOf(form.endTime) - minutesOf(form.startTime)
+  // Ends before it starts: it runs past midnight. A zero-length entry stays zero (the API refuses it).
+  if (minutes < 0) minutes += 24 * 60
+  return form.includesBreak ? minutes : minutes - breakOverlapMinutes(form.startTime, form.endTime, hours)
+}
 export type TrayItem = { name: string; projectId?: string | null; categoryId?: string | null; personalTaskId?: string | null }
-export type EntryForm = { date: string; startTime: string; endTime: string; taskName: string; detail: string; notes: string; projectId: string; categoryId: string; personalTaskId: string }
+export type EntryForm = { date: string; startTime: string; endTime: string; taskName: string; detail: string; notes: string; projectId: string; categoryId: string; personalTaskId: string; includesBreak: boolean }
 
 const trayItemType = 'application/x-aiyara-task'
 
@@ -45,14 +67,18 @@ export function useTimesheetText(locale: Ref<Locale>) {
   const labels = useLocaleText(locale, { th: {
     hoursLogged: 'ชั่วโมงที่บันทึก', daysTracked: 'วันที่มีรายการ', leaveDays: 'วันลา',
     previousMonth: 'เดือนก่อนหน้า', nextMonth: 'เดือนถัดไป', selectedDate: 'วันที่เลือก',
-    workHours: 'เวลาทำงาน {start}–{end}', estimate: 'รวมเวลารายการนี้', entryList: 'รายการเวลาทำงาน', allMonth: 'สรุปของเดือน',
+    workHours: 'เวลาทำงาน {start}–{end}', breakHours: 'พัก {start}–{end}',
+    includesBreak: 'ทำงานในช่วงพัก {start}–{end} (นับเป็นเวลาทำงาน)', breakDeducted: 'หักเวลาพัก {minutes} นาที',
+    entryInBreak: 'รายการนี้อยู่ในช่วงพักทั้งหมด ถ้าทำงานจริงให้เลือก "ทำงานในช่วงพัก"', estimate: 'รวมเวลารายการนี้', entryList: 'รายการเวลาทำงาน', allMonth: 'สรุปของเดือน',
     taskPlaceholder: 'เช่น ประชุมทีม ออกแบบหน้าจอ', detailPlaceholder: 'เพิ่มรายละเอียดที่ช่วยให้กลับมาทบทวนได้',
     notesPlaceholder: 'บันทึกข้อมูลเพิ่มเติม (ไม่บังคับ)', emptyTitle: 'ยังไม่มีเวลาที่บันทึก',
     emptyHint: 'เริ่มเพิ่มรายการแรกของเดือนนี้ได้จากแบบฟอร์มด้านบน'
   }, en: {
     hoursLogged: 'Hours logged', daysTracked: 'Days with entries', leaveDays: 'Leave days',
     previousMonth: 'Previous month', nextMonth: 'Next month', selectedDate: 'Selected date',
-    workHours: 'Working hours {start}–{end}', estimate: 'Entry total', entryList: 'Time entries', allMonth: 'Month summary',
+    workHours: 'Working hours {start}–{end}', breakHours: 'break {start}–{end}',
+    includesBreak: 'Worked through the {start}–{end} break (count it as work)', breakDeducted: '{minutes} min break deducted',
+    entryInBreak: 'This entry is entirely in the break. If you worked then, tick "Worked through the break".', estimate: 'Entry total', entryList: 'Time entries', allMonth: 'Month summary',
     taskPlaceholder: 'e.g. Team meeting, design review', detailPlaceholder: 'Add a detail that will help later',
     notesPlaceholder: 'Extra notes (optional)', emptyTitle: 'No time logged yet',
     emptyHint: 'Add your first entry for this month using the form above'

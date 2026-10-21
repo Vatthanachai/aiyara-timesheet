@@ -2156,7 +2156,7 @@ test('tenant admin sets the working days and hours from Administration and canno
     'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
   }
   let workingDays = [1, 2, 3, 4, 5]
-  let workHours = { startTime: '09:00', endTime: '17:00' }
+  let workHours: Record<string, string | null> = { startTime: '09:00', endTime: '17:00', breakStart: null, breakEnd: null }
   const saved: unknown[] = []
   await page.route('**/api/v1/**', route => {
     const request = route.request()
@@ -2172,7 +2172,8 @@ test('tenant admin sets the working days and hours from Administration and canno
     if (path === '/timesheets/work-week') {
       const body = request.postDataJSON()
       workingDays = [...body.workingDays].sort()
-      workHours = { startTime: body.startTime.slice(0, 5), endTime: body.endTime.slice(0, 5) }
+      workHours = { startTime: body.startTime.slice(0, 5), endTime: body.endTime.slice(0, 5),
+        breakStart: body.breakStart?.slice(0, 5) ?? null, breakEnd: body.breakEnd?.slice(0, 5) ?? null }
       saved.push(body)
       return ok({ workingDays, workHours })
     }
@@ -2215,9 +2216,28 @@ test('tenant admin sets the working days and hours from Administration and canno
   await start.selectOption('08:30')
   await end.selectOption('17:30')
   await expect(panel.getByRole('alert')).toHaveCount(0)
+  await expect(panel.getByText('A normal working day is 9 hours; reports count a longer day as overtime.')).toBeVisible()
+
+  // A lunch break inside the working day; it must not reach outside it.
+  await panel.getByLabel('Break (not counted as work)').check()
+  const breakStart = panel.getByLabel('Break starts')
+  const breakEnd = panel.getByLabel('Break ends')
+  await breakStart.selectOption('17:00')
+  await breakEnd.selectOption('18:00')
+  await expect(panel.getByRole('alert')).toHaveText('The break must be within the working hours and end after it starts.')
+  await expect(panel.getByRole('button', { name: 'Save working days and hours' })).toBeDisabled()
+  await breakStart.selectOption('11:30')
+  await breakEnd.selectOption('12:30')
+  await expect(panel.getByText('A normal working day is 8 hours; reports count a longer day as overtime.')).toBeVisible()
   await panel.getByRole('button', { name: 'Save working days and hours' }).click()
   await expect(frame.getByText('Working days and hours saved.')).toBeVisible()
-  expect(saved).toEqual([{ workingDays: [1, 6], startTime: '08:30:00', endTime: '17:30:00' }])
+  expect(saved).toEqual([{ workingDays: [1, 6], startTime: '08:30:00', endTime: '17:30:00', breakStart: '11:30:00', breakEnd: '12:30:00' }])
+
+  // Turning the break off saves none.
+  await panel.getByLabel('Break (not counted as work)').uncheck()
+  await expect(breakStart).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Save working days and hours' }).click()
+  await expect.poll(() => saved.at(-1)).toMatchObject({ breakStart: null, breakEnd: null })
 
   for (const width of [375, 320]) {
     await page.setViewportSize({ width, height: 850 })
@@ -2489,5 +2509,87 @@ test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s 
     await page.setViewportSize({ width, height: 850 })
     await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
     await expect(picker).toBeVisible()
+  }
+})
+
+test('timesheet leaves the break out of an entry unless the member worked through it', async ({ page }) => {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3102',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const posted: Record<string, unknown>[] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'timesheet-token', refreshToken: 'timesheet-refresh', mustChangePassword: false, tenantId, role: 'Employee',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5],
+      workHours: { startTime: '08:30', endTime: '17:30', breakStart: '11:30', breakEnd: '12:30' } })
+    if (path === '/timesheets/entries' && request.method() === 'POST') {
+      posted.push(request.postDataJSON())
+      // The API refuses an entry wholly inside the break that was not worked through.
+      if (request.postDataJSON().startTime === '11:30:00' && !request.postDataJSON().includesBreak)
+        return route.fulfill({ status: 400, headers: cors, contentType: 'application/json',
+          body: JSON.stringify({ statusCode: 400, statusMessage: 'Error', errorCode: 'ENTRY_IN_BREAK' }) })
+      return ok({ id: `e${posted.length}` }, 201)
+    }
+    if (path === '/timesheets/entries' || path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('employee@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+
+  const timesheet = page.frameLocator('iframe')
+  const composer = timesheet.locator('.entry-panel')
+  await expect(timesheet.locator('.work-hours-label')).toHaveText('Working hours 08:30–17:30 · break 11:30–12:30')
+  // The whole working day counts 8 hours: the lunch hour is left out.
+  await expect(composer.locator('.duration-pill')).toContainText('8.00')
+  const workedThrough = composer.getByLabel('Worked through the 11:30–12:30 break (count it as work)')
+  await expect(composer.getByText('60 min break deducted')).toBeVisible()
+  await workedThrough.check()
+  await expect(composer.locator('.duration-pill')).toContainText('9.00')
+  await composer.getByLabel('Task', { exact: true }).fill('Release day')
+  await composer.getByRole('button', { name: 'Save' }).click()
+  await expect.poll(() => posted.length).toBe(1)
+  expect(posted[0]).toMatchObject({ startTime: '08:30:00', endTime: '17:30:00', includesBreak: true })
+
+  // The form resets to the working day with the box unticked; an afternoon entry has no break to offer.
+  await expect(composer.getByLabel('Start', { exact: true })).toHaveValue('08:30')
+  await expect(workedThrough).not.toBeChecked()
+  await composer.getByLabel('Start', { exact: true }).fill('13:00')
+  await composer.getByLabel('End', { exact: true }).fill('14:00')
+  await expect(workedThrough).toHaveCount(0)
+  await expect(composer.locator('.duration-pill')).toContainText('1.00')
+
+  // A lunch-hour entry that was not worked through is refused with a clear message.
+  await composer.getByLabel('Start', { exact: true }).fill('11:30')
+  await composer.getByLabel('End', { exact: true }).fill('12:30')
+  await expect(composer.locator('.duration-pill')).toHaveCount(0)
+  await composer.getByLabel('Task', { exact: true }).fill('Lunch meeting')
+  await composer.getByRole('button', { name: 'Save' }).click()
+  await expect(timesheet.getByText('This entry is entirely in the break. If you worked then, tick "Worked through the break".')).toBeVisible()
+  await workedThrough.check()
+  await expect(composer.locator('.duration-pill')).toContainText('1.00')
+  await composer.getByRole('button', { name: 'Save' }).click()
+  await expect.poll(() => posted.at(-1)).toMatchObject({ startTime: '11:30:00', endTime: '12:30:00', includesBreak: true })
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await composer.getByLabel('End', { exact: true }).fill('12:30')
+    await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
 })

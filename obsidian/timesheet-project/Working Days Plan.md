@@ -5,6 +5,7 @@
 ## Implementation Progress
 
 - **Phase A** (API): `work_weeks` table (migration `AddWorkWeeks`), `PUT /api/v1/work-week` (Gateway `/api/v1/timesheets/work-week`), `workingDays` in the catalog, in closed-month snapshots, and in the member month review.
+- **Phase E** (break, `feature/work-breaks`): an optional break in the working day; entries overlapping it have it deducted unless marked "worked through the break"; report overtime counts against the working day less the break.
 - **Phase D** (working hours, `feature/work-hours`): start and end of the working day on the work week; Administration → Working days and hours; new Timesheet entries start at them and the calendar shows them.
 - **Phase C** (reports, `feature/report-days-off`): generated reports and the Reporting member month view show days off.
 - **Phase B** (UI): Administration **Working days** panel above Holidays; the Timesheet calendar shades the organization's non-working weekdays. Both remotes fall back to Monday–Friday when a catalog has no `workingDays`.
@@ -59,6 +60,22 @@ Decisions: the hours live on the same `work_weeks` row (`StartTime`, `EndTime`; 
 - [x] D2. Administration: the panel becomes **Working days and hours**, with start and end chosen in 15-minute steps and shown in the organization's time format.
 - [x] D3. Timesheet: a new entry starts at the organization's hours, and the calendar shows them.
 - [x] D4. Tests (API, Playwright, phase 3 smoke) and docs.
+
+## Phase E — Break Time
+
+Added 21 October 2026 on request: a break inside the working day (for example lunch 11:30–12:30) that does not count as work, unless a member says they worked through it. Branch `feature/work-breaks`, built on `feature/work-hours`.
+
+Decisions:
+1. The work week gets an optional break (`BreakStart`, `BreakEnd`); none is the default, so nothing changes until an admin sets one. A break lies within the working hours and ends after it starts. It is saved together with the hours: a `PUT /work-week` that sends `startTime` / `endTime` also sets the break (both break times, or neither for no break), and one that leaves the hours out keeps the hours and the break.
+2. An entry that overlaps the break has the overlap deducted from its duration (08:30–17:30 with 11:30–12:30 is 8 hours), including both halves of an overnight entry. A new `includesBreak` flag on the entry counts the break as work, for a meeting over lunch or work that ran into it. An entry entirely inside the break without the flag would be worth nothing, so it is refused (`400 ENTRY_IN_BREAK`).
+3. Durations are worked out when an entry is saved, so a later change to the break does not rewrite existing entries; closed months are already frozen.
+4. The standard working day is the working hours minus the break. Generated reports count overtime days against it, read from the month's snapshot, instead of a fixed 8 hours. Months closed before working hours existed keep 8 hours.
+
+- [x] E1. API: break on the work week and `includesBreak` on entries (migration `AddWorkBreaks`), duration rules, validation, `workHours.breakStart` / `breakEnd`, the flag in snapshots and member views.
+- [x] E2. Administration: break start and end (quarter hours, optional) in Working days and hours.
+- [x] E3. Timesheet: the entry form's duration preview deducts the break, and a "worked through the break" checkbox appears when an entry overlaps it (new and edited entries); the calendar shows the break.
+- [x] E4. Reports: overtime against the standard working day.
+- [x] E5. Tests and docs.
 
 ## Out Of Scope
 

@@ -132,6 +132,69 @@ public sealed class WorkWeekTests : IAsyncLifetime
         Assert.Equal(("09:00", "17:00"), await CatalogHours("Employee"));
     }
 
+    [Fact]
+    public async Task Entries_leave_out_the_break_unless_the_member_worked_through_it()
+    {
+        using (var saved = await SendJson(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin", new
+        {
+            workingDays = new[] { 1, 2, 3, 4, 5 }, startTime = "08:30:00", endTime = "17:30:00",
+            breakStart = "11:30:00", breakEnd = "12:30:00"
+        }))
+        {
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+            var hours = (await Result(saved)).GetProperty("workHours");
+            Assert.Equal(("11:30", "12:30"), (hours.GetProperty("breakStart").GetString(), hours.GetProperty("breakEnd").GetString()));
+        }
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow,
+            TimeZoneInfo.FindSystemTimeZoneById("Asia/Bangkok")).DateTime);
+        async Task<HttpResponseMessage> Entry(string start, string end, bool includesBreak) =>
+            await SendJson(HttpMethod.Post, "/api/v1/entries", "Employee", new
+            {
+                date = today, startTime = start, endTime = end, taskName = "Work", includesBreak
+            });
+
+        using var day = await Entry("08:30:00", "17:30:00", false);
+        using var throughLunch = await Entry("08:30:00", "17:30:00", true);
+        using var lunchMeeting = await Entry("11:30:00", "12:30:00", true);
+        using var lunchOnly = await Entry("11:30:00", "12:30:00", false);
+
+        Assert.Equal(480, (await Result(day)).GetProperty("durationMinutes").GetInt32());
+        var worked = await Result(throughLunch);
+        Assert.Equal((540, true), (worked.GetProperty("durationMinutes").GetInt32(), worked.GetProperty("includesBreak").GetBoolean()));
+        Assert.Equal(60, (await Result(lunchMeeting)).GetProperty("durationMinutes").GetInt32());
+        Assert.Equal(HttpStatusCode.BadRequest, lunchOnly.StatusCode);
+        Assert.Equal("ENTRY_IN_BREAK", (await lunchOnly.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errorCode").GetString());
+
+        // Saving the days alone keeps the break; saving the hours without one removes it.
+        using (var daysOnly = await Send(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin", [1, 2, 3, 4]))
+            Assert.Equal("11:30", (await Result(daysOnly)).GetProperty("workHours").GetProperty("breakStart").GetString());
+        using var cleared = await SendJson(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin",
+            new { workingDays = new[] { 1, 2, 3, 4 }, startTime = "08:30:00", endTime = "17:30:00" });
+        Assert.Equal(JsonValueKind.Null, (await Result(cleared)).GetProperty("workHours").GetProperty("breakStart").ValueKind);
+        using var noBreak = await Entry("08:30:00", "17:30:00", false);
+        Assert.Equal(540, (await Result(noBreak)).GetProperty("durationMinutes").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("08:00:00", "09:00:00")] // starts before the working day
+    [InlineData("17:00:00", "18:00:00")] // ends after it
+    [InlineData("12:30:00", "11:30:00")] // ends before it starts
+    [InlineData("12:00:00", "12:00:00")]
+    [InlineData("12:00:00", null)]
+    public async Task A_break_lies_inside_the_working_day(string breakStart, string? breakEnd)
+    {
+        using var response = await SendJson(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin", new
+        {
+            workingDays = new[] { 1, 2, 3, 4, 5 }, startTime = "08:30:00", endTime = "17:30:00", breakStart, breakEnd
+        });
+        // A break needs the hours it sits in.
+        using var withoutHours = await SendJson(HttpMethod.Put, "/api/v1/work-week", "TenantAdmin",
+            new { workingDays = new[] { 1, 2, 3, 4, 5 }, breakStart = "11:30:00", breakEnd = "12:30:00" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, withoutHours.StatusCode);
+    }
+
     private async Task<(string, string)> CatalogHours(string role, Guid? tenant = null)
     {
         using var response = await Send(HttpMethod.Get, "/api/v1/catalog", role, tenant: tenant);

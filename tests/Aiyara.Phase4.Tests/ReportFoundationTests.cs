@@ -216,6 +216,30 @@ public sealed class ReportFoundationTests
         Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(ReportDocumentRenderer.RenderPdf(data), 0, 5));
     }
 
+    [Theory]
+    [InlineData("""{"workHours":{"startTime":"08:30","endTime":"17:30","breakStart":"11:30","breakEnd":"12:30"}}""", 480)]
+    [InlineData("""{"workHours":{"startTime":"08:00","endTime":"17:00","breakStart":null,"breakEnd":null}}""", 540)]
+    [InlineData("""{"workHours":{"startTime":"09:00","endTime":"17:00"}}""", 480)]
+    [InlineData("""{"entries":[]}""", null)]
+    public void A_normal_working_day_is_the_hours_less_the_break(string snapshot, int? expected) =>
+        Assert.Equal(expected, ReportDocumentRenderer.ReadStandardDayMinutes(snapshot));
+
+    [Fact]
+    public void Overtime_days_are_days_with_more_work_than_a_normal_working_day()
+    {
+        ReportLine Work(int day, int minutes) => new(new DateOnly(2026, 10, day), "08:00", "18:00", minutes, "Work", "", "", "", "", "work");
+        var lines = new[] { Work(1, 450), Work(2, 480), Work(3, 500) };
+        int Overtime(ReportDocumentData data)
+        {
+            using var workbook = new ClosedXML.Excel.XLWorkbook(new MemoryStream(ReportDocumentRenderer.RenderXlsx(data)));
+            return workbook.Worksheet(1).Cell(6, 6).GetValue<int>();
+        }
+
+        // A 7.5-hour day (09:00-17:00 less a 30-minute break) makes 2 and 3 October overtime.
+        Assert.Equal(2, Overtime(new ReportDocumentData("Ada", "", "October", lines, 0, StandardDayMinutes: 450)));
+        Assert.Equal(1, Overtime(new ReportDocumentData("Ada", "", "October", lines, 0)));
+    }
+
     [Fact]
     public void Documents_show_a_member_column_only_when_rows_name_members()
     {

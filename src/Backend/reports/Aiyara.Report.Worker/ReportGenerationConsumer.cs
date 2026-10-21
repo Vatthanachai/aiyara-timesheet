@@ -166,8 +166,11 @@ internal sealed class ReportGenerationConsumer(IServiceScopeFactory scopes,
             if (profile.Found && profile.IsActive) employeeEmail = profile.Email;
         }
         var formats = await FormatsAsync(envelope.TenantId, run.Id, cancellationToken);
+        // The working day of the latest month in the period that records one.
+        var standardDay = snapshots.Select(x => ReportDocumentRenderer.ReadStandardDayMinutes(x.Json))
+            .LastOrDefault(x => x is not null) ?? ReportDocumentRenderer.DefaultStandardDayMinutes;
         var data = new ReportDocumentData(employeeName, department, formats.Period(startLocal, endLocal), lines,
-            snapshots.Sum(x => ReportDocumentRenderer.CountLeaveDays(x.Json)), formats);
+            snapshots.Sum(x => ReportDocumentRenderer.CountLeaveDays(x.Json)), formats, standardDay);
         var bytes = definition.Format == ReportFormat.Pdf
             ? ReportDocumentRenderer.RenderPdf(data) : ReportDocumentRenderer.RenderXlsx(data);
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();

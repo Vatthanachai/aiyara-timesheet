@@ -9,12 +9,14 @@ namespace Aiyara.Timesheet.Api;
 public sealed record NameRequest(string Name);
 public sealed record HolidayRequest(DateOnly Date, string Name);
 /// <summary>Working weekdays as <see cref="DayOfWeek"/> numbers (Sunday = 0), and optionally when the
-/// working day starts and ends; leaving both times out keeps the current ones.</summary>
-public sealed record WorkWeekRequest(int[] WorkingDays, TimeOnly? StartTime = null, TimeOnly? EndTime = null);
+/// working day starts and ends with its break: sending the hours also sets the break (both break
+/// times, or neither for none); leaving the hours out keeps the hours and the break.</summary>
+public sealed record WorkWeekRequest(int[] WorkingDays, TimeOnly? StartTime = null, TimeOnly? EndTime = null,
+    TimeOnly? BreakStart = null, TimeOnly? BreakEnd = null);
 public sealed record TaskRequest(string Name, string Status, Guid? ProjectId, Guid? CategoryId);
 public sealed record EntryRequest(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,
-    Guid? PersonalTaskId, string? Reason);
+    Guid? PersonalTaskId, string? Reason, bool IncludesBreak = false);
 public sealed record LeaveRequest(DateOnly Date, string Kind, string? Notes);
 public sealed record MemberMonthSummary(Guid OwnerId, int EntryCount, int TotalMinutes, int LeaveDays);
 
