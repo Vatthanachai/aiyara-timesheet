@@ -2077,3 +2077,106 @@ test('employees request only their own reports and never load the member directo
     await expect(frame.getByRole('button', { name: 'Generate report' })).toBeVisible()
   }
 })
+
+test('tenant admin sets the working days from Administration and cannot clear the last one', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  let workingDays = [1, 2, 3, 4, 5]
+  const saved: number[][] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown) => route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays })
+    if (path === '/timesheets/work-week') {
+      workingDays = [...request.postDataJSON().workingDays].sort()
+      saved.push(workingDays)
+      return ok({ workingDays })
+    }
+    if (path === `/identity/tenants/${tenantId}/password-policy`)
+      return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
+    if (path === '/identity/members' || path === '/identity/members/invitations' || path === '/identity/members/groups') return ok([])
+    if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null })
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+
+  const frame = page.frameLocator('iframe')
+  const panel = frame.getByRole('region', { name: 'Working days' })
+  const day = (name: string) => panel.getByRole('checkbox', { name })
+  await expect(day('Monday')).toBeChecked()
+  await expect(day('Friday')).toBeChecked()
+  await expect(day('Saturday')).not.toBeChecked()
+  await expect(day('Sunday')).not.toBeChecked()
+
+  for (const name of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) await day(name).uncheck()
+  await expect(day('Monday')).toBeDisabled()
+  await day('Saturday').check()
+  await expect(day('Monday')).toBeEnabled()
+  await panel.getByRole('button', { name: 'Save working days' }).click()
+  await expect(frame.getByText('Working days saved.')).toBeVisible()
+  expect(saved).toEqual([[1, 6]])
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await expect(day('Sunday')).toBeVisible()
+  }
+})
+
+test('timesheet calendar shades the days the organization does not work', async ({ page }) => {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const firstDay = (weekday: number) => Array.from({ length: 7 }, (_, index) => `${currentMonth}-0${index + 1}`)
+    .find(date => new Date(`${date}T12:00:00`).getDay() === weekday)!
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3102',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown) => route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'timesheet-token', refreshToken: 'timesheet-refresh', mustChangePassword: false, tenantId, role: 'Employee',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    // A Sunday-to-Thursday organization.
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [0, 1, 2, 3, 4] })
+    if (path === '/timesheets/entries' || path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('employee@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('link', { name: /Timesheet.*Record time/ }).click()
+
+  const timesheet = page.frameLocator('iframe')
+  const cell = (date: string) => timesheet.locator(`.day-button[aria-label="Date ${date}"]`)
+  await expect(cell(firstDay(5))).toHaveClass(/weekend/)
+  await expect(cell(firstDay(6))).toHaveClass(/weekend/)
+  await expect(cell(firstDay(0))).not.toHaveClass(/weekend/)
+  await expect(cell(firstDay(1))).not.toHaveClass(/weekend/)
+})

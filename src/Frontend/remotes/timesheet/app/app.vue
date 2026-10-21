@@ -13,7 +13,7 @@ const month = ref(new Date().toISOString().slice(0, 7))
 const entries = ref<Entry[]>([])
 const tasks = ref<Task[]>([])
 const leaves = ref<Leave[]>([])
-const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [] })
+const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
 const error = ref('')
 const notice = ref('')
 const editingId = ref<string | null>(null)
@@ -66,7 +66,7 @@ async function load() {
       api<Catalog>('/catalog'),
       api<{ currentMonth: string; locked: boolean }>('/context')
     ])
-    entries.value = e; tasks.value = t; leaves.value = l; catalog.value = c
+    entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, workingDays: c.workingDays ?? [1, 2, 3, 4, 5] }
     currentMonth.value = context.currentMonth; locked.value = context.locked
     if (!entries.value.length && month.value === new Date().toISOString().slice(0, 7) &&
         month.value !== context.currentMonth) month.value = context.currentMonth
@@ -194,7 +194,7 @@ async function updateLeave(leave: Leave) {
         <div class="work-layout">
           <div class="main-column">
             <MonthCalendar v-if="canEdit" v-model:selected="form.date" :month="month" :month-label="monthLabel" :locale="locale"
-              :entry-days="daysWithEntries" :leave-days="daysWithLeave" :holiday-days="daysWithHoliday" @drop="dropTask" />
+              :entry-days="daysWithEntries" :leave-days="daysWithLeave" :holiday-days="daysWithHoliday" :working-days="catalog.workingDays" @drop="dropTask" />
             <EntryComposer v-if="canEdit && !editingId" :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd"
               @save="saveEntry" @cancel="resetForm()" @drop="dropTask" />
           </div>

@@ -22,7 +22,8 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
     {
         projects = await db.Projects.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
         categories = await db.Categories.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
-        holidays = await db.Holidays.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToListAsync(ct)
+        holidays = await db.Holidays.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToListAsync(ct),
+        workingDays = await WorkingDays(ct)
     });
 
     public async Task<ServiceResponse> SaveCatalog(Actor actor, NameRequest body,
@@ -107,6 +108,25 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         Audit(actor, "holiday", id, "deleted", before, holiday);
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    public async Task<ServiceResponse> SaveWorkWeek(Actor actor, WorkWeekRequest body, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        var days = body.WorkingDays ?? [];
+        if (days.Length is 0 or > 7 || days.Any(day => day is < 0 or > 6) || days.Distinct().Count() != days.Length)
+            return Error(400, "VALIDATION_FAILED");
+        var workWeek = await db.WorkWeeks.SingleOrDefaultAsync(ct);
+        var before = workWeek is null ? null : JsonSerializer.Serialize(workWeek);
+        if (workWeek is null)
+        {
+            workWeek = new WorkWeek { TenantId = actor.TenantId };
+            db.WorkWeeks.Add(workWeek);
+        }
+        workWeek.WorkingDaysMask = days.Aggregate(0, (mask, day) => mask | 1 << day);
+        Audit(actor, "work_week", workWeek.Id, before is null ? "created" : "updated", before, workWeek);
+        await db.SaveChangesAsync(ct);
+        return Ok(new { workingDays = WorkWeek.Days(workWeek.WorkingDaysMask) });
     }
 
     public async Task<ServiceResponse> Tasks(Actor actor, CancellationToken ct) =>
@@ -273,6 +293,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
         var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
             x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
+        var workingDays = await WorkingDays(ct);
         var projects = await db.Projects.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
         var categories = await db.Categories.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
         var entrySnapshots = entries.Select(entry => new
@@ -289,12 +310,12 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         }).ToArray();
         db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId,
             OwnerId = Guid.Empty, Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
-            PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots, leaves, holidays }) });
+            PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots, leaves, holidays, workingDays }) });
         foreach (var ownerId in entries.Select(x => x.OwnerId).Concat(leaves.Select(x => x.OwnerId)).Distinct())
             db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId, OwnerId = ownerId,
                 Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
                 PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots.Where(x => x.OwnerId == ownerId),
-                    leaves = leaves.Where(x => x.OwnerId == ownerId), holidays }) });
+                    leaves = leaves.Where(x => x.OwnerId == ownerId), holidays, workingDays }) });
         var monthLock = new MonthLock { TenantId = actor.TenantId, Year = year, Month = month,
             LockedBy = actor.UserId, LockedAtUtc = DateTime.UtcNow };
         db.MonthLocks.Add(monthLock);
@@ -345,7 +366,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
     }
 
     /// <summary>Tenant Admin view of one member's month: entries with project and category names,
-    /// leave, and the month's holidays. Read-only; another tenant's member simply has no rows.</summary>
+    /// leave, the month's holidays, and the working weekdays. Read-only; another tenant's member simply has no rows.</summary>
     public async Task<ServiceResponse> MemberTimesheet(Actor actor, Guid ownerId, int year, int month,
         CancellationToken ct)
     {
@@ -371,8 +392,13 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
                 x.Date.Year == year && x.Date.Month == month)
             .OrderBy(x => x.Date).Select(x => new { x.Date, x.Name }).ToListAsync(ct);
-        return Ok(new { ownerId, year, month, locked = await IsLocked(year, month, ct), entries, leaves, holidays });
+        return Ok(new { ownerId, year, month, locked = await IsLocked(year, month, ct), entries, leaves, holidays,
+            workingDays = await WorkingDays(ct) });
     }
+
+    private async Task<int[]> WorkingDays(CancellationToken ct) => WorkWeek.Days(
+        await db.WorkWeeks.AsNoTracking().Select(x => (int?)x.WorkingDaysMask).SingleOrDefaultAsync(ct)
+        ?? WorkWeek.DefaultMask);
 
     private Task<bool> IsLocked(int year, int month, CancellationToken ct) =>
         db.MonthLocks.AnyAsync(x => x.Year == year && x.Month == month, ct);

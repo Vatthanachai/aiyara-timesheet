@@ -9,6 +9,7 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<PersonalTask> PersonalTasks => Set<PersonalTask>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
+    public DbSet<WorkWeek> WorkWeeks => Set<WorkWeek>();
     public DbSet<LeaveEntry> LeaveEntries => Set<LeaveEntry>();
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
     public DbSet<MonthLock> MonthLocks => Set<MonthLock>();
@@ -42,6 +43,8 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
         Configure<Category>(modelBuilder, "categories");
         Configure<PersonalTask>(modelBuilder, "personal_tasks");
         Configure<Holiday>(modelBuilder, "holidays");
+        Configure<WorkWeek>(modelBuilder, "work_weeks");
+        modelBuilder.Entity<WorkWeek>().HasIndex(x => x.TenantId).IsUnique();
         Configure<LeaveEntry>(modelBuilder, "leave_entries");
         Configure<TimeEntry>(modelBuilder, "time_entries");
         Configure<MonthLock>(modelBuilder, "month_locks");

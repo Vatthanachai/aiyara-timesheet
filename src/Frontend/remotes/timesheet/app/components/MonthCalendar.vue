@@ -2,17 +2,16 @@
 import type { Locale } from '../../../../shared/i18n'
 import { injectTimesheetText } from '../utils/timesheet'
 
-const props = defineProps<{ month: string; monthLabel: string; locale: Locale; entryDays: Set<string>; leaveDays: Set<string>; holidayDays: Set<string> }>()
+const props = defineProps<{ month: string; monthLabel: string; locale: Locale; entryDays: Set<string>; leaveDays: Set<string>; holidayDays: Set<string>; workingDays: number[] }>()
 const selected = defineModel<string>('selected', { required: true })
 const emit = defineEmits<{ drop: [event: DragEvent, day: string] }>()
 const { text, labels } = injectTimesheetText()
 
 const days = computed(() => Array.from({ length: new Date(Number(props.month.slice(0, 4)), Number(props.month.slice(5)), 0).getDate() },
   (_, index) => `${props.month}-${String(index + 1).padStart(2, '0')}`))
-const weekendDays = computed(() => new Set(days.value.filter(day => {
-  const weekday = new Date(`${day}T12:00:00`).getDay()
-  return weekday === 0 || weekday === 6
-})))
+// Days the organization does not work (Date.getDay() numbers outside its work week).
+const weekendDays = computed(() => new Set(days.value.filter(day =>
+  !props.workingDays.includes(new Date(`${day}T12:00:00`).getDay()))))
 const calendarCells = computed(() => [
   ...Array.from({ length: new Date(Number(props.month.slice(0, 4)), Number(props.month.slice(5)) - 1, 1).getDay() }, () => null),
   ...days.value

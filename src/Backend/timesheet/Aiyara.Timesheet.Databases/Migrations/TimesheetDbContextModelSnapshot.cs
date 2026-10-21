@@ -386,6 +386,26 @@ namespace Aiyara.Timesheet.Databases.Migrations
 
                     b.ToTable("timesheet_outbox", (string)null);
                 });
+
+            modelBuilder.Entity("Aiyara.Timesheet.Databases.WorkWeek", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("WorkingDaysMask")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("work_weeks", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }

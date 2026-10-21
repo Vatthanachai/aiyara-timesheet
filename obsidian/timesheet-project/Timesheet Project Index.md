@@ -20,6 +20,7 @@
 - [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (draft, awaiting decisions).
 - [[Reporting Workspace Plan]] — reporting remote gaps and the R1–R3 delivery plan.
 - [[Tenant Member Management Plan]] — how a Tenant Admin invites and manages members (phases A–C).
+- [[Working Days Plan]] — how a Tenant Admin sets the organization's working weekdays (phases A–B).
 
 ## Repository Facts
 
