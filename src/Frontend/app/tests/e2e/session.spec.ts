@@ -2375,3 +2375,99 @@ test('timesheet shows dates and times in the organization\'s format', async ({ p
   await expect(row).toContainText('1:00 PM–2:30 PM')
   await expect(timesheet.locator('.holiday-list')).toContainText(`12 ${month} ${now.getFullYear()}`)
 })
+
+test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s date format', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  const holidays = [{ id: 'h1', date: '2026-10-13', name: 'Memorial day' }]
+  const calls: string[] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays, workingDays: [1, 2, 3, 4, 5] })
+    if (path === '/timesheets/holidays' && request.method() === 'POST') {
+      calls.push(`POST ${request.postData()}`)
+      holidays.push({ id: `h${holidays.length + 1}`, ...request.postDataJSON() })
+      return ok(holidays.at(-1), 201)
+    }
+    if (path.startsWith('/timesheets/holidays/') && request.method() === 'PUT') {
+      calls.push(`PUT ${request.postData()}`)
+      Object.assign(holidays.find(x => path.endsWith(x.id))!, request.postDataJSON())
+      return ok(holidays[0])
+    }
+    if (path === `/identity/tenants/${tenantId}/password-policy`)
+      return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
+    if (path === '/identity/members' || path === '/identity/members/groups' || path === '/identity/members/invitations') return ok([])
+    if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null, dateFormat: 'dd/MM/yyyy', timeFormat: 'HH:mm' })
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+
+  const frame = page.frameLocator('iframe')
+  const form = frame.locator('.holiday-form')
+  const date = form.getByRole('textbox', { name: 'Date' })
+  await expect(date).toHaveAttribute('placeholder', 'DD/MM/YYYY')
+  // The calendar icon is the browser's own date input, so a click there opens its picker
+  // (showPicker() is refused in a cross-origin iframe).
+  const picker = form.getByLabel('Choose from the calendar')
+  await expect(picker).toHaveAttribute('type', 'date')
+  // What a click on the middle of the icon reaches.
+  expect(await picker.evaluate(element => {
+    const box = element.getBoundingClientRect()
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === element
+  })).toBe(true)
+  // The saved holiday shows in dd/MM/yyyy, not the browser's own date format.
+  const row = frame.locator('.holiday-row').first()
+  await expect(row.getByRole('textbox', { name: 'Date: Memorial day' })).toHaveValue('13/10/2026')
+
+  // Not a real date: the form refuses to send it.
+  await date.fill('31/02/2026')
+  await form.getByPlaceholder('Holiday name').fill('Bad day')
+  await form.getByRole('button', { name: 'Add item' }).click()
+  await expect.poll(() => date.evaluate(element => (element as HTMLInputElement).validationMessage)).toBe('Enter a real date, for example 31/12/2026.')
+  expect(calls).toEqual([])
+
+  // Dashes and one-digit days work too, and the field tidies them up.
+  await date.fill('5-12-2026')
+  await date.blur()
+  await expect(date).toHaveValue('05/12/2026')
+  await form.getByPlaceholder('Holiday name').fill('Constitution day')
+  await form.getByRole('button', { name: 'Add item' }).click()
+  await expect.poll(() => calls).toEqual(['POST {"date":"2026-12-05","name":"Constitution day"}'])
+  await expect(frame.getByRole('textbox', { name: 'Date: Constitution day' })).toHaveValue('05/12/2026')
+
+  // Editing a row sends the ISO date.
+  await row.getByRole('textbox', { name: 'Date: Memorial day' }).fill('14/10/2026')
+  await row.getByRole('button', { name: 'Save' }).click()
+  await expect.poll(() => calls.at(-1)).toBe('PUT {"name":"Memorial day","date":"2026-10-14"}')
+
+  // A date picked in the browser's calendar fills the field.
+  await picker.evaluate(element => {
+    const input = element as HTMLInputElement
+    input.value = '2026-12-31'
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await expect(date).toHaveValue('31/12/2026')
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await expect(picker).toBeVisible()
+  }
+})

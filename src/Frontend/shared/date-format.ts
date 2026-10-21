@@ -63,3 +63,25 @@ export function formatMonth(value: string, formats: Formats, locale: Locale) {
   const name = new Intl.DateTimeFormat(intlLocale(locale), { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1)))
   return `${name} ${displayYear(year, formats)}`
 }
+
+/** The format a date field is typed in: the organization's, except that `d MMM yyyy` is typed as
+ * `dd/MM/yyyy`, since month names are awkward to type. */
+export function inputDateFormat(formats: Formats): Formats {
+  return formats.dateFormat === 'd MMM yyyy' ? { ...formats, dateFormat: 'dd/MM/yyyy' } : formats
+}
+
+/** Reads a typed date in `inputDateFormat(formats)` (any of / - . as separators, one-digit days
+ * and months allowed) as `YYYY-MM-DD`, or null when it is not a real date. */
+export function parseDate(text: string, formats: Formats): string | null {
+  const format = inputDateFormat(formats).dateFormat
+  const parts = text.trim().split(/[/.\-\s]+/)
+  if (parts.length !== 3 || !parts.every(part => /^\d+$/.test(part))) return null
+  const [a, b, c] = parts.map(Number) as [number, number, number]
+  const [day, month, written] = format === 'yyyy-MM-dd' ? [c, b, a] : format === 'MM/dd/yyyy' ? [b, a, c] : [a, b, c]
+  const yearText = format === 'yyyy-MM-dd' ? parts[0]! : parts[2]!
+  if (yearText.length !== 4) return null
+  const year = format === 'dd/MM/bbbb' ? written - 543 : written
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (year < 1900 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
+  return `${year}-${pad(month)}-${pad(day)}`
+}
