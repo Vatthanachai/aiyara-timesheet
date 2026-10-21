@@ -3,6 +3,7 @@ import { safeError } from '../../../../shared/api-response'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 import { zonedToday } from '../utils/reportPeriods'
 import { csvBlob, saveBlob, xlsxBlob, type Cell } from '../utils/spreadsheet'
+import { expectedMinutes, standardMinutes, type WorkHours, type WorkSchedule } from '../utils/expectedHours'
 import { formatDate as formatCalendarDate, formatMonth, formatTime, type Formats } from '../../../../shared/date-format'
 
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; groupId?: string | null; groupName?: string | null }
@@ -18,7 +19,9 @@ type Detail = {
   holidays: { date: string; name: string }[]
   /** Date.getDay() numbers the organization works; older API responses omit it (Monday to Friday). */
   workingDays?: number[]
+  workHours?: WorkHours
 }
+type Catalog = { holidays: { date: string }[]; workingDays?: number[]; workHours?: WorkHours }
 
 const props = defineProps<{
   members: Member[]
@@ -34,7 +37,7 @@ const props = defineProps<{
 
 const copy = useLocaleText(toRef(props, 'locale'), { th: {
   title: 'Timesheet ของสมาชิก', hint: 'ดูเวลาทำงานและวันลาของสมาชิกแต่ละคนรายเดือน รวมเดือนปัจจุบันที่ยังไม่ปิดรอบ',
-  month: 'เดือน', member: 'สมาชิก', entries: 'รายการ', hours: 'ชั่วโมง', leaveDays: 'วันลา', view: 'ดู timesheet',
+  month: 'เดือน', member: 'สมาชิก', entries: 'รายการ', hours: 'ชั่วโมง', leaveDays: 'วันลา', view: 'ดู timesheet', viewShort: 'ดู',
   noData: 'ยังไม่มีรายการ', formerMember: 'สมาชิกเดิม', loading: 'กำลังโหลด…', back: 'สมาชิกทั้งหมด',
   monthClosed: 'ปิดรอบแล้ว', monthOpen: 'ยังไม่ปิดรอบ (ข้อมูลอาจเปลี่ยน)', totalHours: 'ชั่วโมงรวม', daysWorked: 'วันที่ทำงาน',
   date: 'วันที่', time: 'เวลา', task: 'งาน', project: 'โครงการ', category: 'หมวดหมู่', duration: 'ชั่วโมง',
@@ -43,10 +46,12 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   group: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม', byGroup: 'สรุปตามกลุ่ม', members: 'สมาชิก', noMembersInGroup: 'ไม่มีสมาชิกในกลุ่มนี้',
   exportXlsx: 'ส่งออก XLSX', exportCsv: 'ส่งออก CSV', exportLabel: 'ส่งออก timesheet ของ {name}', start: 'เริ่ม', end: 'สิ้นสุด',
   detail: 'รายละเอียด', notes: 'บันทึก', remark: 'หมายเหตุ', status: 'สถานะ',
+  expectedOpen: 'ถึงวันนี้ควรมี {toDate} จาก {total} ชั่วโมงต่อคน', expectedClosed: '{month} ต้องการ {total} ชั่วโมงต่อคน',
+  ofHours: 'จาก {expected}', hoursLabel: '{name}: บันทึก {logged} จาก {expected} ชั่วโมง', strip: 'ชั่วโมงรายวันของ {name}',
   myTitle: 'Timesheet ของฉัน', myHint: 'เวลาทำงาน วันลา และวันหยุดของคุณรายเดือน รวมเดือนปัจจุบันที่ยังไม่ปิดรอบ อัปเดตทันทีที่บันทึกเวลา', me: 'ฉัน'
 }, en: {
   title: 'Member timesheets', hint: "Review each member's hours and leave by month, including the current open month.",
-  month: 'Month', member: 'Member', entries: 'Entries', hours: 'Hours', leaveDays: 'Leave days', view: 'View timesheet',
+  month: 'Month', member: 'Member', entries: 'Entries', hours: 'Hours', leaveDays: 'Leave days', view: 'View timesheet', viewShort: 'View',
   noData: 'No entries yet', formerMember: 'Former member', loading: 'Loading…', back: 'All members',
   monthClosed: 'Month closed', monthOpen: 'Month open (may still change)', totalHours: 'Total hours', daysWorked: 'Days worked',
   date: 'Date', time: 'Time', task: 'Task', project: 'Project', category: 'Category', duration: 'Hours',
@@ -55,6 +60,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   group: 'Group', allGroups: 'All groups', noGroup: 'No group', byGroup: 'Totals by group', members: 'Members', noMembersInGroup: 'No members in this group.',
   exportXlsx: 'Export XLSX', exportCsv: 'Export CSV', exportLabel: 'Export the timesheet of {name}', start: 'Start', end: 'End',
   detail: 'Detail', notes: 'Notes', remark: 'Remark', status: 'Status',
+  expectedOpen: 'Expected so far: {toDate} of {total} hours per member.', expectedClosed: '{month} expects {total} hours per member.',
+  ofHours: 'of {expected}', hoursLabel: '{name}: {logged} of {expected} hours logged', strip: 'Hours per day for {name}',
   myTitle: 'My timesheet', myHint: 'Your hours, leave, and days off by month, including the current open month. It updates as soon as you record time.', me: 'Me'
 } })
 
@@ -68,6 +75,27 @@ const detail = ref<Detail | null>(null)
 const busy = ref(false)
 const error = ref('')
 const period = computed(() => ({ year: Number(month.value.slice(0, 4)), month: Number(month.value.slice(5, 7)) }))
+/** The organization's work week, hours, and holidays; without them the page shows figures only. */
+const catalog = ref<Catalog | null>(null)
+const toSchedule = (source: { workingDays?: number[]; holidays: { date: string }[]; workHours?: WorkHours }): WorkSchedule => ({
+  workingDays: source.workingDays ?? [1, 2, 3, 4, 5],
+  holidays: new Set(source.holidays.map(holiday => holiday.date)),
+  standardMinutes: standardMinutes(source.workHours ?? catalog.value?.workHours)
+})
+const schedule = computed(() => catalog.value ? toSchedule(catalog.value) : null)
+const today = computed(() => zonedToday(props.timeZoneId))
+const monthExpected = computed(() => schedule.value ? expectedMinutes(month.value, schedule.value) : 0)
+/** Expected by today in the current month; null for any other month. */
+const expectedToDate = computed(() => schedule.value && today.value.startsWith(month.value)
+  ? expectedMinutes(month.value, schedule.value, today.value) : null)
+/** A member's expectation leaves out their leave days. */
+const memberExpected = (leaveDays: number) => Math.max(monthExpected.value - leaveDays * (schedule.value?.standardMinutes ?? 0), 0)
+const memberToDate = (leaveDays: number) => expectedToDate.value == null ? null
+  : Math.max(expectedToDate.value - leaveDays * (schedule.value?.standardMinutes ?? 0), 0)
+const fill = (template: string, values: Record<string, string>) => template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? '')
+/** The open month's schedule: its own holidays and working days as the API sent them. */
+const detailSchedule = computed(() => detail.value ? toSchedule(detail.value) : null)
+const leaveDates = computed(() => new Set(detail.value?.leaves.map(leave => leave.date)))
 
 const memberName = (member: Member | undefined) =>
   member ? [member.firstName, member.lastName].filter(part => part?.trim()).join(' ') || member.email : copy.value.formerMember
@@ -92,15 +120,18 @@ const visibleRows = computed(() => groupFilter.value
 /** Hours, entries, and leave per group, busiest first, with members in no group last. */
 const groupTotals = computed(() => {
   const names = new Map(groups.value.map(x => [x.id, x.name]))
-  const totals = new Map<string, { key: string; name: string; members: number; totalMinutes: number; entryCount: number; leaveDays: number }>()
+  const totals = new Map<string, { key: string; name: string; members: number; totalMinutes: number; entryCount: number; leaveDays: number; expected: number; toDate: number | null }>()
   for (const row of rows.value) {
     const key = groupKey(row.member)
     if (!key) continue
-    const total = totals.get(key) ?? { key, name: names.get(key) ?? copy.value.noGroup, members: 0, totalMinutes: 0, entryCount: 0, leaveDays: 0 }
+    const total = totals.get(key) ?? { key, name: names.get(key) ?? copy.value.noGroup, members: 0, totalMinutes: 0, entryCount: 0, leaveDays: 0,
+      expected: 0, toDate: expectedToDate.value == null ? null : 0 }
     total.members++
     total.totalMinutes += row.totals.totalMinutes
     total.entryCount += row.totals.entryCount
     total.leaveDays += row.totals.leaveDays
+    total.expected += memberExpected(row.totals.leaveDays)
+    if (total.toDate != null) total.toDate += memberToDate(row.totals.leaveDays) ?? 0
     totals.set(key, total)
   }
   return [...totals.values()].sort((a, b) => Number(a.key === NO_GROUP) - Number(b.key === NO_GROUP) ||
@@ -110,6 +141,12 @@ const hours = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes
 const formatDate = (value: string) => formatCalendarDate(value, props.formats, props.locale, { weekday: true })
 const monthLabel = computed(() => formatMonth(month.value, props.formats, props.locale))
 const time = (value: string) => formatTime(value, props.formats)
+const expectedSentence = computed(() => !schedule.value || !summary.value ? '' : expectedToDate.value != null
+  ? fill(copy.value.expectedOpen, { month: monthLabel.value, toDate: hours(expectedToDate.value), total: hours(monthExpected.value) })
+  : fill(copy.value.expectedClosed, { month: monthLabel.value, total: hours(monthExpected.value) }))
+const describeDay = (date: string, minutes: number) => `${formatDate(date)}: ${hours(minutes)}`
+const hoursLabel = (name: string, logged: number, expected: number) =>
+  fill(copy.value.hoursLabel, { name, logged: hours(logged), expected: hours(expected) })
 const totalMinutes = computed(() => detail.value?.entries.reduce((sum, x) => sum + x.durationMinutes, 0) ?? 0)
 const daysWorked = computed(() => new Set(detail.value?.entries.map(x => x.date)).size)
 const dayTotals = computed(() => {
@@ -209,7 +246,10 @@ function close() {
 }
 
 watch(month, () => { if (/^\d{4}-\d{2}$/.test(month.value)) loadSummary() })
-onMounted(loadSummary)
+onMounted(async () => {
+  try { catalog.value = await props.load<Catalog>('/catalog', {}) } catch { catalog.value = null }
+  await loadSummary()
+})
 </script>
 
 <template>
@@ -233,15 +273,17 @@ onMounted(loadSummary)
 
     <template v-if="selectedId && detail">
       <div class="detail-heading">
-        <button v-if="!self" type="button" class="secondary" @click="close">← {{ copy.back }}</button>
-        <h3>{{ selectedName }} · {{ monthLabel }}</h3>
+        <button v-if="!self" type="button" class="secondary back-button" @click="close">{{ copy.back }}</button>
+        <h3>{{ selectedName }} <span class="detail-month">{{ monthLabel }}</span></h3>
         <span class="status" :data-status="detail.locked ? 'Succeeded' : 'Blocked'">{{ detail.locked ? copy.monthClosed : copy.monthOpen }}</span>
         <div class="export-actions" role="group" :aria-label="copy.exportLabel.replace('{name}', selectedName)">
           <button type="button" @click="exportTimesheet('xlsx')">{{ copy.exportXlsx }}</button>
           <button type="button" class="secondary" @click="exportTimesheet('csv')">{{ copy.exportCsv }}</button>
         </div>
       </div>
-      <dl class="summary member-totals">
+      <MonthStrip v-if="detailSchedule" :month="month" :minutes-by-day="dayTotals" :leave-days="leaveDates" :schedule="detailSchedule"
+        :label="copy.strip.replace('{name}', selectedName)" :describe="describeDay" />
+      <dl class="member-totals">
         <div><dt>{{ copy.totalHours }}</dt><dd>{{ hours(totalMinutes) }}</dd></div>
         <div><dt>{{ copy.daysWorked }}</dt><dd>{{ daysWorked }}</dd></div>
         <div><dt>{{ copy.entries }}</dt><dd>{{ detail.entries.length }}</dd></div>
@@ -292,34 +334,51 @@ onMounted(loadSummary)
           <caption>{{ copy.byGroup }}</caption>
           <thead><tr>
             <th scope="col">{{ copy.group }}</th><th scope="col" class="number">{{ copy.members }}</th>
-            <th scope="col" class="number">{{ copy.hours }}</th><th scope="col" class="number">{{ copy.entries }}</th>
-            <th scope="col" class="number">{{ copy.leaveDays }}</th>
+            <th v-if="schedule" scope="col" class="bar-cell"><span class="sr-only">{{ copy.hours }}</span></th>
+            <th scope="col" class="number">{{ copy.hours }}</th><th scope="col" class="number optional">{{ copy.entries }}</th>
+            <th scope="col" class="number optional">{{ copy.leaveDays }}</th>
           </tr></thead>
           <tbody>
             <tr v-for="group in groupTotals" :key="group.key">
-              <td><button type="button" class="link-button" @click="groupFilter = group.key">{{ group.name }}</button></td>
-              <td class="number">{{ group.members }}</td><td class="number">{{ hours(group.totalMinutes) }}</td>
-              <td class="number">{{ group.entryCount }}</td><td class="number">{{ group.leaveDays }}</td>
+              <td><button type="button" class="link-button" @click="groupFilter = group.key">{{ group.name }}</button>
+                <HoursBar v-if="schedule" class="inline-bar" :logged="group.totalMinutes" :expected="group.expected" :to-date="group.toDate"
+                  :label="hoursLabel(group.name, group.totalMinutes, group.expected)" /></td>
+              <td class="number">{{ group.members }}</td>
+              <td v-if="schedule" class="bar-cell"><HoursBar :logged="group.totalMinutes" :expected="group.expected" :to-date="group.toDate"
+                :label="hoursLabel(group.name, group.totalMinutes, group.expected)" /></td>
+              <td class="number">{{ hours(group.totalMinutes) }}</td>
+              <td class="number optional">{{ group.entryCount }}</td><td class="number optional">{{ group.leaveDays }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p class="muted month-state"><span class="status" :data-status="summary.locked ? 'Succeeded' : 'Blocked'">{{ summary.locked ? copy.monthClosed : copy.monthOpen }}</span></p>
+      <p class="month-state"><span class="status" :data-status="summary.locked ? 'Succeeded' : 'Blocked'">{{ summary.locked ? copy.monthClosed : copy.monthOpen }}</span>
+        <span v-if="expectedSentence" class="expected-sentence">{{ expectedSentence }}</span></p>
       <div class="table-wrap">
         <table class="member-table" :aria-label="copy.title">
           <thead><tr>
-            <th scope="col">{{ copy.member }}</th><th scope="col" class="number">{{ copy.hours }}</th>
-            <th scope="col" class="number">{{ copy.entries }}</th><th scope="col" class="number">{{ copy.leaveDays }}</th>
+            <th scope="col">{{ copy.member }}</th>
+            <th v-if="schedule" scope="col" class="bar-cell"><span class="sr-only">{{ copy.hours }}</span></th>
+            <th scope="col" class="number">{{ copy.hours }}</th>
+            <th scope="col" class="number optional">{{ copy.entries }}</th><th scope="col" class="number optional">{{ copy.leaveDays }}</th>
             <th scope="col"><span class="sr-only">{{ copy.view }}</span></th>
           </tr></thead>
           <tbody>
             <tr v-for="row in visibleRows" :key="row.id">
-              <td><strong>{{ memberName(row.member) }}</strong><small v-if="row.member && memberName(row.member) !== row.member.email">{{ row.member.email }}</small><small v-if="groups.length && !groupFilter && row.member">{{ row.member.groupName ?? copy.noGroup }}</small></td>
-              <td class="number">{{ row.totals.entryCount || row.totals.leaveDays ? hours(row.totals.totalMinutes) : '—' }}</td>
-              <td class="number">{{ row.totals.entryCount }}</td>
-              <td class="number">{{ row.totals.leaveDays }}</td>
+              <td><strong>{{ memberName(row.member) }}</strong><small v-if="row.member && memberName(row.member) !== row.member.email">{{ row.member.email }}</small><small v-if="groups.length && !groupFilter && row.member">{{ row.member.groupName ?? copy.noGroup }}</small>
+                <!-- On a phone the bar sits under the name instead of in its own column. -->
+                <HoursBar v-if="schedule && row.member" class="inline-bar" :logged="row.totals.totalMinutes" :expected="memberExpected(row.totals.leaveDays)"
+                  :to-date="memberToDate(row.totals.leaveDays)" :label="hoursLabel(memberName(row.member), row.totals.totalMinutes, memberExpected(row.totals.leaveDays))" /></td>
+              <td v-if="schedule" class="bar-cell">
+                <!-- Former members have no expectation; their hours are listed without a bar. -->
+                <HoursBar v-if="row.member" :logged="row.totals.totalMinutes" :expected="memberExpected(row.totals.leaveDays)"
+                  :to-date="memberToDate(row.totals.leaveDays)" :label="hoursLabel(memberName(row.member), row.totals.totalMinutes, memberExpected(row.totals.leaveDays))" />
+              </td>
+              <td class="number">{{ row.totals.entryCount || row.totals.leaveDays ? hours(row.totals.totalMinutes) : '—' }}<small v-if="schedule && row.member">{{ fill(copy.ofHours, { expected: hours(memberExpected(row.totals.leaveDays)) }) }}</small></td>
+              <td class="number optional">{{ row.totals.entryCount }}</td>
+              <td class="number optional">{{ row.totals.leaveDays }}</td>
               <td class="actions-cell">
-                <button type="button" :disabled="busy" :aria-label="`${copy.view}: ${memberName(row.member)}`" @click="open(row.id)">{{ copy.view }}</button>
+                <button type="button" :disabled="busy" :aria-label="`${copy.view}: ${memberName(row.member)}`" @click="open(row.id)"><span class="view-long">{{ copy.view }}</span><span class="view-short">{{ copy.viewShort }}</span></button>
               </td>
             </tr>
           </tbody>
@@ -332,23 +391,44 @@ onMounted(loadSummary)
 
 <style scoped>
 .member-timesheets .card-heading p{margin:.3rem 0 0;max-width:36rem}
-.member-table{min-width:36rem}
+.member-table{min-width:34rem}
 .member-filters{display:flex;flex-wrap:wrap;gap:.6rem}
-.group-totals{margin-bottom:1rem}
+.group-totals{margin-bottom:1.25rem}
 .group-totals table{min-width:30rem}
-.group-totals caption{text-align:left;font-weight:600;padding-bottom:.4rem}
-.link-button{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
-.number{text-align:right;font-variant-numeric:tabular-nums}
+.group-totals caption{text-align:left;font-family:var(--font-display);font-weight:600;padding-bottom:.4rem}
+/* The ledger: each row's hours as a bar against what the month expects. */
+.bar-cell{width:42%;min-width:8rem;vertical-align:middle}
+.member-timesheets .inline-bar{display:none}
+.link-button{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:600;text-align:left;text-decoration:underline;cursor:pointer}
+.number{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .number small{white-space:nowrap}
 .actions-cell{text-align:right}
-.month-state{margin:0 0 .5rem}
-.detail-heading{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem;margin:0 0 1rem}
-.detail-heading h3{margin:0;font-size:1rem;flex:1 1 14rem}
+.view-short{display:none}
+.month-state{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .75rem;margin:0 0 .75rem}
+.expected-sentence{color:var(--color-ink);font-size:.92rem}
+.detail-heading{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem;margin:0 0 1.25rem}
+.detail-heading h3{margin:0;font-family:var(--font-display);font-size:1.35rem;font-weight:600;flex:1 1 14rem}
+.detail-month{color:var(--color-muted);font-weight:500;margin-left:.35rem}
 .export-actions{display:flex;flex-wrap:wrap;gap:.5rem}
-.member-totals{margin-bottom:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr))}
+/* A member's month in figures: one row, divided, no cards. */
+.member-totals{display:flex;flex-wrap:wrap;margin:0 0 1.25rem;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
+.member-totals div{flex:1 1 7rem;padding:.7rem 1rem .7rem 0;margin-right:1rem}
+.member-totals div + div{border-left:1px solid var(--color-border);padding-left:1rem}
+.member-totals dt{color:var(--color-muted);font-size:.82rem}
+.member-totals dd{margin:.15rem 0 0;font-family:var(--font-display);font-size:1.5rem;font-weight:600;font-variant-numeric:tabular-nums}
 tr.day-end td{border-bottom-color:#c9d3e1}
-.day-off{display:block;width:max-content;margin-top:.2rem;padding:.05rem .45rem;border-radius:999px;background:#eef0f4;color:#5b6577;font-size:.72rem}
+.day-off{display:block;width:max-content;margin-top:.2rem;padding:.05rem .45rem;border-radius:999px;background:var(--color-day-off);color:#475569;font-size:.72rem}
 .detail-lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:0 1.5rem}
+.detail-lists h3{font-family:var(--font-display);font-weight:600}
 .plain-list{list-style:none;margin:0;padding:0;display:grid;gap:.35rem}
-.plain-list li{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;border-bottom:1px dashed var(--color-border);padding:.3rem 0}
+.plain-list li{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;border-bottom:1px solid var(--color-border);padding:.35rem 0}
+@media (max-width:40rem){
+  .member-table,.group-totals table{min-width:0}
+  /* On a phone the counts give way to the bar; a member's own view still lists them. */
+  .bar-cell,.optional,.view-long{display:none}
+  .view-short{display:inline}
+  .member-timesheets .inline-bar{display:block;margin-top:.45rem}
+  .member-totals div{flex-basis:40%}
+  .member-totals div + div{border-left:0;padding-left:0}
+}
 </style>

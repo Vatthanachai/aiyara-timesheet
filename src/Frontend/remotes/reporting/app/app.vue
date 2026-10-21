@@ -71,7 +71,9 @@ const copy = useLocaleText(locale, { th: {
   never: 'ยังไม่เคย', noSchedules: 'ยังไม่มีการสร้างรายงานอัตโนมัติ',
   scheduleExists: 'มีกำหนดการของรายงานนี้สำหรับกลุ่มหรือทั้งองค์กรนี้อยู่แล้ว', groupNotFound: 'ไม่พบกลุ่มนี้ อาจถูกลบไปแล้ว กรุณาโหลดหน้าใหม่',
   groupScheduleHint: 'รายงานกลุ่มอัตโนมัติจะใช้สมาชิกของกลุ่ม ณ เวลาที่สร้างรายงาน',
-  retention: 'ระยะเวลาเก็บไฟล์', retentionYears: 'จำนวนปี', retentionHint: 'ไฟล์ที่เก่ากว่านี้จะถูกลบอัตโนมัติ'
+  retention: 'ระยะเวลาเก็บไฟล์', retentionYears: 'จำนวนปี', retentionHint: 'ไฟล์ที่เก่ากว่านี้จะถูกลบอัตโนมัติ',
+  documents: 'เอกสาร', countReady: 'พร้อมดาวน์โหลด {n} รายการ', countQueued: 'กำลังสร้าง {n} รายการ', countAttention: 'ต้องดำเนินการ {n} รายการ',
+  noReportsYet: 'ยังไม่มีรายงาน', countSeparator: ' ', countEnd: ''
 }, en: {
   title: 'Reports and documents', subtitle: 'Request timesheet reports, follow their progress, and download the files.',
   signIn: 'Please sign in through Aiyara Shell', loading: 'Loading…',
@@ -98,7 +100,9 @@ const copy = useLocaleText(locale, { th: {
   never: 'Never', noSchedules: 'No automatic reports yet.',
   scheduleExists: 'This report is already scheduled for this group or the whole organization.', groupNotFound: 'This group no longer exists. Reload the page.',
   groupScheduleHint: 'Automatic group reports cover whoever is in the group when each report is made.',
-  retention: 'File retention', retentionYears: 'Years', retentionHint: 'Files older than this are deleted automatically.'
+  retention: 'File retention', retentionYears: 'Years', retentionHint: 'Files older than this are deleted automatically.',
+  documents: 'Documents', countReady: '{n} ready to download', countQueued: '{n} being generated', countAttention: '{n} need attention',
+  noReportsYet: 'No reports yet.', countSeparator: ', ', countEnd: '.'
 } })
 const text = (key: string) => (copy.value as Record<string, string>)[key] ?? key
 const dateLocale = computed(() => locale.value === 'th' ? 'th-TH' : 'en')
@@ -203,6 +207,15 @@ function statusDetail(run: Run) {
   if (run.statusReason === 'GENERATION_FAILED') return copy.value.failedReason
   return ''
 }
+/** "1 ready to download, 1 being generated, 2 need attention." with the attention count marked. */
+const statusCounts = computed(() => {
+  const attention = dashboard.value.blocked + dashboard.value.failed
+  return [
+    { key: 'ready', count: dashboard.value.ready, text: copy.value.countReady },
+    { key: 'queued', count: dashboard.value.queued, text: copy.value.countQueued },
+    { key: 'attention', count: attention, text: copy.value.countAttention }
+  ].filter(item => item.count > 0).map(item => ({ ...item, text: item.text.replace('{n}', String(item.count)) }))
+})
 const formatDateTime = (value: string | null) => value
   ? formatInstant(value, timeZoneId.value, formats.value, locale.value) : '—'
 
@@ -421,184 +434,209 @@ onMounted(() => {
       <p v-if="error" class="feedback feedback-error" role="alert">{{ error }}</p>
       <p v-if="notice" class="feedback feedback-ok" role="status">{{ notice }}</p>
 
-      <dl class="summary">
-        <div><dt>{{ copy.ready }}</dt><dd>{{ dashboard.ready }}</dd></div>
-        <div><dt>{{ copy.inProgress }}</dt><dd>{{ dashboard.queued }}</dd></div>
-        <div :class="{ alert: dashboard.blocked + dashboard.failed > 0 }"><dt>{{ copy.attention }}</dt><dd>{{ dashboard.blocked + dashboard.failed }}</dd></div>
-        <div><dt>{{ copy.total }}</dt><dd>{{ dashboard.total }}</dd></div>
-      </dl>
-
-      <section class="card" aria-labelledby="request-heading">
-        <h2 id="request-heading">{{ copy.request }}</h2>
-        <div v-if="!definitions.length" class="empty">
-          <strong>{{ copy.noDefinitions }}</strong>
-          <p>{{ isAdmin ? copy.noDefinitionsAdmin : copy.noDefinitionsEmployee }}</p>
-        </div>
-        <form v-else class="request-form" @submit.prevent="requestReport">
-          <label>{{ copy.report }}
-            <select v-model="selectedDefinitionId" required>
-              <option v-for="item in definitions" :key="item.id" :value="item.id">{{ item.name }} · {{ text(item.format) }}</option>
-            </select>
-          </label>
-          <label v-if="selectedDefinition?.kind === 'Weekly'">{{ copy.week }}
-            <input v-model="weekDay" type="date" required />
-          </label>
-          <template v-else-if="selectedDefinition?.kind === 'Monthly'">
-            <label>{{ copy.month }}
-              <select v-model.number="monthNumber"><option v-for="item in monthOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select>
-            </label>
-            <label>{{ copy.year }}
-              <select v-model.number="monthYear"><option v-for="item in yearOptions" :key="item" :value="item">{{ item }}</option></select>
-            </label>
-          </template>
-          <label v-else-if="selectedDefinition?.kind === 'Annual'">{{ copy.year }}
-            <select v-model.number="yearValue"><option v-for="item in yearOptions" :key="item" :value="item">{{ item }}</option></select>
-          </label>
-          <template v-else>
-            <label>{{ copy.from }}<input v-model="rangeFrom" type="date" required /></label>
-            <label>{{ copy.to }}<input v-model="rangeTo" type="date" required :min="rangeFrom" /></label>
-          </template>
-          <label v-if="isAdmin">{{ copy.subject }}
-            <select v-model="subjectUserId" :aria-label="copy.subject">
-              <option value="">{{ copy.wholeOrganization }}</option>
-              <optgroup v-if="memberGroups.length" :label="copy.groups">
-                <option v-for="group in memberGroups" :key="group.id" :value="`${GROUP_PREFIX}${group.id}`">{{ group.name }}</option>
-              </optgroup>
-              <optgroup v-if="memberGroups.length" :label="copy.people">
-                <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
-              </optgroup>
-              <template v-else>
-                <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
-              </template>
-            </select>
-          </label>
-          <p v-if="requestPeriod" class="preview">
-            {{ copy.periodPreview.replace('{period}', formatPeriod(requestPeriod, formats, locale)).replace('{zone}', timeZoneId) }}
-          </p>
-          <button class="primary" type="submit" :disabled="busy || !requestPeriod">{{ busy ? copy.generating : copy.generate }}</button>
-        </form>
-      </section>
-
       <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" />
       <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :self="{ name: myName }" />
 
-      <section class="card" aria-labelledby="history-heading">
+      <section class="card documents" aria-labelledby="documents-heading">
         <div class="card-heading">
-          <h2 id="history-heading">{{ copy.history }}</h2>
-          <form class="filters" @submit.prevent>
-            <label>{{ copy.status }}
-              <select v-model="filters.status" @change="applyFilters()">
-                <option value="">{{ copy.allStatuses }}</option>
-                <option v-for="status in ['Queued', 'Running', 'Succeeded', 'Failed']" :key="status" :value="status">{{ text(status) }}</option>
+          <h2 id="documents-heading">{{ copy.documents }}</h2>
+          <p class="doc-status">
+            <template v-if="statusCounts.length">
+              <span v-for="(item, index) in statusCounts" :key="item.key" :class="`count-${item.key}`">{{ item.text }}{{ index < statusCounts.length - 1 ? copy.countSeparator : copy.countEnd }}</span>
+            </template>
+            <span v-else>{{ copy.noReportsYet }}</span>
+          </p>
+        </div>
+
+        <section class="request" aria-labelledby="request-heading">
+          <h3 id="request-heading">{{ copy.request }}</h3>
+          <div v-if="!definitions.length" class="empty">
+            <strong>{{ copy.noDefinitions }}</strong>
+            <p>{{ isAdmin ? copy.noDefinitionsAdmin : copy.noDefinitionsEmployee }}</p>
+          </div>
+          <form v-else class="request-form" @submit.prevent="requestReport">
+            <label class="request-report">{{ copy.report }}
+              <select v-model="selectedDefinitionId" required>
+                <option v-for="item in definitions" :key="item.id" :value="item.id">{{ item.name }} ({{ text(item.format) }})</option>
               </select>
             </label>
-            <label>{{ copy.report }}
-              <select v-model="filters.definitionId" @change="applyFilters()">
-                <option value="">{{ copy.allReports }}</option>
-                <option v-for="item in definitions" :key="item.id" :value="item.id">{{ item.name }}</option>
+            <label v-if="selectedDefinition?.kind === 'Weekly'">{{ copy.week }}
+              <input v-model="weekDay" type="date" required />
+            </label>
+            <template v-else-if="selectedDefinition?.kind === 'Monthly'">
+              <label>{{ copy.month }}
+                <select v-model.number="monthNumber"><option v-for="item in monthOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select>
+              </label>
+              <label>{{ copy.year }}
+                <select v-model.number="monthYear"><option v-for="item in yearOptions" :key="item" :value="item">{{ item }}</option></select>
+              </label>
+            </template>
+            <label v-else-if="selectedDefinition?.kind === 'Annual'">{{ copy.year }}
+              <select v-model.number="yearValue"><option v-for="item in yearOptions" :key="item" :value="item">{{ item }}</option></select>
+            </label>
+            <template v-else>
+              <label>{{ copy.from }}<input v-model="rangeFrom" type="date" required /></label>
+              <label>{{ copy.to }}<input v-model="rangeTo" type="date" required :min="rangeFrom" /></label>
+            </template>
+            <label v-if="isAdmin">{{ copy.subject }}
+              <select v-model="subjectUserId" :aria-label="copy.subject">
+                <option value="">{{ copy.wholeOrganization }}</option>
+                <optgroup v-if="memberGroups.length" :label="copy.groups">
+                  <option v-for="group in memberGroups" :key="group.id" :value="`${GROUP_PREFIX}${group.id}`">{{ group.name }}</option>
+                </optgroup>
+                <optgroup v-if="memberGroups.length" :label="copy.people">
+                  <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
+                </optgroup>
+                <template v-else>
+                  <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
+                </template>
               </select>
             </label>
-            <label v-if="isAdmin && memberGroups.length">{{ copy.memberGroup }}
-              <select v-model="filters.group" :aria-label="copy.memberGroup" @change="applyFilters()">
-                <option value="">{{ copy.allGroups }}</option>
-                <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
-                <option :value="NO_GROUP">{{ copy.noGroup }}</option>
-              </select>
-            </label>
+            <div class="request-submit">
+              <p v-if="requestPeriod" class="preview">
+                {{ copy.periodPreview.replace('{period}', formatPeriod(requestPeriod, formats, locale)).replace('{zone}', timeZoneId) }}
+              </p>
+              <button class="primary" type="submit" :disabled="busy || !requestPeriod">{{ busy ? copy.generating : copy.generate }}</button>
+            </div>
           </form>
-        </div>
-        <p v-if="history.items.some(run => run.status === 'Queued' || run.status === 'Running')" class="hint">{{ copy.autoRefresh }}</p>
-        <p v-if="!history.items.length" class="empty">{{ copy.noRuns }}</p>
-        <div v-else class="table-wrap">
-          <table>
-            <thead><tr>
-              <th scope="col">{{ copy.report }}</th>
-              <th v-if="isAdmin" scope="col">{{ copy.person }}</th>
-              <th scope="col">{{ copy.period }}</th>
-              <th scope="col">{{ copy.status }}</th>
-              <th scope="col">{{ copy.requested }}</th>
-              <th scope="col">{{ copy.completed }}</th>
-              <th scope="col"><span class="sr-only">{{ copy.actions }}</span></th>
-            </tr></thead>
-            <tbody>
-              <tr v-for="run in history.items" :key="run.id">
-                <td><strong>{{ run.name }}</strong><small>{{ text(run.kind) }} · {{ text(run.format) }}</small></td>
-                <td v-if="isAdmin">{{ personLabel(run) }}</td>
-                <td>{{ formatPeriod(runPeriod(run), formats, locale) }}</td>
-                <td>
-                  <span class="status" :data-status="run.statusReason === 'SOURCE_MONTH_NOT_LOCKED' ? 'Blocked' : run.status">{{ text(run.status) }}</span>
-                  <small v-if="statusDetail(run)" class="status-detail">{{ statusDetail(run) }}</small>
-                </td>
-                <td>{{ formatDateTime(run.createdAtUtc) }}</td>
-                <td>{{ formatDateTime(run.completedAtUtc) }}</td>
-                <td class="actions">
-                  <span v-if="run.signedVersion" class="badge">{{ copy.signedBadge.replace('{n}', String(run.signedVersion)) }}</span>
-                  <button v-if="run.status === 'Succeeded'" type="button" @click="download(run)">{{ copy.download }}</button>
-                  <button v-if="run.status === 'Succeeded' || run.status === 'Failed'" type="button"
-                    :disabled="regeneratingId === run.id" :aria-label="`${copy.regenerate}: ${run.name} ${formatPeriod(runPeriod(run), formats, locale)}`"
-                    @click="regenerate(run)">{{ copy.regenerate }}</button>
-                  <label v-if="isAdmin && run.status === 'Succeeded' && run.kind === 'Monthly' && run.format === 'Pdf'" class="upload">
-                    {{ copy.uploadSigned }}<input type="file" accept="application/pdf,.pdf" @change="uploadSigned(run, $event)" />
-                  </label>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <nav v-if="pageCount > 1" class="pagination" :aria-label="copy.pagination">
-          <button type="button" :disabled="filters.page <= 1" @click="applyFilters(filters.page - 1)">{{ copy.previous }}</button>
-          <span>{{ filters.page }} / {{ pageCount }}</span>
-          <button type="button" :disabled="filters.page >= pageCount" @click="applyFilters(filters.page + 1)">{{ copy.next }}</button>
-        </nav>
+        </section>
+
+        <section class="history" aria-labelledby="history-heading">
+          <div class="history-heading">
+            <h3 id="history-heading">{{ copy.history }}</h3>
+            <form class="filters" @submit.prevent>
+              <label>{{ copy.status }}
+                <select v-model="filters.status" @change="applyFilters()">
+                  <option value="">{{ copy.allStatuses }}</option>
+                  <option v-for="status in ['Queued', 'Running', 'Succeeded', 'Failed']" :key="status" :value="status">{{ text(status) }}</option>
+                </select>
+              </label>
+              <label>{{ copy.report }}
+                <select v-model="filters.definitionId" @change="applyFilters()">
+                  <option value="">{{ copy.allReports }}</option>
+                  <option v-for="item in definitions" :key="item.id" :value="item.id">{{ item.name }}</option>
+                </select>
+              </label>
+              <label v-if="isAdmin && memberGroups.length">{{ copy.memberGroup }}
+                <select v-model="filters.group" :aria-label="copy.memberGroup" @change="applyFilters()">
+                  <option value="">{{ copy.allGroups }}</option>
+                  <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
+                  <option :value="NO_GROUP">{{ copy.noGroup }}</option>
+                </select>
+              </label>
+            </form>
+          </div>
+          <p v-if="history.items.some(run => run.status === 'Queued' || run.status === 'Running')" class="hint">{{ copy.autoRefresh }}</p>
+          <p v-if="!history.items.length" class="empty">{{ copy.noRuns }}</p>
+          <div v-else class="table-wrap">
+            <table class="history-table">
+              <thead><tr>
+                <th scope="col">{{ copy.report }}</th>
+                <th v-if="isAdmin" scope="col">{{ copy.person }}</th>
+                <th scope="col">{{ copy.status }}</th>
+                <th scope="col">{{ copy.requested }}</th>
+                <th scope="col"><span class="sr-only">{{ copy.actions }}</span></th>
+              </tr></thead>
+              <tbody>
+                <tr v-for="run in history.items" :key="run.id">
+                  <td class="document-cell">
+                    <div class="document">
+                      <span class="file-tag" :data-format="run.format">{{ run.format === 'Pdf' ? 'PDF' : 'XLSX' }}</span>
+                      <span class="document-name"><strong>{{ run.name }}</strong><span class="document-period">{{ formatPeriod(runPeriod(run), formats, locale) }}</span><small>{{ text(run.kind) }}</small></span>
+                    </div>
+                  </td>
+                  <td v-if="isAdmin" class="person-cell">{{ personLabel(run) }}</td>
+                  <td class="status-cell">
+                    <span class="status" :data-status="run.statusReason === 'SOURCE_MONTH_NOT_LOCKED' ? 'Blocked' : run.status">{{ text(run.status) }}</span>
+                    <small v-if="statusDetail(run)" class="status-detail">{{ statusDetail(run) }}</small>
+                  </td>
+                  <td class="time-cell">
+                    <span>{{ formatDateTime(run.createdAtUtc) }}</span>
+                    <small v-if="run.completedAtUtc">{{ copy.completed }} {{ formatDateTime(run.completedAtUtc) }}</small>
+                  </td>
+                  <td>
+                    <div class="actions">
+                      <span v-if="run.signedVersion" class="badge">{{ copy.signedBadge.replace('{n}', String(run.signedVersion)) }}</span>
+                      <button v-if="run.status === 'Succeeded'" type="button" class="primary-quiet" @click="download(run)">{{ copy.download }}</button>
+                      <button v-if="run.status === 'Succeeded' || run.status === 'Failed'" type="button"
+                        :disabled="regeneratingId === run.id" :aria-label="`${copy.regenerate}: ${run.name} ${formatPeriod(runPeriod(run), formats, locale)}`"
+                        @click="regenerate(run)">{{ copy.regenerate }}</button>
+                      <label v-if="isAdmin && run.status === 'Succeeded' && run.kind === 'Monthly' && run.format === 'Pdf'" class="upload">
+                        {{ copy.uploadSigned }}<input type="file" accept="application/pdf,.pdf" @change="uploadSigned(run, $event)" />
+                      </label>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <nav v-if="pageCount > 1" class="pagination" :aria-label="copy.pagination">
+            <button type="button" :disabled="filters.page <= 1" @click="applyFilters(filters.page - 1)">{{ copy.previous }}</button>
+            <span>{{ filters.page }} / {{ pageCount }}</span>
+            <button type="button" :disabled="filters.page >= pageCount" @click="applyFilters(filters.page + 1)">{{ copy.next }}</button>
+          </nav>
+        </section>
       </section>
 
-      <section v-if="isAdmin" class="card" aria-labelledby="settings-heading">
+      <section v-if="isAdmin" class="settings" aria-labelledby="settings-heading">
         <h2 id="settings-heading">{{ copy.settings }}</h2>
-        <h3>{{ copy.formats }}</h3>
-        <ul class="setting-list">
-          <li v-for="definition in definitions" :key="definition.id">
-            <label class="grow">{{ copy.name }}<input v-model="definitionNames[definition.id]" maxlength="160" required /></label>
-            <span class="muted">{{ text(definition.kind) }} · {{ text(definition.format) }}</span>
-            <button type="button" @click="renameDefinition(definition)">{{ copy.save }}</button>
-            <button type="button" class="secondary" @click="disableDefinition(definition)">{{ copy.disable }}</button>
-          </li>
-        </ul>
-        <form class="inline-form" @submit.prevent="addDefinition">
-          <label>{{ copy.kind }}<select v-model="definitionForm.kind"><option v-for="kind in ['Weekly', 'Monthly', 'Annual', 'Performance']" :key="kind" :value="kind">{{ text(kind) }}</option></select></label>
-          <label>{{ copy.format }}<select v-model="definitionForm.format"><option value="Pdf">PDF</option><option value="Xlsx">Excel</option></select></label>
-          <label class="grow">{{ copy.name }}<input v-model="definitionForm.name" required maxlength="160" /></label>
-          <button type="submit">{{ copy.addFormat }}</button>
-        </form>
+        <div class="settings-grid">
+          <section class="card setting-panel" aria-labelledby="formats-heading">
+            <h3 id="formats-heading">{{ copy.formats }}</h3>
+            <ul class="setting-list">
+              <li v-for="definition in definitions" :key="definition.id">
+                <label class="grow">{{ copy.name }}<input v-model="definitionNames[definition.id]" maxlength="160" required /></label>
+                <span class="muted">{{ text(definition.kind) }}, {{ text(definition.format) }}</span>
+                <span class="setting-actions">
+                  <button type="button" @click="renameDefinition(definition)">{{ copy.save }}</button>
+                  <button type="button" class="secondary" @click="disableDefinition(definition)">{{ copy.disable }}</button>
+                </span>
+              </li>
+            </ul>
+            <form class="inline-form" @submit.prevent="addDefinition">
+              <label>{{ copy.kind }}<select v-model="definitionForm.kind"><option v-for="kind in ['Weekly', 'Monthly', 'Annual', 'Performance']" :key="kind" :value="kind">{{ text(kind) }}</option></select></label>
+              <label>{{ copy.format }}<select v-model="definitionForm.format"><option value="Pdf">PDF</option><option value="Xlsx">Excel</option></select></label>
+              <label class="grow">{{ copy.name }}<input v-model="definitionForm.name" required maxlength="160" /></label>
+              <button type="submit">{{ copy.addFormat }}</button>
+            </form>
+          </section>
 
-        <h3>{{ copy.schedules }}</h3>
-        <p v-if="!schedules.length" class="muted">{{ copy.noSchedules }}</p>
-        <ul v-else class="setting-list">
-          <li v-for="schedule in schedules" :key="schedule.id">
-            <span class="grow"><strong>{{ schedule.name }}</strong> · {{ text(schedule.kind) }} · {{ schedule.subjectGroupName ? `${copy.memberGroup}: ${schedule.subjectGroupName}` : copy.wholeOrganization }} · {{ schedule.timeZoneId }}</span>
-            <span class="muted">{{ copy.nextRun }}: {{ formatDateTime(schedule.nextFireAtUtc) }}</span>
-            <span class="muted">{{ copy.lastRun }}: {{ schedule.lastFireAtUtc ? formatDateTime(schedule.lastFireAtUtc) : copy.never }}</span>
-            <button type="button" class="secondary" @click="disableSchedule(schedule)">{{ copy.disable }}</button>
-          </li>
-        </ul>
-        <form v-if="schedulableDefinitions.length" class="inline-form" @submit.prevent="addSchedule">
-          <label class="grow">{{ copy.report }}<select v-model="scheduleForm.reportDefinitionId" required><option v-for="item in schedulableDefinitions" :key="item.id" :value="item.id">{{ item.name }} · {{ text(item.kind) }}</option></select></label>
-          <label v-if="memberGroups.length">{{ copy.subject }}<select v-model="scheduleForm.groupId" :aria-label="`${copy.schedules}: ${copy.subject}`">
-            <option value="">{{ copy.wholeOrganization }}</option>
-            <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ copy.memberGroup }}: {{ group.name }}</option>
-          </select></label>
-          <label>{{ copy.timezone }}<select v-model="scheduleForm.timeZoneId"><option v-for="zone in timeZones" :key="zone" :value="zone">{{ zone }}</option></select></label>
-          <label v-if="scheduleKind !== 'Monthly'">{{ copy.localTime }}<input v-model="scheduleForm.localTime" type="time" required /></label>
-          <p v-else class="muted grow">{{ copy.monthlyTime }}</p>
-          <button type="submit">{{ copy.addSchedule }}</button>
-          <p v-if="scheduleForm.groupId" class="muted grow">{{ copy.groupScheduleHint }}</p>
-        </form>
+          <section class="card setting-panel" aria-labelledby="schedules-heading">
+            <h3 id="schedules-heading">{{ copy.schedules }}</h3>
+            <p v-if="!schedules.length" class="muted">{{ copy.noSchedules }}</p>
+            <ul v-else class="setting-list">
+              <li v-for="schedule in schedules" :key="schedule.id" class="schedule-item">
+                <span class="grow schedule-name"><strong>{{ schedule.name }}</strong>
+                  <span>{{ schedule.subjectGroupName ? `${copy.memberGroup}: ${schedule.subjectGroupName}` : copy.wholeOrganization }}</span>
+                  <small>{{ text(schedule.kind) }}, {{ schedule.timeZoneId }}</small></span>
+                <span class="muted">{{ copy.nextRun }}: {{ formatDateTime(schedule.nextFireAtUtc) }}</span>
+                <span class="muted">{{ copy.lastRun }}: {{ schedule.lastFireAtUtc ? formatDateTime(schedule.lastFireAtUtc) : copy.never }}</span>
+                <button type="button" class="secondary" @click="disableSchedule(schedule)">{{ copy.disable }}</button>
+              </li>
+            </ul>
+            <form v-if="schedulableDefinitions.length" class="inline-form" @submit.prevent="addSchedule">
+              <label class="grow">{{ copy.report }}<select v-model="scheduleForm.reportDefinitionId" required><option v-for="item in schedulableDefinitions" :key="item.id" :value="item.id">{{ item.name }} ({{ text(item.kind) }})</option></select></label>
+              <label v-if="memberGroups.length" class="grow">{{ copy.subject }}<select v-model="scheduleForm.groupId" :aria-label="`${copy.schedules}: ${copy.subject}`">
+                <option value="">{{ copy.wholeOrganization }}</option>
+                <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ copy.memberGroup }}: {{ group.name }}</option>
+              </select></label>
+              <label class="grow">{{ copy.timezone }}<select v-model="scheduleForm.timeZoneId"><option v-for="zone in timeZones" :key="zone" :value="zone">{{ zone }}</option></select></label>
+              <label v-if="scheduleKind !== 'Monthly'">{{ copy.localTime }}<input v-model="scheduleForm.localTime" type="time" required /></label>
+              <p v-else class="muted full">{{ copy.monthlyTime }}</p>
+              <p v-if="scheduleForm.groupId" class="muted full">{{ copy.groupScheduleHint }}</p>
+              <button type="submit">{{ copy.addSchedule }}</button>
+            </form>
+          </section>
 
-        <h3>{{ copy.retention }}</h3>
-        <form class="inline-form" @submit.prevent="saveRetention">
-          <label>{{ copy.retentionYears }}<input v-model.number="retentionYears" type="number" min="1" max="20" required /></label>
-          <p class="muted grow">{{ copy.retentionHint }}</p>
-          <button type="submit">{{ copy.save }}</button>
-        </form>
+          <section class="card setting-panel" aria-labelledby="retention-heading">
+            <h3 id="retention-heading">{{ copy.retention }}</h3>
+            <form class="inline-form" @submit.prevent="saveRetention">
+              <label>{{ copy.retentionYears }}<input v-model.number="retentionYears" type="number" min="1" max="20" required /></label>
+              <button type="submit">{{ copy.save }}</button>
+              <p class="muted full">{{ copy.retentionHint }}</p>
+            </form>
+          </section>
+        </div>
       </section>
     </template>
   </main>
@@ -607,39 +645,77 @@ onMounted(() => {
 <style>
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--color-ink);background:var(--color-canvas)}
 *{box-sizing:border-box}body{margin:0}
+:focus-visible{outline:2px solid var(--color-brand);outline-offset:2px}
 .reports{max-width:76rem;margin:0 auto;padding:clamp(1rem,3vw,2rem)}
-.page-heading h1{font-size:clamp(1.5rem,3vw,2rem);margin:0 0 .35rem}.page-heading p{color:var(--color-muted);margin:0 0 1.25rem}
-.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr));gap:.75rem;margin:0 0 1rem}
-.summary div{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-card);padding:.85rem 1rem}
-.summary dt{color:var(--color-muted);font-size:.85rem}.summary dd{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums;margin:.2rem 0 0}
-.summary .alert{border-color:#f5b4a9}.summary .alert dd{color:#a12f22}
-.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-card);padding:1.25rem;margin:0 0 1rem;min-width:0}
-.card h2{font-size:1.1rem;margin:0 0 1rem}.card h3{font-size:.95rem;margin:1.5rem 0 .6rem}
-.card-heading{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;justify-content:space-between;margin-bottom:.75rem}.card-heading h2{margin:0}
+.page-heading h1{font-family:var(--font-display);font-size:clamp(1.7rem,3.5vw,2.4rem);font-weight:600;line-height:1.15;margin:0 0 .35rem}
+.page-heading p{color:var(--color-muted);margin:0 0 1.5rem;max-width:40rem}
+.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:.75rem;padding:clamp(1rem,2vw,1.35rem);margin:0 0 1.25rem;min-width:0}
+h2,h3{font-family:var(--font-display);font-weight:600}
+.card h2,.settings h2{font-size:1.25rem;margin:0}
+.card h3{font-size:1.05rem;margin:0 0 .75rem}
+.card-heading{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:flex-end;justify-content:space-between;margin-bottom:1rem}
 form{margin:0}label{display:grid;gap:.3rem;font-size:.85rem;color:var(--color-muted)}
-input,select,button{font:inherit;color:var(--color-ink);border:1px solid var(--color-border);border-radius:.45rem;padding:.5rem .6rem;background:var(--color-surface);min-width:0}
-button{cursor:pointer;background:#edf2f8}button:disabled{opacity:.55;cursor:not-allowed}
-button.primary{background:var(--color-brand);border-color:var(--color-brand);color:#fff;font-weight:600}button.secondary{background:transparent}
-.request-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:.85rem;align-items:end}
-.request-form .preview{grid-column:1/-1;margin:0;color:var(--color-ink);font-weight:600}
-.request-form .primary{justify-self:start}
+input,select,button{font:inherit;color:var(--color-ink);border:1px solid #cfd8e5;border-radius:.5rem;padding:.5rem .65rem;background:var(--color-surface);min-width:0}
+button{cursor:pointer;background:var(--color-surface);font-weight:600;font-size:.88rem}button:hover:not(:disabled){background:#f3f6fa}button:disabled{opacity:.55;cursor:not-allowed}
+button.primary{background:var(--color-brand);border-color:var(--color-brand);color:#fff}button.primary:hover:not(:disabled){background:var(--color-brand-strong)}
+button.primary-quiet{background:var(--color-work-track);border-color:var(--color-work-track);color:#1d3f9e}button.primary-quiet:hover:not(:disabled){background:#c9d8fb}
+button.secondary{background:transparent;border-color:transparent;color:var(--color-muted)}
+/* Documents: one sentence of counts, the request form, then the history. */
+.doc-status{margin:0;color:var(--color-ink)}
+.doc-status .count-attention{color:#b42318;font-weight:600}
+.request{border-bottom:1px solid var(--color-border);padding-bottom:1.25rem;margin-bottom:1.25rem}
+.request-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:.85rem;align-items:end}
+@media (min-width:48rem){.request-report{grid-column:span 2}}
+.request-submit{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.75rem 1.25rem;align-items:center}
+.request-submit .preview{margin:0;color:var(--color-ink);font-weight:600}
+.history-heading{display:flex;flex-wrap:wrap;gap:.75rem 1.5rem;align-items:flex-end;justify-content:space-between;margin-bottom:.75rem}.history-heading h3{margin:0}
 .filters{display:flex;flex-wrap:wrap;gap:.6rem}
-.inline-form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end}.grow{flex:1 1 14rem}
-.setting-list{list-style:none;margin:0 0 .75rem;padding:0;display:grid;gap:.5rem}
-.setting-list li{display:flex;flex-wrap:wrap;gap:.6rem;align-items:end;padding:.6rem 0;border-bottom:1px solid var(--color-border)}
-.muted,.hint{color:var(--color-muted);font-size:.85rem;margin:0}.hint{margin:-.25rem 0 .75rem}
+.muted,.hint{color:var(--color-muted);font-size:.85rem;margin:0}.hint{margin:0 0 .75rem}
 .empty{color:var(--color-muted);padding:1rem;border:1px dashed var(--color-border);border-radius:.6rem;margin:0}.empty p{margin:.35rem 0 0}
-.table-wrap{overflow-x:auto;position:relative}table{border-collapse:collapse;width:100%;min-width:52rem}
-th,td{text-align:left;vertical-align:top;padding:.65rem .6rem;border-bottom:1px solid var(--color-border);font-size:.9rem}th{color:var(--color-muted);font-weight:600;font-size:.8rem}
+.table-wrap{overflow-x:auto;position:relative}table{border-collapse:collapse;width:100%}
+th,td{text-align:left;vertical-align:top;padding:.7rem .6rem;border-bottom:1px solid var(--color-border);font-size:.9rem}th{color:var(--color-muted);font-weight:600;font-size:.8rem}
 td small{display:block;color:var(--color-muted);font-size:.78rem;margin-top:.15rem}
-.status{display:inline-block;border-radius:999px;padding:.15rem .6rem;font-size:.8rem;font-weight:600;background:#e7ecf5;color:#334155}
-.status[data-status="Succeeded"]{background:#dcfce7;color:#166534}.status[data-status="Failed"]{background:#fee2e2;color:#991b1b}
-.status[data-status="Blocked"]{background:#fff4dc;color:#795400}
-.status-detail{max-width:16rem}
-.actions{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
-.badge{border-radius:.35rem;background:#edf3ff;color:var(--color-brand);font-size:.75rem;font-weight:700;padding:.15rem .4rem}
-.upload{display:inline-flex;gap:.3rem;align-items:center;color:var(--color-brand);cursor:pointer;font-size:.8rem}.upload input{max-width:10rem;font-size:.75rem;padding:.25rem}
+/* History: each report reads as a document, its file type tagged. */
+.document-cell{min-width:14rem}.document{display:flex;gap:.75rem;align-items:flex-start}
+.file-tag{flex:0 0 auto;width:2.6rem;padding:.55rem 0 .45rem;border-radius:.3rem;font-family:var(--font-display);font-size:.7rem;font-weight:600;text-align:center;background:#fdecea;color:#9f1d14}
+.file-tag[data-format="Xlsx"]{background:#e3f4ea;color:#17663b}
+.document-name{display:grid;gap:.1rem}
+.document-period{font-family:var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap}
+.person-cell{min-width:8rem}
+.status-cell{min-width:10rem;max-width:18rem}
+.time-cell{white-space:nowrap;font-variant-numeric:tabular-nums}
+.status{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:600;color:#334155}
+.status::before{content:"";width:.55rem;height:.55rem;border-radius:50%;background:#94a3b8}
+.status[data-status="Succeeded"]{color:#17663b}.status[data-status="Succeeded"]::before{background:#22a05a}
+.status[data-status="Running"]::before,.status[data-status="Queued"]::before{background:var(--color-brand)}
+.status[data-status="Failed"]{color:#b42318}.status[data-status="Failed"]::before{background:#b42318}
+.status[data-status="Blocked"]{color:#7a5412}.status[data-status="Blocked"]::before{background:#d29b25}
+.actions{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;justify-content:flex-end}
+.badge{border-radius:.35rem;background:#e3f4ea;color:#17663b;font-size:.75rem;font-weight:700;padding:.2rem .45rem}
+/* The file input is invisible over its label, so the label reads as a button and still opens the picker. */
+.upload{position:relative;display:inline-flex;align-items:center;border:1px solid #cfd8e5;border-radius:.5rem;padding:.5rem .65rem;color:var(--color-ink);font-size:.88rem;font-weight:600;cursor:pointer}.upload:hover{background:#f3f6fa}.upload:focus-within{outline:2px solid var(--color-brand);outline-offset:2px}.upload input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;padding:0}
 .pagination{display:flex;gap:.75rem;align-items:center;justify-content:center;margin-top:1rem}
+/* Settings: three separate panels. */
+.settings h2{margin:2rem 0 .85rem}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));gap:1.25rem;align-items:start}
+.setting-panel{margin:0}
+.inline-form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end}.grow{flex:1 1 12rem}.full{flex-basis:100%}
+.setting-list{list-style:none;margin:0 0 1rem;padding:0;display:grid}
+.setting-list li{display:flex;flex-wrap:wrap;gap:.5rem .75rem;align-items:end;padding:.75rem 0;border-bottom:1px solid var(--color-border)}
+.setting-list li:first-child{padding-top:0}
+.setting-actions{display:flex;gap:.4rem}
+.schedule-name{display:grid;gap:.1rem;color:var(--color-ink)}
+.schedule-name small{color:var(--color-muted)}
 .feedback{border-radius:.6rem;padding:.7rem .9rem;margin:0 0 1rem}.feedback-error{background:#fff0ef;color:#a53d38}.feedback-ok{background:#eaf8f1;color:#287751}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+/* On a phone each report stacks into a block instead of scrolling sideways. */
+@media (max-width:48rem){
+  .history-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  .history-table,.history-table tbody,.history-table tr,.history-table td{display:block;width:100%}
+  .history-table tr{border-bottom:1px solid var(--color-border);padding:.75rem 0}
+  .history-table td{border:0;padding:.2rem 0}
+  .history-table td:not(.document-cell){padding-left:3.35rem}
+  .actions{justify-content:flex-start;margin-top:.35rem}
+  .status-cell{max-width:none}
+}
 </style>
