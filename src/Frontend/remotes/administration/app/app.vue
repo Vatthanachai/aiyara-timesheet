@@ -78,7 +78,8 @@ const formatPreview = computed(() => {
 })
 const copy = useLocaleText(locale, { th: {
   title: 'จัดการองค์กร', subtitle: 'จัดระเบียบโครงการ หมวดหมู่ วันหยุด และข้อกำหนดการใช้งานในที่เดียว', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
-  eyebrow: 'WORKSPACE SETTINGS',
+  settingsTabs: 'หมวดการตั้งค่า', tabOrganization: 'องค์กร', tabPeople: 'สมาชิก', tabTime: 'เวลาทำงาน', tabCatalog: 'โครงการและหมวดหมู่', tabSecurity: 'ความปลอดภัย',
+  organizationCode: 'รหัสองค์กร {code}', dayOff: 'วันหยุด', member: 'สมาชิก', status: 'สถานะ', actions: 'การดำเนินการ',
   projects: 'โครงการ', projectName: 'ชื่อโครงการ', categories: 'หมวดหมู่',
   categoryName: 'ชื่อหมวดหมู่', holidays: 'วันหยุด', holidayName: 'ชื่อวันหยุด',
   date: 'วันที่', add: 'เพิ่มรายการ', save: 'บันทึก', delete: 'ลบ', policy: 'นโยบายรหัสผ่าน',
@@ -131,7 +132,8 @@ const copy = useLocaleText(locale, { th: {
   saveWorkWeek: 'บันทึกวันและเวลาทำงาน', workWeekSaved: 'บันทึกวันและเวลาทำงานแล้ว', workWeekRequired: 'ต้องมีวันทำงานอย่างน้อยหนึ่งวัน'
 }, en: {
   title: 'Administration', subtitle: 'Manage projects, categories, holidays and access requirements in one place.', signIn: 'Please sign in through Aiyara Shell',
-  eyebrow: 'WORKSPACE SETTINGS',
+  settingsTabs: 'Settings', tabOrganization: 'Organization', tabPeople: 'People', tabTime: 'Working time', tabCatalog: 'Projects and categories', tabSecurity: 'Security',
+  organizationCode: 'Organization code {code}', dayOff: 'Day off', member: 'Member', status: 'Status', actions: 'Actions',
   projects: 'Projects', projectName: 'Project name', categories: 'Categories',
   categoryName: 'Category name', holidays: 'Holidays', holidayName: 'Holiday name',
   date: 'Date', add: 'Add item', save: 'Save', delete: 'Delete', policy: 'Password policy',
@@ -183,7 +185,58 @@ const copy = useLocaleText(locale, { th: {
   workdayLength: 'A normal working day is {hours} hours; reports count a longer day as overtime.',
   saveWorkWeek: 'Save working days and hours', workWeekSaved: 'Working days and hours saved.', workWeekRequired: 'Keep at least one working day.'
 } })
+// ---- Tabs: one subject at a time, remembered for the session ----------------------------------
+type TabId = 'organization' | 'people' | 'time' | 'catalog' | 'security'
+const tabIds: TabId[] = ['organization', 'people', 'time', 'catalog', 'security']
+const TAB_KEY = 'aiyara.administration.tab'
+const activeTab = ref<TabId>('organization')
+const tabButtons = ref<HTMLButtonElement[]>([])
+const tabs = computed(() => [
+  { id: 'organization' as const, label: copy.value.tabOrganization },
+  { id: 'people' as const, label: copy.value.tabPeople, count: members.value.length || null },
+  { id: 'time' as const, label: copy.value.tabTime },
+  { id: 'catalog' as const, label: copy.value.tabCatalog },
+  { id: 'security' as const, label: copy.value.tabSecurity }
+])
+function selectTab(id: TabId, focus = false) {
+  activeTab.value = id
+  try { sessionStorage.setItem(TAB_KEY, id) } catch { /* the choice is a convenience */ }
+  void nextTick(() => {
+    const button = tabButtons.value[tabIds.indexOf(id)]
+    // On a phone the tab bar scrolls; keep the chosen tab in view.
+    button?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    if (focus) button?.focus()
+  })
+}
+/** Arrow keys move along the tabs (wrapping), Home and End jump to the ends. */
+function onTabKey(event: KeyboardEvent) {
+  const index = tabIds.indexOf(activeTab.value)
+  const next = event.key === 'ArrowRight' ? (index + 1) % tabIds.length : event.key === 'ArrowLeft' ? (index - 1 + tabIds.length) % tabIds.length
+    : event.key === 'Home' ? 0 : event.key === 'End' ? tabIds.length - 1 : -1
+  if (next < 0) return
+  event.preventDefault()
+  selectTab(tabIds[next]!, true)
+}
+
+// ---- The week: the working days and hours being edited, drawn as seven bars ----------------------
+const clockMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
+/** Whole hours around the working day, so the bars have room either side. */
+const weekScale = computed(() => {
+  const from = Math.max(0, Math.floor(Math.min(clockMinutes(workHours.startTime), clockMinutes(workHours.endTime)) / 60) - 1)
+  const to = Math.min(24, Math.ceil(Math.max(clockMinutes(workHours.startTime), clockMinutes(workHours.endTime)) / 60) + 1)
+  const step = to - from > 12 ? 2 : 1
+  return { from: from * 60, to: to * 60, hours: Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, index) => from + index * step) }
+})
+const weekPercent = (minutes: number) => `${((minutes - weekScale.value.from) / (weekScale.value.to - weekScale.value.from)) * 100}%`
+const weekSpan = (start: string, end: string) => ({ left: weekPercent(clockMinutes(start)),
+  width: `calc(${weekPercent(clockMinutes(end))} - ${weekPercent(clockMinutes(start))})` })
+const weekHourLabel = (hour: number) => formats.value.timeFormat === 'HH:mm' ? String(hour).padStart(2, '0') : String(hour % 12 || 12)
+
 onMounted(() => {
+  try {
+    const saved = sessionStorage.getItem(TAB_KEY) as TabId | null
+    if (saved && tabIds.includes(saved)) activeTab.value = saved
+  } catch { /* storage may be unavailable */ }
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.source !== window.parent || event.origin !== config.public.shellOrigin ||
       event.data?.type !== 'aiyara.session') return
@@ -419,36 +472,323 @@ async function lock() {
 </script>
 <template>
   <main class="admin-page">
-    <header class="page-heading">
-      <div><p class="eyebrow">{{ copy.eyebrow }}</p><h1>{{ copy.title }}</h1><p class="subtitle">{{ copy.subtitle }}</p></div>
-      <div v-if="token && tenantId" class="tenant-pill"><span class="tenant-dot"></span><span>{{ copy.profile }}</span><strong>{{ tenantId }}</strong></div>
-    </header>
-    <div v-if="!token" class="empty-state"><span class="empty-icon">⌑</span><h2>{{ copy.signIn }}</h2></div>
+    <div v-if="!token" class="empty-state"><h2>{{ copy.signIn }}</h2></div>
     <template v-else>
+      <!-- The organization itself heads its settings: logo, name, and the code members sign in with. -->
+      <header class="org-heading">
+        <div class="org-logo" aria-hidden="true"><img v-if="logoPreview" :src="logoPreview" alt="" /><span v-else>{{ (organization?.name || copy.title).slice(0, 1) }}</span></div>
+        <div>
+          <h1>{{ organization?.name || copy.title }}</h1>
+          <p v-if="organization?.organizationCode" class="org-code">{{ copy.organizationCode.replace('{code}', organization.organizationCode) }}</p>
+        </div>
+      </header>
+
       <p v-if="error" class="feedback feedback-error" role="alert"><span>{{ error }}</span><button class="button button-subtle" type="button" @click="load">{{ copy.retry }}</button></p>
-      <p v-if="notice" class="feedback feedback-success" role="status"><span class="success-dot"></span>{{ notice }}</p>
-      <div class="stats-grid" :aria-label="copy.title">
-        <article class="stat-card"><span class="stat-icon violet">▦</span><div><strong>{{ catalog.projects.length }}</strong><span>{{ copy.countProjects }}</span></div></article>
-        <article class="stat-card"><span class="stat-icon blue">◇</span><div><strong>{{ catalog.categories.length }}</strong><span>{{ copy.countCategories }}</span></div></article>
-        <article class="stat-card"><span class="stat-icon orange">▣</span><div><strong>{{ catalog.holidays.length }}</strong><span>{{ copy.countHolidays }}</span></div></article>
-      </div>
+      <p v-if="notice" class="feedback feedback-success" role="status">{{ notice }}</p>
       <p v-if="isLoading" class="loading-line" role="status">{{ copy.loading }}</p>
-      <section class="panel brand-panel" aria-labelledby="organization-heading"><div class="panel-heading"><span class="panel-icon violet">◈</span><div><h2 id="organization-heading">{{ copy.organization }}</h2><p>{{ copy.organizationHint }}</p></div></div><div class="brand-grid"><form class="add-form brand-name-form" @submit.prevent="saveName"><label class="invite-email"><span>{{ copy.organizationName }}</span><input v-model="organizationName" required maxlength="200" /></label><button class="button button-primary" :disabled="isSavingBrand || !organizationName.trim() || organizationName.trim() === organization?.name">{{ copy.saveName }}</button></form><div class="brand-logo-field"><span class="field-label">{{ copy.logo }}</span><div class="logo-row"><div class="logo-preview"><img v-if="logoPreview" :src="logoPreview" :alt="copy.logo" /><span v-else>{{ copy.noLogo }}</span></div><div class="logo-actions"><label class="button button-subtle file-button">{{ logoPreview ? copy.replaceLogo : copy.uploadLogo }}<input class="sr-only" type="file" accept="image/png,image/jpeg,image/webp" :disabled="isSavingBrand" @change="uploadLogo" /></label><button v-if="logoPreview" class="button button-danger-text" type="button" :disabled="isSavingBrand" @click="removeLogo">{{ copy.removeLogo }}</button></div></div><p class="field-hint">{{ copy.logoHint }}</p></div></div></section>
-      <section class="panel formats-panel" aria-labelledby="formats-heading"><div class="panel-heading"><span class="panel-icon blue">◷</span><div><h2 id="formats-heading">{{ copy.formatsTitle }}</h2><p>{{ copy.formatsHint }}</p></div></div><form class="add-form formats-form" @submit.prevent="saveFormats"><label><span>{{ copy.dateFormat }}</span><select v-model="formatForm.dateFormat"><option v-for="format in DATE_FORMATS" :key="format" :value="format">{{ dateOptionLabel(format) }}</option></select></label><label><span>{{ copy.timeFormat }}</span><select v-model="formatForm.timeFormat"><option v-for="format in TIME_FORMATS" :key="format" :value="format">{{ timeOptionLabel(format) }}</option></select></label><p class="format-preview" aria-live="polite"><span>{{ copy.formatPreview }}</span><strong>{{ formatPreview }}</strong></p><button class="button button-primary" :disabled="isSavingBrand">{{ isSavingBrand ? copy.loading : copy.saveFormats }}</button></form></section>
-      <section class="panel members-panel"><div class="panel-heading"><span class="panel-icon green">◎</span><div><h2>{{ copy.members }}</h2><p>{{ copy.memberHint }}</p></div></div><form class="add-form invite-form" @submit.prevent="invite"><label class="invite-email"><span>{{ copy.inviteEmail }}</span><input v-model="inviteEmail" required type="email" maxlength="320" autocomplete="off" /></label><label><span>{{ copy.role }}</span><select v-model="inviteRole"><option value="Employee">{{ copy.roleEmployee }}</option><option value="TenantAdmin">{{ copy.roleTenantAdmin }}</option></select></label><label v-if="groups.length"><span>{{ copy.group }}</span><select v-model="inviteGroup" :aria-label="copy.group"><option value="">{{ copy.noGroup }}</option><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label><button class="button button-primary" :disabled="isInviting">{{ isInviting ? copy.inviting : copy.invite }}</button></form><ul v-if="members.length" class="item-list" :aria-label="copy.members"><li v-for="member in members" :key="member.id" class="member-row"><div class="member-identity"><strong>{{ memberName(member) || member.email }}<span v-if="member.isCurrentUser" class="badge badge-self">{{ copy.you }}</span></strong><span v-if="memberName(member)">{{ member.email }}</span></div><span class="badge">{{ roleLabel(member.role) }}</span><span class="badge" :class="`status-${member.status}`">{{ statusLabel(member.status) }}</span><label class="group-select"><span class="sr-only">{{ copy.group }}: {{ member.email }}</span><select :value="member.groupId ?? ''" :disabled="busyId === member.id" :aria-label="`${copy.group}: ${member.email}`" @change="setGroup(member, ($event.target as HTMLSelectElement).value)"><option value="">{{ copy.noGroup }}</option><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label><div v-if="!member.isCurrentUser" class="row-actions member-actions"><template v-if="member.status === 'Deactivated'"><button class="button button-subtle" type="button" :disabled="busyId === member.id" :aria-label="`${copy.reactivate}: ${member.email}`" @click="setActive(member, true)">{{ copy.reactivate }}</button></template><template v-else><button class="button button-subtle" type="button" :disabled="busyId === member.id" :aria-label="`${member.role === 'TenantAdmin' ? copy.makeEmployee : copy.makeAdmin}: ${member.email}`" @click="changeRole(member)">{{ member.role === 'TenantAdmin' ? copy.makeEmployee : copy.makeAdmin }}</button><button v-if="member.status === 'PendingActivation'" class="button button-subtle" type="button" :disabled="busyId === member.id" :aria-label="`${copy.resendActivation}: ${member.email}`" @click="resendActivation(member)">{{ copy.resendActivation }}</button><template v-if="confirmingId === member.id"><button class="button button-warning" type="button" :disabled="busyId === member.id" :aria-label="`${copy.confirmDeactivate}: ${member.email}`" @click="setActive(member, false)">{{ copy.confirmDeactivate }}</button><button class="button button-subtle" type="button" @click="confirmingId = ''">{{ copy.cancel }}</button></template><button v-else class="button button-danger-text" type="button" :disabled="busyId === member.id" :aria-label="`${copy.deactivate}: ${member.email}`" @click="setActive(member, false)">{{ copy.deactivate }}</button></template></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p><h3 class="subheading">{{ copy.groups }}</h3><p class="field-hint group-hint">{{ copy.groupHint }}</p><form class="add-form" @submit.prevent="addGroup"><label class="sr-only" for="new-group">{{ copy.groupName }}</label><input id="new-group" v-model="groupName" required maxlength="100" :placeholder="copy.groupName" /><button class="button button-primary" :disabled="busyId === 'new-group'">{{ copy.addGroup }}</button></form><ul v-if="groups.length" class="item-list" :aria-label="copy.groups"><li v-for="group in groups" :key="group.id" class="item-row"><input v-model="group.name" required maxlength="100" :aria-label="copy.groupName" /><span class="badge">{{ copy.groupMembers.replace('{count}', String(group.memberCount)) }}</span><div class="row-actions"><button class="button button-subtle" type="button" :disabled="busyId === group.id" @click="renameGroup(group)">{{ copy.save }}</button><button class="button button-danger" type="button" :disabled="busyId === group.id" :aria-label="`${copy.delete}: ${group.name}`" @click="deleteGroup(group)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.noGroups }}</p><h3 class="subheading">{{ copy.pendingInvitations }}</h3><ul v-if="invitations.length" class="item-list" :aria-label="copy.pendingInvitations"><li v-for="invitation in invitations" :key="invitation.id" class="member-row"><div class="member-identity"><strong>{{ invitation.email }}</strong><span>{{ copy.expires.replace('{date}', formatDate(invitation.expiresAtUtc)) }}<template v-if="invitation.invitedByEmail"> · {{ copy.invitedBy.replace('{email}', invitation.invitedByEmail) }}</template></span></div><span class="badge">{{ roleLabel(invitation.role) }}</span><span v-if="invitation.groupName" class="badge">{{ invitation.groupName }}</span><div class="row-actions member-actions"><button class="button button-subtle" type="button" :disabled="busyId === invitation.id" :aria-label="`${copy.resendInvitation}: ${invitation.email}`" @click="resendInvitation(invitation)">{{ copy.resendInvitation }}</button><button class="button button-danger-text" type="button" :disabled="busyId === invitation.id" :aria-label="`${copy.revokeInvitation}: ${invitation.email}`" @click="revokeInvitation(invitation)">{{ copy.revokeInvitation }}</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.noInvitations }}</p></section>
-      <div class="catalog-grid">
-        <section class="panel"><div class="panel-heading"><span class="panel-icon violet">▦</span><div><h2>{{ copy.projects }}</h2><p>{{ copy.projectHint }}</p></div></div><form class="add-form" @submit.prevent="add('projects')"><label class="sr-only" for="new-project">{{ copy.projectName }}</label><input id="new-project" v-model="projectName" required maxlength="200" :placeholder="copy.projectName" /><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.projects.length" class="item-list"><li v-for="item in catalog.projects" :key="item.id" class="item-row"><input v-model="item.name" :aria-label="copy.projectName" /><div class="row-actions"><button class="button button-subtle" @click="update('projects', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('projects', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
-        <section class="panel"><div class="panel-heading"><span class="panel-icon blue">◇</span><div><h2>{{ copy.categories }}</h2><p>{{ copy.categoryHint }}</p></div></div><form class="add-form" @submit.prevent="add('categories')"><label class="sr-only" for="new-category">{{ copy.categoryName }}</label><input id="new-category" v-model="categoryName" required maxlength="200" :placeholder="copy.categoryName" /><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.categories.length" class="item-list"><li v-for="item in catalog.categories" :key="item.id" class="item-row"><input v-model="item.name" :aria-label="copy.categoryName" /><div class="row-actions"><button class="button button-subtle" @click="update('categories', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('categories', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
-        <section class="panel panel-wide work-week-panel" aria-labelledby="work-week-heading"><div class="panel-heading"><span class="panel-icon green">▤</span><div><h2 id="work-week-heading">{{ copy.workWeek }}</h2><p>{{ copy.workWeekHint }}</p></div></div><form class="work-week-form" @submit.prevent="saveWorkWeek"><fieldset><legend class="sr-only">{{ copy.workDays }}</legend><label v-for="day in weekdays" :key="day" class="check-card" :title="workingDays.length === 1 && workingDays.includes(day) ? copy.workWeekRequired : undefined"><input v-model="workingDays" type="checkbox" :value="day" :disabled="workingDays.length === 1 && workingDays.includes(day)" /><span class="check-mark"></span><span>{{ weekdayName(day) }}</span></label></fieldset><div class="work-hours"><label><span>{{ copy.workStart }}</span><select v-model="workHours.startTime" :aria-invalid="!hoursValid"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.workEnd }}</span><select v-model="workHours.endTime" :aria-invalid="!hoursValid" :aria-describedby="hoursValid ? undefined : 'work-hours-error'"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><p v-if="!hoursValid" id="work-hours-error" class="field-error" role="alert">{{ copy.hoursOrder }}</p></div><div class="work-hours break-hours"><label class="check-card break-toggle"><input v-model="hasBreak" type="checkbox" /><span class="check-mark"></span><span>{{ copy.hasBreak }}</span></label><template v-if="hasBreak"><label><span>{{ copy.breakStart }}</span><select v-model="breakTime.start" :aria-invalid="!breakValid"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.breakEnd }}</span><select v-model="breakTime.end" :aria-invalid="!breakValid" :aria-describedby="breakValid ? undefined : 'break-error'"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label></template><p v-if="!breakValid" id="break-error" class="field-error" role="alert">{{ copy.breakOrder }}</p><p v-else-if="hoursValid" class="workday-summary">{{ copy.workdayLength.replace('{hours}', (workdayMinutes / 60).toFixed(2).replace(/\.?0+$/, '')) }}</p></div><button class="button button-primary" :disabled="isSavingWorkWeek || !hoursValid || !breakValid">{{ isSavingWorkWeek ? copy.loading : copy.saveWorkWeek }}</button></form></section>
-        <section class="panel panel-wide"><div class="panel-heading"><span class="panel-icon orange">▣</span><div><h2>{{ copy.holidays }}</h2><p>{{ copy.holidayHint }}</p></div></div><form class="add-form holiday-form" @submit.prevent="add('holidays')"><label><span>{{ copy.date }}</span><DateField v-model="holidayDate" required :formats="formats" :locale="locale" :label="copy.date" :invalid-message="copy.invalidDate" :pick-label="copy.pickDate" /></label><label class="holiday-name"><span>{{ copy.holidayName }}</span><input v-model="holidayName" required maxlength="200" :placeholder="copy.holidayName" /></label><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.holidays.length" class="item-list"><li v-for="item in catalog.holidays" :key="item.id"><form class="item-row holiday-row" @submit.prevent="update('holidays', item)"><DateField v-model="item.date" required :formats="formats" :locale="locale" :label="`${copy.date}: ${item.name}`" :invalid-message="copy.invalidDate" :pick-label="`${copy.pickDate}: ${item.name}`" /><input v-model="item.name" required maxlength="200" :aria-label="copy.holidayName" /><div class="row-actions"><button class="button button-subtle">{{ copy.save }}</button><button type="button" class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('holidays', item.id)">×</button></div></form></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
+
+      <div class="tab-list" role="tablist" :aria-label="copy.settingsTabs" @keydown="onTabKey">
+        <button v-for="tab in tabs" :id="`tab-${tab.id}`" :key="tab.id" ref="tabButtons" type="button" role="tab" class="tab"
+          :aria-selected="activeTab === tab.id" :aria-controls="`panel-${tab.id}`" :tabindex="activeTab === tab.id ? 0 : -1"
+          @click="selectTab(tab.id)">{{ tab.label }}<span v-if="tab.count" class="tab-count">{{ tab.count }}</span></button>
       </div>
-      <div class="settings-grid">
-        <section class="panel policy-panel"><div class="panel-heading"><span class="panel-icon green">⌑</span><div><h2>{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="12" max="128" required /><span>{{ copy.lengthUnit }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" max="3650" required /><span>{{ copy.expiryUnit }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
-        <section class="panel close-panel"><span class="panel-icon orange">◷</span><h2>{{ copy.lockMonth }}</h2><p>{{ copy.lockHint }}</p><form class="close-form" @submit.prevent="lock"><label :aria-label="copy.lockMonth"><input v-model="lockMonth" type="month" required /></label><button class="button button-warning" :disabled="isLocking">{{ isLocking ? copy.loading : copy.lock }}</button></form></section>
+
+      <!-- Organization: name and logo, date and time format. -->
+      <div v-show="activeTab === 'organization'" id="panel-organization" class="tab-panel" role="tabpanel" aria-labelledby="tab-organization" tabindex="0">
+        <section class="panel brand-panel" aria-labelledby="organization-heading">
+          <div class="panel-heading"><h2 id="organization-heading">{{ copy.organization }}</h2><p>{{ copy.organizationHint }}</p></div>
+          <div class="brand-grid">
+            <form class="add-form brand-name-form" @submit.prevent="saveName">
+              <label class="grow"><span>{{ copy.organizationName }}</span><input v-model="organizationName" required maxlength="200" /></label>
+              <button class="button button-primary" :disabled="isSavingBrand || !organizationName.trim() || organizationName.trim() === organization?.name">{{ copy.saveName }}</button>
+            </form>
+            <div class="brand-logo-field">
+              <span class="field-label">{{ copy.logo }}</span>
+              <div class="logo-row">
+                <div class="logo-preview"><img v-if="logoPreview" :src="logoPreview" :alt="copy.logo" /><span v-else>{{ copy.noLogo }}</span></div>
+                <div class="logo-actions">
+                  <label class="button button-subtle file-button">{{ logoPreview ? copy.replaceLogo : copy.uploadLogo }}<input class="sr-only" type="file" accept="image/png,image/jpeg,image/webp" :disabled="isSavingBrand" @change="uploadLogo" /></label>
+                  <button v-if="logoPreview" class="button button-danger-text" type="button" :disabled="isSavingBrand" @click="removeLogo">{{ copy.removeLogo }}</button>
+                </div>
+              </div>
+              <p class="field-hint">{{ copy.logoHint }}</p>
+            </div>
+          </div>
+        </section>
+        <section class="panel formats-panel" aria-labelledby="formats-heading">
+          <div class="panel-heading"><h2 id="formats-heading">{{ copy.formatsTitle }}</h2><p>{{ copy.formatsHint }}</p></div>
+          <form class="add-form formats-form" @submit.prevent="saveFormats">
+            <label><span>{{ copy.dateFormat }}</span><select v-model="formatForm.dateFormat"><option v-for="format in DATE_FORMATS" :key="format" :value="format">{{ dateOptionLabel(format) }}</option></select></label>
+            <label><span>{{ copy.timeFormat }}</span><select v-model="formatForm.timeFormat"><option v-for="format in TIME_FORMATS" :key="format" :value="format">{{ timeOptionLabel(format) }}</option></select></label>
+            <p class="format-preview" aria-live="polite"><span>{{ copy.formatPreview }}</span><strong>{{ formatPreview }}</strong></p>
+            <button class="button button-primary" :disabled="isSavingBrand">{{ isSavingBrand ? copy.loading : copy.saveFormats }}</button>
+          </form>
+        </section>
+      </div>
+
+      <!-- People: members and invitations, groups, pending invitations. -->
+      <div v-show="activeTab === 'people'" id="panel-people" class="tab-panel" role="tabpanel" aria-labelledby="tab-people" tabindex="0">
+        <section class="panel members-panel" aria-labelledby="members-heading">
+          <div class="panel-heading"><h2 id="members-heading">{{ copy.members }}</h2><p>{{ copy.memberHint }}</p></div>
+          <form class="add-form invite-form" @submit.prevent="invite">
+            <label class="grow"><span>{{ copy.inviteEmail }}</span><input v-model="inviteEmail" required type="email" maxlength="320" autocomplete="off" /></label>
+            <label><span>{{ copy.role }}</span><select v-model="inviteRole"><option value="Employee">{{ copy.roleEmployee }}</option><option value="TenantAdmin">{{ copy.roleTenantAdmin }}</option></select></label>
+            <label v-if="groups.length"><span>{{ copy.group }}</span><select v-model="inviteGroup" :aria-label="copy.group"><option value="">{{ copy.noGroup }}</option><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label>
+            <button class="button button-primary" :disabled="isInviting">{{ isInviting ? copy.inviting : copy.invite }}</button>
+          </form>
+          <div v-if="members.length" class="table-wrap">
+            <table class="member-table" :aria-label="copy.members">
+              <colgroup><col class="col-member" /><col class="col-role" /><col class="col-status" /><col class="col-group" /><col class="col-actions" /></colgroup>
+              <thead><tr><th scope="col">{{ copy.member }}</th><th scope="col">{{ copy.role }}</th><th scope="col">{{ copy.status }}</th><th scope="col">{{ copy.group }}</th><th scope="col"><span class="sr-only">{{ copy.actions }}</span></th></tr></thead>
+              <tbody>
+                <tr v-for="member in members" :key="member.id">
+                  <td><div class="member-identity"><strong>{{ memberName(member) || member.email }}<span v-if="member.isCurrentUser" class="badge badge-self">{{ copy.you }}</span></strong><span v-if="memberName(member)">{{ member.email }}</span></div></td>
+                  <td>{{ roleLabel(member.role) }}</td>
+                  <td><span class="status" :class="`status-${member.status}`">{{ statusLabel(member.status) }}</span></td>
+                  <td><label class="group-select"><span class="sr-only">{{ copy.group }}: {{ member.email }}</span><select :value="member.groupId ?? ''" :disabled="busyId === member.id" :aria-label="`${copy.group}: ${member.email}`" @change="setGroup(member, ($event.target as HTMLSelectElement).value)"><option value="">{{ copy.noGroup }}</option><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label></td>
+                  <td>
+                    <div v-if="!member.isCurrentUser" class="row-actions member-actions">
+                      <template v-if="member.status === 'Deactivated'"><button class="button button-subtle" type="button" :disabled="busyId === member.id" :aria-label="`${copy.reactivate}: ${member.email}`" @click="setActive(member, true)">{{ copy.reactivate }}</button></template>
+                      <template v-else>
+                        <button class="button button-subtle" type="button" :disabled="busyId === member.id" :aria-label="`${member.role === 'TenantAdmin' ? copy.makeEmployee : copy.makeAdmin}: ${member.email}`" @click="changeRole(member)">{{ member.role === 'TenantAdmin' ? copy.makeEmployee : copy.makeAdmin }}</button>
+                        <button v-if="member.status === 'PendingActivation'" class="button button-subtle" type="button" :disabled="busyId === member.id" :aria-label="`${copy.resendActivation}: ${member.email}`" @click="resendActivation(member)">{{ copy.resendActivation }}</button>
+                        <template v-if="confirmingId === member.id"><button class="button button-warning" type="button" :disabled="busyId === member.id" :aria-label="`${copy.confirmDeactivate}: ${member.email}`" @click="setActive(member, false)">{{ copy.confirmDeactivate }}</button><button class="button button-subtle" type="button" @click="confirmingId = ''">{{ copy.cancel }}</button></template>
+                        <button v-else class="button button-danger-text" type="button" :disabled="busyId === member.id" :aria-label="`${copy.deactivate}: ${member.email}`" @click="setActive(member, false)">{{ copy.deactivate }}</button>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p>
+        </section>
+        <div class="two-columns">
+          <section class="panel" aria-labelledby="groups-heading">
+            <div class="panel-heading"><h2 id="groups-heading">{{ copy.groups }}</h2><p>{{ copy.groupHint }}</p></div>
+            <form class="add-form" @submit.prevent="addGroup"><label class="sr-only" for="new-group">{{ copy.groupName }}</label><input id="new-group" v-model="groupName" required maxlength="100" :placeholder="copy.groupName" /><button class="button button-primary" :disabled="busyId === 'new-group'">{{ copy.addGroup }}</button></form>
+            <ul v-if="groups.length" class="item-list" :aria-label="copy.groups"><li v-for="group in groups" :key="group.id" class="item-row"><input v-model="group.name" required maxlength="100" :aria-label="copy.groupName" /><span class="badge">{{ copy.groupMembers.replace('{count}', String(group.memberCount)) }}</span><div class="row-actions"><button class="button button-subtle" type="button" :disabled="busyId === group.id" @click="renameGroup(group)">{{ copy.save }}</button><button class="button button-danger" type="button" :disabled="busyId === group.id" :aria-label="`${copy.delete}: ${group.name}`" @click="deleteGroup(group)">×</button></div></li></ul>
+            <p v-else-if="!isLoading" class="empty-list">{{ copy.noGroups }}</p>
+          </section>
+          <section class="panel" aria-labelledby="invitations-heading">
+            <div class="panel-heading"><h2 id="invitations-heading">{{ copy.pendingInvitations }}</h2></div>
+            <ul v-if="invitations.length" class="item-list" :aria-label="copy.pendingInvitations"><li v-for="invitation in invitations" :key="invitation.id" class="invitation-row"><div class="member-identity"><strong>{{ invitation.email }}</strong><span>{{ copy.expires.replace('{date}', formatDate(invitation.expiresAtUtc)) }}</span><span v-if="invitation.invitedByEmail">{{ copy.invitedBy.replace('{email}', invitation.invitedByEmail) }}</span></div><div class="invitation-tags"><span class="badge">{{ roleLabel(invitation.role) }}</span><span v-if="invitation.groupName" class="badge">{{ invitation.groupName }}</span></div><div class="row-actions member-actions"><button class="button button-subtle" type="button" :disabled="busyId === invitation.id" :aria-label="`${copy.resendInvitation}: ${invitation.email}`" @click="resendInvitation(invitation)">{{ copy.resendInvitation }}</button><button class="button button-danger-text" type="button" :disabled="busyId === invitation.id" :aria-label="`${copy.revokeInvitation}: ${invitation.email}`" @click="revokeInvitation(invitation)">{{ copy.revokeInvitation }}</button></div></li></ul>
+            <p v-else-if="!isLoading" class="empty-list">{{ copy.noInvitations }}</p>
+          </section>
+        </div>
+      </div>
+
+      <!-- Working time: the week, holidays, and closing a month. -->
+      <div v-show="activeTab === 'time'" id="panel-time" class="tab-panel" role="tabpanel" aria-labelledby="tab-time" tabindex="0">
+        <section class="panel work-week-panel" aria-labelledby="work-week-heading">
+          <div class="panel-heading"><h2 id="work-week-heading">{{ copy.workWeek }}</h2><p>{{ copy.workWeekHint }}</p></div>
+          <form class="work-week-form" @submit.prevent="saveWorkWeek">
+            <!-- The week as it is being edited: each row is that day's checkbox, its bar the working hours and break. -->
+            <fieldset class="week">
+              <legend class="sr-only">{{ copy.workDays }}</legend>
+              <ol class="week-hours" aria-hidden="true"><li v-for="hour in weekScale.hours" :key="hour" :style="{ left: weekPercent(hour * 60) }">{{ weekHourLabel(hour) }}</li></ol>
+              <label v-for="day in weekdays" :key="day" class="week-row" :class="{ 'is-working': workingDays.includes(day) }"
+                :title="workingDays.length === 1 && workingDays.includes(day) ? copy.workWeekRequired : undefined">
+                <input v-model="workingDays" type="checkbox" :value="day" :disabled="workingDays.length === 1 && workingDays.includes(day)" />
+                <span class="check-mark" aria-hidden="true"></span>
+                <span class="week-day">{{ weekdayName(day) }}</span>
+                <span class="week-track" aria-hidden="true">
+                  <template v-if="workingDays.includes(day) && hoursValid">
+                    <span class="week-band" :style="weekSpan(workHours.startTime, workHours.endTime)" />
+                    <span v-if="hasBreak && breakValid" class="week-break" :style="weekSpan(breakTime.start, breakTime.end)" />
+                  </template>
+                  <span v-else-if="!workingDays.includes(day)" class="week-off">{{ copy.dayOff }}</span>
+                </span>
+              </label>
+            </fieldset>
+            <div class="work-hours"><label><span>{{ copy.workStart }}</span><select v-model="workHours.startTime" :aria-invalid="!hoursValid"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.workEnd }}</span><select v-model="workHours.endTime" :aria-invalid="!hoursValid" :aria-describedby="hoursValid ? undefined : 'work-hours-error'"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><p v-if="!hoursValid" id="work-hours-error" class="field-error" role="alert">{{ copy.hoursOrder }}</p></div>
+            <div class="work-hours break-hours"><label class="check-card break-toggle"><input v-model="hasBreak" type="checkbox" /><span class="check-mark"></span><span>{{ copy.hasBreak }}</span></label><template v-if="hasBreak"><label><span>{{ copy.breakStart }}</span><select v-model="breakTime.start" :aria-invalid="!breakValid"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.breakEnd }}</span><select v-model="breakTime.end" :aria-invalid="!breakValid" :aria-describedby="breakValid ? undefined : 'break-error'"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label></template><p v-if="!breakValid" id="break-error" class="field-error" role="alert">{{ copy.breakOrder }}</p></div>
+            <div class="work-week-footer">
+              <p v-if="hoursValid && breakValid" class="workday-summary">{{ copy.workdayLength.replace('{hours}', (workdayMinutes / 60).toFixed(2).replace(/\.?0+$/, '')) }}</p>
+              <button class="button button-primary" :disabled="isSavingWorkWeek || !hoursValid || !breakValid">{{ isSavingWorkWeek ? copy.loading : copy.saveWorkWeek }}</button>
+            </div>
+          </form>
+        </section>
+        <section class="panel" aria-labelledby="holidays-heading">
+          <div class="panel-heading"><h2 id="holidays-heading">{{ copy.holidays }}</h2><p>{{ copy.holidayHint }}</p></div>
+          <form class="add-form holiday-form" @submit.prevent="add('holidays')"><label><span>{{ copy.date }}</span><DateField v-model="holidayDate" required :formats="formats" :locale="locale" :label="copy.date" :invalid-message="copy.invalidDate" :pick-label="copy.pickDate" /></label><label class="holiday-name"><span>{{ copy.holidayName }}</span><input v-model="holidayName" required maxlength="200" :placeholder="copy.holidayName" /></label><button class="button button-primary">{{ copy.add }}</button></form>
+          <ul v-if="catalog.holidays.length" class="item-list"><li v-for="item in catalog.holidays" :key="item.id"><form class="item-row holiday-row" @submit.prevent="update('holidays', item)"><DateField v-model="item.date" required :formats="formats" :locale="locale" :label="`${copy.date}: ${item.name}`" :invalid-message="copy.invalidDate" :pick-label="`${copy.pickDate}: ${item.name}`" /><input v-model="item.name" required maxlength="200" :aria-label="copy.holidayName" /><div class="row-actions"><button class="button button-subtle">{{ copy.save }}</button><button type="button" class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('holidays', item.id)">×</button></div></form></li></ul>
+          <p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p>
+        </section>
+        <section class="panel close-panel" aria-labelledby="close-heading">
+          <div class="panel-heading"><h2 id="close-heading">{{ copy.lockMonth }}</h2><p>{{ copy.lockHint }}</p></div>
+          <form class="close-form" @submit.prevent="lock"><label :aria-label="copy.lockMonth"><input v-model="lockMonth" type="month" required /></label><button class="button button-warning" :disabled="isLocking">{{ isLocking ? copy.loading : copy.lock }}</button></form>
+        </section>
+      </div>
+
+      <!-- Projects and categories offered when recording time. -->
+      <div v-show="activeTab === 'catalog'" id="panel-catalog" class="tab-panel two-columns" role="tabpanel" aria-labelledby="tab-catalog" tabindex="0">
+        <section class="panel" aria-labelledby="projects-heading"><div class="panel-heading"><h2 id="projects-heading">{{ copy.projects }}</h2><p>{{ copy.projectHint }}</p></div><form class="add-form" @submit.prevent="add('projects')"><label class="sr-only" for="new-project">{{ copy.projectName }}</label><input id="new-project" v-model="projectName" required maxlength="200" :placeholder="copy.projectName" /><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.projects.length" class="item-list"><li v-for="item in catalog.projects" :key="item.id" class="item-row"><input v-model="item.name" :aria-label="copy.projectName" /><div class="row-actions"><button class="button button-subtle" @click="update('projects', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('projects', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
+        <section class="panel" aria-labelledby="categories-heading"><div class="panel-heading"><h2 id="categories-heading">{{ copy.categories }}</h2><p>{{ copy.categoryHint }}</p></div><form class="add-form" @submit.prevent="add('categories')"><label class="sr-only" for="new-category">{{ copy.categoryName }}</label><input id="new-category" v-model="categoryName" required maxlength="200" :placeholder="copy.categoryName" /><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.categories.length" class="item-list"><li v-for="item in catalog.categories" :key="item.id" class="item-row"><input v-model="item.name" :aria-label="copy.categoryName" /><div class="row-actions"><button class="button button-subtle" @click="update('categories', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('categories', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
+      </div>
+
+      <!-- Security: the password policy. -->
+      <div v-show="activeTab === 'security'" id="panel-security" class="tab-panel" role="tabpanel" aria-labelledby="tab-security" tabindex="0">
+        <section class="panel policy-panel" aria-labelledby="policy-heading"><div class="panel-heading"><h2 id="policy-heading">{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="12" max="128" required /><span>{{ copy.lengthUnit }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" max="3650" required /><span>{{ copy.expiryUnit }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
       </div>
     </template>
   </main>
 </template>
 <style>
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--color-ink,#17233a);background:var(--color-canvas,#f5f7fb)}*{box-sizing:border-box}.admin-page{max-width:76rem;margin:0 auto;padding:clamp(1rem,3vw,2.5rem)}.page-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:1.5rem;margin-bottom:1.75rem}.page-heading h1{font-size:clamp(1.7rem,3vw,2.35rem);letter-spacing:-.04em;line-height:1.15;margin:.2rem 0 .6rem}.eyebrow{font-size:.68rem;font-weight:750;letter-spacing:.14em;color:#74819a;margin:0}.subtitle{color:#6b7890;margin:0;max-width:40rem;line-height:1.55}.tenant-pill{display:flex;align-items:center;gap:.55rem;border:1px solid #e1e7f0;background:#fff;border-radius:999px;padding:.55rem .9rem;color:#74819a;font-size:.78rem;white-space:nowrap}.tenant-pill strong{color:#263753;font-size:.82rem}.tenant-dot,.success-dot{width:.5rem;height:.5rem;border-radius:50%;background:#39a77b}.stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin-bottom:1.25rem}.stat-card,.panel{background:#fff;border:1px solid #e6eaf1;border-radius:1rem;box-shadow:0 5px 18px #253d6509}.stat-card{display:flex;align-items:center;gap:.9rem;padding:1rem 1.15rem}.stat-card div{display:grid;gap:.15rem}.stat-card strong{font-size:1.45rem;line-height:1.2;color:#1c2c47}.stat-card div span{font-size:.78rem;color:#758198}.stat-icon,.panel-icon{display:grid;place-items:center;flex:0 0 auto;width:2.4rem;height:2.4rem;border-radius:.75rem;font-weight:700;font-size:1.05rem}.violet{background:#f0ebff;color:#7751c8}.blue{background:#e8f2ff;color:#377ac8}.orange{background:#fff1e6;color:#ca762c}.green{background:#e8f7f0;color:#348c67}.catalog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.panel{padding:1.25rem;min-width:0}.panel-wide{grid-column:1/-1}.panel-heading{display:flex;align-items:flex-start;gap:.8rem;margin-bottom:1.1rem}.panel-heading h2,.close-panel h2{font-size:1rem;line-height:1.3;margin:.05rem 0 .3rem;color:#263753}.panel-heading p,.close-panel p{font-size:.78rem;line-height:1.5;color:#8490a4;margin:0}.add-form{display:flex;gap:.55rem;margin-bottom:.85rem}.add-form>input,.add-form label input,.item-row>input,.item-row .date-field input[type="text"],.policy-fields input,.close-form input{min-width:0;width:100%;height:2.55rem;border:1px solid #dfe5ee;border-radius:.65rem;background:#fbfcfe;padding:0 .75rem;color:#263753;font:inherit;font-size:.83rem;outline:none}.add-form input:focus,.item-row input:focus,.policy-fields input:focus,.close-form input:focus{border-color:#8da9ed;box-shadow:0 0 0 3px #4977e51c}.button{border:0;border-radius:.62rem;padding:.62rem .85rem;font:inherit;font-size:.78rem;font-weight:650;cursor:pointer;white-space:nowrap;transition:background .15s ease,transform .15s ease}.button:hover:not(:disabled){transform:translateY(-1px)}.button:disabled{opacity:.58;cursor:wait}.button-primary{background:#355fd4;color:#fff}.button-primary:hover:not(:disabled){background:#294db8}.button-subtle{background:#f0f3f9;color:#475978}.button-danger{background:#fff1f0;color:#be514b;padding:.42rem .72rem;font-size:1.05rem}.button-warning{background:#a6483f;color:#fff}.item-list{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}.item-row{display:flex;align-items:center;gap:.5rem;border:1px solid #edf0f5;background:#fff;border-radius:.7rem;padding:.4rem}.item-row>input,.item-row .date-field input[type="text"]{height:2.25rem;background:transparent;border-color:transparent}.row-actions{display:flex;align-items:center;gap:.35rem}.empty-list{margin:.6rem 0 0;padding:.85rem;border-radius:.65rem;background:#f8f9fc;color:#95a0b2;text-align:center;font-size:.8rem}.holiday-form{align-items:flex-end}.holiday-form label{display:grid;gap:.35rem;min-width:9rem;font-size:.72rem;font-weight:600;color:#64718a}.holiday-form .holiday-name{flex:1}.holiday-row>.date-field{max-width:11rem}.settings-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(16rem,.8fr);gap:1rem;margin-top:1rem}.policy-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem;margin-bottom:1rem}.policy-fields>label{display:grid;gap:.45rem;color:#64718a;font-size:.75rem;font-weight:600}.input-suffix{display:flex;align-items:center;gap:.5rem;border:1px solid #dfe5ee;border-radius:.65rem;padding-right:.75rem;background:#fbfcfe;color:#8893a5;font-size:.7rem}.input-suffix input{border:0;background:transparent;box-shadow:none!important}.policy-form fieldset{padding:0;border:0;margin:0 0 1rem}.policy-form legend{margin-bottom:.6rem;color:#64718a;font-size:.75rem;font-weight:650}.policy-form fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}.check-card{position:relative;display:flex;align-items:center;gap:.55rem;border:1px solid #e8ecf2;border-radius:.65rem;padding:.65rem .7rem;color:#52617c;font-size:.75rem;cursor:pointer}.check-card input{position:absolute;opacity:0}.check-mark{flex:0 0 auto;width:1rem;height:1rem;border:1px solid #c9d1df;border-radius:.3rem;background:#fff}.check-card input:checked+.check-mark{border-color:#4266d5;background:#4266d5;box-shadow:inset 0 0 0 3px #fff}.check-card:focus-within{outline:3px solid #4977e51c}.work-week-form{display:flex;align-items:flex-end;gap:.75rem;flex-wrap:wrap}.work-week-form fieldset{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.5rem;flex:1 1 100%;min-width:0;padding:0;border:0;margin:0}.work-hours{display:flex;align-items:flex-end;gap:.5rem;flex-wrap:wrap;flex:1;min-width:0}.work-hours label{display:grid;gap:.35rem;font-size:.72rem;font-weight:600;color:#64718a}.work-hours select{height:2.55rem;min-width:8rem;border:1px solid #dfe5ee;border-radius:.65rem;background:#fbfcfe;padding:0 .6rem;color:#263753;font:inherit;font-size:.83rem}.work-hours select[aria-invalid="true"]{border-color:#d0645d}.work-hours-dash{padding-bottom:.7rem;color:#8490a4}.break-hours{flex:1 1 100%}.break-hours .break-toggle{display:flex;align-items:center;gap:.55rem;flex:1 1 100%;max-width:22rem;color:#52617c;font-size:.75rem}.workday-summary{flex-basis:100%;margin:0;color:#64718a;font-size:.75rem}.field-error{flex-basis:100%;margin:0;color:#a53d38;font-size:.75rem}.work-week-form .check-card input:disabled+.check-mark{opacity:.6}.close-panel{align-self:start}.close-panel>.panel-icon{margin-bottom:.8rem}.close-form{display:flex;align-items:center;gap:.55rem;margin-top:1.15rem}.close-form label{flex:1}.feedback{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.8rem 1rem;border-radius:.7rem;margin:0 0 1rem;font-size:.82rem}.feedback-error{background:#fff0ef;color:#a53d38}.feedback-success{justify-content:flex-start;background:#eaf8f1;color:#287751}.loading-line{color:#77849a;font-size:.8rem;margin:.2rem 0 .75rem}.empty-state{display:grid;place-items:center;min-height:15rem;border:1px dashed #d9dfeb;border-radius:1rem;background:#fff;color:#74819a;text-align:center}.empty-state h2{font-size:1rem;font-weight:550}.empty-icon{font-size:2rem;color:#a8b2c4}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.members-panel{margin-bottom:1rem}.brand-panel{margin-bottom:1rem}.formats-panel{margin-bottom:1rem}.formats-form{align-items:flex-end;flex-wrap:wrap}.formats-form label{display:grid;gap:.35rem;font-size:.72rem;font-weight:600;color:#64718a}.formats-form select{height:2.55rem;min-width:12rem;border:1px solid #dfe5ee;border-radius:.65rem;background:#fbfcfe;padding:0 .6rem;color:#263753;font:inherit;font-size:.83rem}.format-preview{display:grid;gap:.35rem;margin:0;flex:1;min-width:10rem;font-size:.72rem;font-weight:600;color:#64718a}.format-preview strong{height:2.55rem;display:flex;align-items:center;color:#263753;font-size:.95rem}.brand-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.25rem}.brand-name-form{align-items:flex-end}.brand-name-form label{display:grid;gap:.35rem;font-size:.72rem;font-weight:600;color:#64718a}.field-label{display:block;font-size:.72rem;font-weight:600;color:#64718a;margin-bottom:.35rem}.logo-row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}.logo-preview{display:grid;place-items:center;width:7rem;height:3.5rem;border:1px dashed #d9dfeb;border-radius:.65rem;background:#fbfcfe;color:#95a0b2;font-size:.72rem;text-align:center;padding:.3rem}.logo-preview img{display:block;max-width:6.4rem;max-height:2.9rem;object-fit:contain}.logo-actions{display:flex;gap:.45rem;flex-wrap:wrap}.file-button{cursor:pointer}.field-hint{margin:.5rem 0 0;color:#8490a4;font-size:.72rem}.invite-form{align-items:flex-end}.invite-form label{display:grid;gap:.35rem;font-size:.72rem;font-weight:600;color:#64718a}.invite-form .invite-email{flex:1}.invite-form select{height:2.55rem;border:1px solid #dfe5ee;border-radius:.65rem;background:#fbfcfe;padding:0 .6rem;color:#263753;font:inherit;font-size:.83rem}.member-row{display:flex;align-items:center;gap:.5rem;border:1px solid #edf0f5;border-radius:.7rem;padding:.6rem .75rem}.member-identity{display:grid;gap:.15rem;flex:1;min-width:0}.member-identity strong{display:flex;align-items:center;gap:.4rem;color:#263753;font-size:.85rem;overflow-wrap:anywhere}.member-identity span{color:#8490a4;font-size:.75rem;overflow-wrap:anywhere}.badge{border-radius:999px;background:#f0f3f9;color:#475978;font-size:.7rem;font-weight:650;padding:.2rem .55rem;white-space:nowrap}.member-identity .badge-self{background:#e8f2ff;color:#377ac8;font-size:.65rem}.status-Active{background:#e8f7f0;color:#287751}.status-PendingActivation{background:#fff1e6;color:#a8611f}.status-Deactivated{background:#fff0ef;color:#a53d38}.member-actions{flex-wrap:wrap;justify-content:flex-end}.button-danger-text{background:#fff1f0;color:#be514b}.subheading{font-size:.85rem;color:#263753;margin:1.2rem 0 .6rem}.group-hint{margin:-.3rem 0 .7rem}.group-select select{height:2rem;max-width:11rem;border:1px solid #dfe5ee;border-radius:.55rem;background:#fbfcfe;padding:0 .45rem;color:#263753;font:inherit;font-size:.75rem}@media(max-width:760px){.brand-grid{grid-template-columns:1fr}.work-week-form fieldset{grid-template-columns:repeat(4,minmax(0,1fr))}.admin-page{padding:1rem}.page-heading{align-items:flex-start;flex-direction:column;margin-bottom:1.2rem}.stats-grid{gap:.6rem}.stat-card{padding:.8rem;gap:.55rem}.stat-icon{width:2rem;height:2rem}.stat-card strong{font-size:1.2rem}.stat-card div span{font-size:.68rem}.settings-grid{grid-template-columns:1fr}}@media(max-width:560px){.work-hours{flex:1 1 100%}.work-hours label{flex:1;min-width:0}.work-hours select{min-width:0;width:100%}.work-week-form>.button{flex:1 1 100%}.formats-form{display:grid;grid-template-columns:1fr}.formats-form select{min-width:0;width:100%}.catalog-grid{grid-template-columns:1fr}.work-week-form fieldset{grid-template-columns:repeat(2,minmax(0,1fr));flex-basis:100%}.panel-wide{grid-column:auto}.stats-grid{grid-template-columns:1fr}.stat-card{padding:.7rem .9rem}.stat-card div{display:flex;align-items:baseline;justify-content:space-between;flex:1}.holiday-form{display:grid;grid-template-columns:1fr}.holiday-form label,.holiday-form .holiday-name{min-width:0}.holiday-row{flex-wrap:wrap}.holiday-row>.date-field{max-width:none;width:100%}.holiday-row>input:nth-child(2){flex:1}.policy-fields{grid-template-columns:1fr}.invite-form{display:grid;grid-template-columns:1fr}.close-form{flex-wrap:wrap}.member-row{flex-wrap:wrap}.member-identity{flex-basis:100%}.member-actions{flex-basis:100%;justify-content:flex-start}.tenant-pill{white-space:normal}.page-heading h1{font-size:1.8rem}}
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--color-ink);background:var(--color-canvas)}
+*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}
+:focus-visible{outline:2px solid var(--color-brand);outline-offset:2px}
+.admin-page{max-width:76rem;margin:0 auto;padding:clamp(1rem,3vw,2rem)}
+h1,h2,h3{font-family:var(--font-display);font-weight:600}
+/* The organization heads the page. */
+.org-heading{display:flex;align-items:center;gap:1rem;margin:0 0 1.5rem}
+.org-logo{display:grid;place-items:center;flex:0 0 auto;width:3.5rem;height:3.5rem;border:1px solid var(--color-border);border-radius:.75rem;background:var(--color-surface);overflow:hidden}
+.org-logo img{max-width:85%;max-height:85%;object-fit:contain}
+.org-logo span{font-family:var(--font-display);font-size:1.5rem;font-weight:600;color:var(--color-brand)}
+.org-heading h1{font-size:clamp(1.6rem,3.5vw,2.3rem);line-height:1.15;margin:0;overflow-wrap:anywhere}
+.org-code{color:var(--color-muted);margin:.2rem 0 0;font-variant-numeric:tabular-nums}
+.feedback{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem 1rem;border-radius:.5rem;margin:0 0 1rem}
+.feedback-error{background:#fff0ef;color:#a53d38}.feedback-success{background:#eaf8f1;color:#287751}
+.loading-line{color:var(--color-muted);margin:0 0 .75rem}
+/* Tabs: one subject at a time. */
+.tab-list{display:flex;gap:.25rem;border-bottom:1px solid var(--color-border);margin:0 0 1.25rem;overflow-x:auto;scrollbar-width:thin}
+.tab{display:inline-flex;align-items:center;gap:.45rem;flex:0 0 auto;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:.7rem .9rem;color:var(--color-muted);font-family:var(--font-display);font-size:1rem;font-weight:600;cursor:pointer;transition:color 150ms ease,border-color 150ms ease}
+.tab:hover{color:var(--color-ink)}
+.tab[aria-selected="true"]{color:var(--color-brand);border-bottom-color:var(--color-brand)}
+.tab:focus-visible{outline-offset:-2px;border-radius:.35rem .35rem 0 0}
+.tab-count{background:var(--color-work-track);color:#1d3f9e;border-radius:999px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.75rem;padding:.05rem .45rem}
+.tab-panel{display:grid;gap:1.25rem}.tab-panel:focus-visible{outline:none}
+.two-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1.25rem;align-items:start}
+/* Panels: flat, one border, a heading and one hint. */
+.panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:.75rem;padding:clamp(1rem,2vw,1.35rem);min-width:0}
+.panel-heading{margin:0 0 1rem}
+.panel-heading h2{font-size:1.2rem;margin:0 0 .3rem}
+.panel-heading p{color:var(--color-muted);font-size:.9rem;line-height:1.5;margin:0;max-width:44rem}
+label{color:#47556c;font-size:.85rem;font-weight:600}
+input,select{min-width:0;border:1px solid #cfd8e5;border-radius:.5rem;background:var(--color-surface);color:var(--color-ink);padding:.55rem .65rem;font-size:.9rem}
+input:focus-visible,select:focus-visible{border-color:var(--color-brand);outline-offset:0}
+select[aria-invalid="true"]{border-color:#d0645d}
+.add-form{display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;margin-bottom:1rem}
+.add-form>input{flex:1 1 12rem}
+.add-form label{display:grid;gap:.3rem}
+.grow{flex:1 1 14rem}
+.button{border:1px solid transparent;border-radius:.5rem;padding:.55rem .9rem;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.button:disabled{opacity:.55;cursor:not-allowed}
+.button-primary{background:var(--color-brand);color:#fff}.button-primary:hover:not(:disabled){background:var(--color-brand-strong)}
+.button-subtle{background:var(--color-surface);border-color:var(--color-border);color:#3d4a5f}.button-subtle:hover:not(:disabled){background:#f3f6fa}
+.button-danger{background:transparent;color:#b42318;font-size:1.1rem;padding:.35rem .65rem}.button-danger:hover:not(:disabled){background:#fff1f0}
+.button-danger-text{background:transparent;color:#b42318}.button-danger-text:hover:not(:disabled){background:#fff1f0}
+.button-warning{background:#b42318;color:#fff}
+.item-list{list-style:none;margin:0;padding:0;display:grid}
+.item-row{display:flex;align-items:center;gap:.5rem;border-top:1px solid var(--color-border);padding:.5rem 0}
+.item-list>li:first-child .item-row,.item-list>.item-row:first-child{border-top:0}
+.item-row>input{flex:1;border-color:transparent;background:transparent}
+.item-row>input:hover{border-color:var(--color-border)}
+.row-actions{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
+.empty-list{margin:.25rem 0 0;padding:.85rem;border-radius:.5rem;background:#f6f8fb;color:var(--color-muted);text-align:center;font-size:.85rem}
+.field-label{display:block;color:#47556c;font-size:.85rem;font-weight:600;margin-bottom:.35rem}
+.field-hint{color:var(--color-muted);font-size:.82rem;margin:.5rem 0 0}
+.field-error{flex-basis:100%;margin:0;color:#a53d38;font-size:.85rem}
+.badge{border-radius:999px;background:#f0f3f9;color:#475978;font-size:.75rem;font-weight:600;padding:.2rem .55rem;white-space:nowrap}
+.badge-self{background:var(--color-work-track);color:#1d3f9e;margin-left:.4rem}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.empty-state{display:grid;place-items:center;min-height:12rem;border:1px dashed var(--color-border);border-radius:.75rem;color:var(--color-muted);text-align:center}
+.empty-state h2{font-size:1rem;font-weight:500}
+/* Organization. */
+.brand-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));gap:1.5rem}
+.logo-row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.logo-preview{display:grid;place-items:center;width:7rem;height:3.5rem;border:1px dashed var(--color-border);border-radius:.5rem;background:#fbfcfe;color:var(--color-muted);font-size:.75rem;text-align:center;padding:.3rem}
+.logo-preview img{display:block;max-width:6.4rem;max-height:2.9rem;object-fit:contain}
+.logo-actions{display:flex;gap:.45rem;flex-wrap:wrap}
+.file-button{cursor:pointer}
+.formats-form select{min-width:12rem}
+.format-preview{display:grid;gap:.3rem;margin:0;flex:1;min-width:10rem;color:#47556c;font-size:.85rem;font-weight:600}
+.format-preview strong{display:flex;align-items:center;min-height:2.4rem;color:var(--color-ink);font-family:var(--font-display);font-size:1.05rem}
+/* People: an aligned table of members. */
+.table-wrap{overflow-x:auto;position:relative}
+.member-table{width:100%;border-collapse:collapse;table-layout:fixed;min-width:46rem}
+.member-table .col-member{width:26%}.member-table .col-role{width:14%}.member-table .col-status{width:17%}.member-table .col-group{width:17%}
+.member-table th{color:var(--color-muted);font-size:.8rem;font-weight:600;text-align:left;padding:.55rem .5rem;border-bottom:1px solid var(--color-border)}
+.member-table td{padding:.7rem .5rem;border-bottom:1px solid var(--color-border);font-size:.9rem;vertical-align:middle}
+.member-identity{display:grid;gap:.1rem;min-width:0;overflow-wrap:anywhere}
+.member-identity strong{display:flex;align-items:center;flex-wrap:wrap;color:var(--color-ink)}
+.member-identity span{color:var(--color-muted);font-size:.82rem}
+.status{display:inline-flex;align-items:center;gap:.4rem;font-weight:600;font-size:.85rem}
+.status::before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:#94a3b8}
+.status-Active{color:#17663b}.status-Active::before{background:#22a05a}
+.status-PendingActivation{color:#7a5412}.status-PendingActivation::before{background:#d29b25}
+.status-Deactivated{color:#b42318}.status-Deactivated::before{background:#b42318}
+.group-select select{width:100%}
+.member-actions{justify-content:flex-end}
+.member-actions .button{padding:.4rem .6rem;font-size:.8rem}
+.invitation-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.4rem .75rem;align-items:center;border-top:1px solid var(--color-border);padding:.7rem 0}
+.invitation-row:first-child{border-top:0;padding-top:0}
+.invitation-tags{display:flex;gap:.3rem;flex-wrap:wrap;justify-content:flex-end}
+.invitation-row .member-actions{grid-column:1/-1;justify-content:flex-start}
+/* Working time: the week drawn from the values being edited. */
+.work-week-form{display:grid;gap:1rem}
+.week{border:0;margin:0;padding:0 0 0 0;display:grid;gap:.3rem;position:relative}
+/* The hour scale sits over the bars: past the checkbox and day name, short of the row's right padding. */
+.week-hours{position:relative;height:1.5rem;list-style:none;margin:0 .5rem .2rem 11.5rem;padding:0}
+.week-hours li{position:absolute;top:0;transform:translateX(-50%);color:var(--color-muted);font-family:var(--font-display);font-size:.85rem;font-variant-numeric:tabular-nums}
+.week-row{position:relative;display:grid;grid-template-columns:1.5rem 9rem minmax(0,1fr);align-items:center;gap:0 .5rem;padding:.25rem .5rem .25rem 0;border-radius:.5rem;cursor:pointer;color:var(--color-ink)}
+.week-row:hover{background:#f6f8fb}
+.week-row input{position:absolute;opacity:0;width:1rem;height:1rem;left:.25rem}
+.week-row:focus-within{outline:2px solid var(--color-brand);outline-offset:1px}
+.week-day{font-weight:600}
+.week-row:not(.is-working) .week-day{color:var(--color-muted);font-weight:500}
+.week-track{position:relative;height:1.75rem;border-radius:.35rem;background:var(--color-surface);border:1px solid var(--color-border)}
+.week-row:not(.is-working) .week-track{background:var(--color-day-off);border-color:var(--color-day-off)}
+.week-band{position:absolute;top:.25rem;bottom:.25rem;border-radius:.25rem;background:var(--color-brand)}
+.week-break{position:absolute;top:.25rem;bottom:.25rem;background:repeating-linear-gradient(135deg,var(--color-surface) 0 2px,var(--color-break) 2px 4px)}
+.week-off{position:absolute;left:.6rem;top:50%;transform:translateY(-50%);color:var(--color-muted);font-size:.8rem;font-weight:500}
+.check-mark{flex:0 0 auto;width:1.1rem;height:1.1rem;border:1.5px solid #9aa7ba;border-radius:.3rem;background:#fff}
+input:checked+.check-mark{border-color:var(--color-brand);background:var(--color-brand);box-shadow:inset 0 0 0 3px #fff}
+input:disabled+.check-mark{opacity:.55}
+.check-card{position:relative;display:flex;align-items:center;gap:.55rem;border:1px solid var(--color-border);border-radius:.5rem;padding:.6rem .7rem;color:#3d4a5f;font-size:.85rem;cursor:pointer}
+.check-card input{position:absolute;opacity:0}
+.check-card:focus-within{outline:2px solid var(--color-brand);outline-offset:1px}
+.work-hours{display:flex;align-items:flex-end;gap:.5rem;flex-wrap:wrap}
+.work-hours label:not(.check-card){display:grid;gap:.3rem}
+.work-hours select{min-width:8rem}
+.work-hours-dash{padding-bottom:.6rem;color:var(--color-muted)}
+.break-toggle{flex:0 1 auto}
+.work-week-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem;border-top:1px solid var(--color-border);padding-top:1rem}
+.workday-summary{margin:0;color:var(--color-ink)}
+.holiday-form label{display:grid;gap:.3rem;min-width:9rem}
+.holiday-form .holiday-name{flex:1}
+.holiday-row>.date-field{max-width:11rem}
+.close-form{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
+/* Security. */
+.policy-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.85rem;margin-bottom:1rem}
+.policy-fields>label{display:grid;gap:.35rem}
+.input-suffix{display:flex;align-items:center;gap:.5rem;border:1px solid #cfd8e5;border-radius:.5rem;padding-right:.75rem;color:var(--color-muted);font-size:.8rem;font-weight:500}
+.input-suffix input{border:0;flex:1}
+.policy-form fieldset{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr));gap:.5rem;padding:0;border:0;margin:0 0 1rem}
+.policy-form legend{margin-bottom:.6rem;color:#47556c;font-size:.85rem;font-weight:600}
+@media (prefers-reduced-motion:reduce){.tab{transition:none}}
+@media (max-width:48rem){
+  .member-table{min-width:0;table-layout:auto}
+  .member-table colgroup,.member-table thead{display:none}
+  .member-table,.member-table tbody,.member-table tr,.member-table td{display:block;width:100%}
+  .member-table tr{border-bottom:1px solid var(--color-border);padding:.6rem 0}
+  .member-table td{border:0;padding:.2rem 0}
+  .member-actions{justify-content:flex-start}
+  .week-hours{margin-left:7.5rem}
+  .week-row{grid-template-columns:1.5rem 5rem minmax(0,1fr)}
+  .week-day{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media (max-width:30rem){
+  .week-hours li:nth-child(even){display:none}
+  .break-toggle{flex:1 1 100%}
+  .item-row{flex-wrap:wrap}
+  .item-row>input{flex:1 1 100%}
+  .invitation-row{grid-template-columns:minmax(0,1fr)}
+  .invitation-tags{justify-content:flex-start}
+  .work-hours label{flex:1;min-width:0}
+  .work-hours select{min-width:0;width:100%}
+  .holiday-form{display:grid;grid-template-columns:1fr}
+  .holiday-row{flex-wrap:wrap}
+  .holiday-row>.date-field{max-width:none;width:100%}
+}
 </style>

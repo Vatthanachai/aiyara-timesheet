@@ -1121,9 +1121,19 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
 
   const frame = page.frameLocator('iframe')
-  await expect(frame.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible()
+  // The organization heads its own settings, which are grouped into tabs.
+  await expect(frame.getByRole('heading', { name: 'Acme', level: 1 })).toBeVisible()
+  await expect(frame.getByText('Organization code ACME123')).toBeVisible()
   await expect.poll(() => page.evaluate(() => (window as unknown as { remoteMessages: string[] }).remoteMessages))
     .toContain('aiyara.ready')
+  const tabs = frame.getByRole('tablist', { name: 'Settings' })
+  await expect(tabs.getByRole('tab')).toHaveText(['Organization', /^People/, 'Working time', 'Projects and categories', 'Security'])
+  await expect(tabs.getByRole('tab', { name: 'Organization' })).toHaveAttribute('aria-selected', 'true')
+  await tabs.getByRole('tab', { name: 'Organization' }).focus()
+  await page.keyboard.press('End')
+  await expect(tabs.getByRole('tab', { name: 'Security' })).toBeFocused()
+  await expect(tabs.getByRole('tab', { name: 'Security' })).toHaveAttribute('aria-selected', 'true')
+  await expect(frame.getByRole('region', { name: 'Organization' })).toBeHidden()
   const minimumLength = frame.getByRole('spinbutton', { name: 'Minimum length' })
   await expect(minimumLength).toHaveValue('14')
   await expect.poll(() => catalogCalls).toBe(1)
@@ -1132,7 +1142,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
   // page and overwrite what the administrator is typing.
   await minimumLength.fill('20')
   await page.getByRole('radio', { name: 'ไทย' }).click()
-  await expect(frame.getByRole('heading', { name: 'จัดการองค์กร', level: 1 })).toBeVisible()
+  await expect(frame.getByRole('tab', { name: 'ความปลอดภัย' })).toHaveAttribute('aria-selected', 'true')
   await expect(frame.getByRole('spinbutton', { name: 'ความยาวขั้นต่ำ' })).toHaveValue('20')
   expect(catalogCalls).toBe(1)
   expect(policyCalls).toBe(1)
@@ -1246,9 +1256,11 @@ test('tenant admin manages members and invitations from the Members panel', asyn
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
 
   const frame = page.frameLocator('iframe')
-  const directory = frame.getByRole('list', { name: 'Members' })
-  const row = (email: string) => directory.getByRole('listitem').filter({ hasText: email })
-  await expect(directory.getByRole('listitem')).toHaveCount(3)
+  await frame.getByRole('tab', { name: /^People/ }).click()
+  await expect(frame.getByRole('tab', { name: /^People/ })).toHaveText('People3')
+  const directory = frame.getByRole('table', { name: 'Members' })
+  const row = (email: string) => directory.locator('tbody tr').filter({ hasText: email })
+  await expect(directory.locator('tbody tr')).toHaveCount(3)
   await expect(row('admin@example.test')).toContainText('Ada Admin')
   await expect(row('admin@example.test')).toContainText('You')
   await expect(row('admin@example.test')).toContainText('Organization admin')
@@ -2257,9 +2269,13 @@ test('tenant admin sets the working days and hours from Administration and canno
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
 
   const frame = page.frameLocator('iframe')
+  await frame.getByRole('tab', { name: 'Working time' }).click()
   const panel = frame.getByRole('region', { name: 'Working days and hours' })
   const day = (name: string) => panel.getByRole('checkbox', { name })
+  const bar = (name: string) => panel.locator('.week-row').filter({ hasText: name })
   await expect(day('Monday')).toBeChecked()
+  await expect(bar('Monday').locator('.week-band')).toHaveCount(1)
+  await expect(bar('Saturday')).toContainText('Day off')
   await expect(day('Friday')).toBeChecked()
   await expect(day('Saturday')).not.toBeChecked()
   await expect(day('Sunday')).not.toBeChecked()
@@ -2268,6 +2284,9 @@ test('tenant admin sets the working days and hours from Administration and canno
   await expect(day('Monday')).toBeDisabled()
   await day('Saturday').check()
   await expect(day('Monday')).toBeEnabled()
+  // The week redraws as days change: Saturday gains a bar, Tuesday becomes a day off.
+  await expect(bar('Saturday').locator('.week-band')).toHaveCount(1)
+  await expect(bar('Tuesday')).toContainText('Day off')
 
   // Hours in quarter-hour steps; the day must end after it starts.
   const start = panel.getByLabel('Start of work')
@@ -2293,6 +2312,7 @@ test('tenant admin sets the working days and hours from Administration and canno
   await expect(panel.getByRole('button', { name: 'Save working days and hours' })).toBeDisabled()
   await breakStart.selectOption('11:30')
   await breakEnd.selectOption('12:30')
+  await expect(bar('Monday').locator('.week-break')).toHaveCount(1)
   await expect(panel.getByText('A normal working day is 8 hours; reports count a longer day as overtime.')).toBeVisible()
   await panel.getByRole('button', { name: 'Save working days and hours' }).click()
   await expect(frame.getByText('Working days and hours saved.')).toBeVisible()
@@ -2420,7 +2440,9 @@ test('tenant admin chooses the date and time format and every remote follows it'
     `31/12/${year}`, `31/12/${year + 543} · Buddhist year`, `31 Dec ${year} · month name`, `${year}-12-31`, `12/31/${year}`])
   await expect(panel.getByLabel('Time format').locator('option')).toHaveText(['13:30 · 24-hour', '1:30 PM · 12-hour (AM/PM)'])
   // Pending invitations use the organization's format too.
+  await frame.getByRole('tab', { name: /^People/ }).click()
   await expect(frame.getByText('27/10/2026')).toBeVisible()
+  await frame.getByRole('tab', { name: 'Organization' }).click()
 
   await panel.getByLabel('Date format').selectOption('dd/MM/bbbb')
   await panel.getByLabel('Time format').selectOption('h:mm a')
@@ -2429,7 +2451,9 @@ test('tenant admin chooses the date and time format and every remote follows it'
   await expect(frame.getByText('Date and time format saved.')).toBeVisible()
   expect(saved).toEqual([{ dateFormat: 'dd/MM/bbbb', timeFormat: 'h:mm a' }])
   // The Shell reloads the organization and sends the new formats, so the page updates without a reload.
+  await frame.getByRole('tab', { name: /^People/ }).click()
   await expect(frame.getByText('27/10/2569')).toBeVisible()
+  await frame.getByRole('tab', { name: 'Organization' }).click()
 
   for (const width of [375, 320]) {
     await page.setViewportSize({ width, height: 850 })
@@ -2527,6 +2551,7 @@ test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s 
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
 
   const frame = page.frameLocator('iframe')
+  await frame.getByRole('tab', { name: 'Working time' }).click()
   const form = frame.locator('.holiday-form')
   const date = form.getByRole('textbox', { name: 'Date' })
   await expect(date).toHaveAttribute('placeholder', 'DD/MM/YYYY')
@@ -2577,6 +2602,10 @@ test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s 
     await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
     await expect(picker).toBeVisible()
   }
+
+  // The chosen tab is remembered for the session: after a reload Administration opens on it again.
+  await page.reload()
+  await expect(page.frameLocator('iframe').getByRole('tab', { name: 'Working time' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('timesheet leaves the break out of an entry unless the member worked through it', async ({ page }) => {
