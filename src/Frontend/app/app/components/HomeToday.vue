@@ -3,7 +3,7 @@ import { safeError } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
 import { DEFAULT_FORMATS, formatDate, formatMonth, formatTime, type Formats } from '../../../shared/date-format'
 import { isoDate, type MyEntry, type MyWeek } from '../composables/useMyTimesheet'
-import type { RulerBand } from './DayRuler.vue'
+import DayRuler, { type RulerBand } from '../../../shared/components/DayRuler.vue'
 
 const { locale } = useLocale()
 const { visibleNavigation } = useRemoteNavigation()

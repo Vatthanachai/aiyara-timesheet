@@ -232,12 +232,15 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   await page.getByRole('link', { name: 'Record time' }).click()
 
   const timesheet = page.frameLocator('iframe')
-  await expect(timesheet.getByRole('heading', { name: 'Time entries', level: 1 })).toBeVisible()
-  await expect(timesheet.locator('.summary-hours strong')).toContainText('1.50')
+  const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(now)
+  await expect(timesheet.getByRole('heading', { level: 1 })).toHaveText(`${monthName} ${now.getFullYear()}`)
+  await expect(timesheet.locator('.month-totals')).toHaveText('1.5 h logged on 1 day, 1 day of leave.')
+  // The time card shows the day's hours and fills it in proportion to the normal working day.
+  await expect(timesheet.locator(`.day-button[aria-label="Date ${entryDate}"] .day-hours`)).toHaveText('1.5 h')
   await expect(timesheet.getByText('วางแผนงานประจำสัปดาห์')).toBeVisible()
   const weekendCell = timesheet.locator(`.day-button[aria-label="Date ${firstWeekendDate}"]`)
   await expect(weekendCell).toHaveClass(/weekend/)
-  await expect.poll(() => weekendCell.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(255, 221, 204)')
+  await expect.poll(() => weekendCell.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(238, 241, 245)')
   await expect(timesheet.locator(`.day-button[aria-label="Date ${currentMonth}-04"] .leave-marker`)).toHaveCount(1)
   await expect(timesheet.locator(`.day-button[aria-label="Date ${currentMonth}-05"] .holiday-marker`)).toHaveCount(1)
   await timesheet.getByRole('button', { name: `Date ${entryDate}` }).click()
@@ -256,12 +259,16 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
   await expect.poll(() => savedEntry).toMatchObject({ date: entryDate, startTime: '13:00:00', endTime: '14:00:00', taskName: 'ตรวจสอบ UX ของระบบ' })
   await expect(timesheet.locator('tbody')).toContainText('ตรวจสอบ UX ของระบบ')
   const savedRow = timesheet.locator('tbody tr').filter({ hasText: 'ตรวจสอบ UX ของระบบ' }).first()
+  // The selected day lists its entries above the form.
+  await expect(timesheet.getByRole('region', { name: /^\w+day / }).locator('.day-entries')).toContainText('ตรวจสอบ UX ของระบบ')
+  // Edit opens the entry in the form beside the calendar; Cancel leaves it unchanged.
   await savedRow.getByRole('button', { name: 'Edit' }).click()
-  const editForm = timesheet.locator('.edit-grid')
-  await expect(editForm).toBeVisible()
-  await editForm.getByLabel('Task').fill('ข้อความที่ยกเลิก')
+  const editForm = timesheet.locator('.entry-panel')
+  await expect(editForm.getByRole('heading', { name: 'Edit entry' })).toBeVisible()
+  await expect(editForm.getByLabel('Task', { exact: true })).toHaveValue('ตรวจสอบ UX ของระบบ')
+  await editForm.getByLabel('Task', { exact: true }).fill('ข้อความที่ยกเลิก')
   await editForm.getByRole('button', { name: 'Cancel' }).click()
-  await expect(editForm).toHaveCount(0)
+  await expect(editForm.getByRole('heading', { name: 'Add entry' })).toBeVisible()
   await expect(timesheet.locator('tbody')).toContainText('ตรวจสอบ UX ของระบบ')
   await expect(timesheet.locator('tbody')).not.toContainText('ข้อความที่ยกเลิก')
 })
@@ -2413,8 +2420,10 @@ test('timesheet shows dates and times in the organization\'s format', async ({ p
 
   const timesheet = page.frameLocator('iframe')
   const month = new Intl.DateTimeFormat('en-GB', { month: 'short' }).format(now)
-  const row = timesheet.locator('tbody tr').filter({ hasText: 'Afternoon review' })
-  await expect(row).toContainText(`5 ${month} ${now.getFullYear()}`)
+  // Entries are grouped by day: the date heads the group, and each row has its times.
+  const day = timesheet.locator('tbody').filter({ hasText: 'Afternoon review' })
+  await expect(day.locator('.day-row')).toContainText(`5 ${month} ${now.getFullYear()}`)
+  const row = day.locator('tr').filter({ hasText: 'Afternoon review' })
   await expect(row).toContainText('1:00 PM–2:30 PM')
   await expect(timesheet.locator('.holiday-list')).toContainText(`12 ${month} ${now.getFullYear()}`)
 })
@@ -2558,7 +2567,7 @@ test('timesheet leaves the break out of an entry unless the member worked throug
 
   const timesheet = page.frameLocator('iframe')
   const composer = timesheet.locator('.entry-panel')
-  await expect(timesheet.locator('.work-hours-label')).toHaveText('Working hours 08:30–17:30 · break 11:30–12:30')
+  await expect(timesheet.locator('.work-hours-label')).toHaveText('Working hours 08:30–17:30, break 11:30–12:30')
   // The whole working day counts 8 hours: the lunch hour is left out.
   await expect(composer.locator('.duration-pill')).toContainText('8.00')
   const workedThrough = composer.getByLabel('Worked through the 11:30–12:30 break (count it as work)')
