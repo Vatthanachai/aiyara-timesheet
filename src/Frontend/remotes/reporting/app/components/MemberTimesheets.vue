@@ -2,6 +2,7 @@
 import { safeError } from '../../../../shared/api-response'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 import { zonedToday } from '../utils/reportPeriods'
+import { csvBlob, saveBlob, xlsxBlob, type Cell } from '../utils/spreadsheet'
 
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; groupId?: string | null; groupName?: string | null }
 type MemberSummary = { ownerId: string; entryCount: number; totalMinutes: number; leaveDays: number }
@@ -34,7 +35,9 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   date: 'วันที่', time: 'เวลา', task: 'งาน', project: 'โครงการ', category: 'หมวดหมู่', duration: 'ชั่วโมง',
   byProject: 'ชั่วโมงตามโครงการ', noProject: 'ไม่ระบุโครงการ', leave: 'วันลา', holidays: 'วันหยุด', weeklyDayOff: 'วันหยุดประจำสัปดาห์', daysOff: 'วันหยุด',
   noEntries: 'ไม่มีรายการเวลาทำงานในเดือนนี้', noLeave: 'ไม่มีวันลา', noHolidays: 'ไม่มีวันหยุดในเดือนนี้', dayTotal: 'รวมวันนี้',
-  group: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม', byGroup: 'สรุปตามกลุ่ม', members: 'สมาชิก', noMembersInGroup: 'ไม่มีสมาชิกในกลุ่มนี้'
+  group: 'กลุ่ม', allGroups: 'ทุกกลุ่ม', noGroup: 'ไม่มีกลุ่ม', byGroup: 'สรุปตามกลุ่ม', members: 'สมาชิก', noMembersInGroup: 'ไม่มีสมาชิกในกลุ่มนี้',
+  exportXlsx: 'ส่งออก XLSX', exportCsv: 'ส่งออก CSV', exportLabel: 'ส่งออก timesheet ของ {name}', start: 'เริ่ม', end: 'สิ้นสุด',
+  detail: 'รายละเอียด', notes: 'บันทึก', remark: 'หมายเหตุ', status: 'สถานะ'
 }, en: {
   title: 'Member timesheets', hint: "Review each member's hours and leave by month, including the current open month.",
   month: 'Month', member: 'Member', entries: 'Entries', hours: 'Hours', leaveDays: 'Leave days', view: 'View timesheet',
@@ -43,7 +46,9 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   date: 'Date', time: 'Time', task: 'Task', project: 'Project', category: 'Category', duration: 'Hours',
   byProject: 'Hours by project', noProject: 'No project', leave: 'Leave', holidays: 'Days off', weeklyDayOff: 'Weekly day off', daysOff: 'Days off',
   noEntries: 'No time entries this month.', noLeave: 'No leave.', noHolidays: 'No days off this month.', dayTotal: 'Day total',
-  group: 'Group', allGroups: 'All groups', noGroup: 'No group', byGroup: 'Totals by group', members: 'Members', noMembersInGroup: 'No members in this group.'
+  group: 'Group', allGroups: 'All groups', noGroup: 'No group', byGroup: 'Totals by group', members: 'Members', noMembersInGroup: 'No members in this group.',
+  exportXlsx: 'Export XLSX', exportCsv: 'Export CSV', exportLabel: 'Export the timesheet of {name}', start: 'Start', end: 'End',
+  detail: 'Detail', notes: 'Notes', remark: 'Remark', status: 'Status'
 } })
 
 const month = ref(zonedToday(props.timeZoneId).slice(0, 7))
@@ -133,6 +138,38 @@ const byProject = computed(() => {
   return [...totals].sort((a, b) => b[1] - a[1])
 })
 
+/** The open member's month as a sheet: a heading and totals, then entries, leave, and days off by
+ * date, with each day off named in the Remark column. */
+function exportRows(): Cell[][] {
+  const current = detail.value!
+  const c = copy.value
+  const lines: { date: string; order: number; start: string; cells: Cell[] }[] = []
+  for (const [date, name] of daysOff.value)
+    lines.push({ date, order: 0, start: '', cells: [date, '', '', '', name, '', '', '', '', c.daysOff] })
+  for (const leave of current.leaves)
+    lines.push({ date: leave.date, order: 1, start: '', cells: [leave.date, '', '', '', leave.kind, '', leave.notes ?? '', '', '', c.leave] })
+  for (const entry of current.entries)
+    lines.push({ date: entry.date, order: 2, start: entry.startTime, cells: [entry.date, time(entry.startTime), time(entry.endTime),
+      Math.round(entry.durationMinutes / 60 * 100) / 100, entry.taskName, entry.detail ?? '', entry.notes ?? '',
+      entry.projectName ?? '', entry.categoryName ?? '', daysOff.value.get(entry.date) ?? ''] })
+  lines.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order || a.start.localeCompare(b.start))
+  return [
+    [c.title, `${memberName(memberById(selectedId.value))} · ${monthLabel.value}`],
+    [c.status, current.locked ? c.monthClosed : c.monthOpen],
+    [c.totalHours, Math.round(totalMinutes.value / 60 * 100) / 100, c.daysWorked, daysWorked.value,
+      c.leaveDays, current.leaves.length, c.daysOff, daysOff.value.size],
+    [],
+    [c.date, c.start, c.end, c.duration, c.task, c.detail, c.notes, c.project, c.category, c.remark],
+    ...lines.map(x => x.cells)
+  ]
+}
+function exportTimesheet(format: 'xlsx' | 'csv') {
+  const sheet = { name: month.value, rows: exportRows(), boldRows: [0, 4] }
+  // Keep the member's name in the file name, minus characters file systems refuse.
+  const name = memberName(memberById(selectedId.value)).replace(/[\\/:*?"<>|\s]+/g, '-')
+  saveBlob(format === 'xlsx' ? xlsxBlob(sheet) : csvBlob(sheet), `timesheet-${name}-${month.value}.${format}`)
+}
+
 async function run(action: () => Promise<void>) {
   busy.value = true
   error.value = ''
@@ -180,6 +217,10 @@ onMounted(loadSummary)
         <button type="button" class="secondary" @click="close">← {{ copy.back }}</button>
         <h3>{{ memberName(memberById(selectedId)) }} · {{ monthLabel }}</h3>
         <span class="status" :data-status="detail.locked ? 'Succeeded' : 'Blocked'">{{ detail.locked ? copy.monthClosed : copy.monthOpen }}</span>
+        <div class="export-actions" role="group" :aria-label="copy.exportLabel.replace('{name}', memberName(memberById(selectedId)))">
+          <button type="button" @click="exportTimesheet('xlsx')">{{ copy.exportXlsx }}</button>
+          <button type="button" class="secondary" @click="exportTimesheet('csv')">{{ copy.exportCsv }}</button>
+        </div>
       </div>
       <dl class="summary member-totals">
         <div><dt>{{ copy.totalHours }}</dt><dd>{{ hours(totalMinutes) }}</dd></div>
@@ -284,6 +325,7 @@ onMounted(loadSummary)
 .month-state{margin:0 0 .5rem}
 .detail-heading{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem;margin:0 0 1rem}
 .detail-heading h3{margin:0;font-size:1rem;flex:1 1 14rem}
+.export-actions{display:flex;flex-wrap:wrap;gap:.5rem}
 .member-totals{margin-bottom:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr))}
 tr.day-end td{border-bottom-color:#c9d3e1}
 .day-off{display:block;width:max-content;margin-top:.2rem;padding:.05rem .45rem;border-radius:999px;background:#eef0f4;color:#5b6577;font-size:.72rem}

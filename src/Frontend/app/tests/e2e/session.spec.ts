@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { renderSVG } from 'uqr'
+import { readFileSync } from 'node:fs'
 
 const organizationCode = 'ACME123'
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
@@ -2051,6 +2052,29 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   await expect(daysOff.getByRole('listitem')).toHaveCount(5)
   await expect(daysOff).toContainText('Memorial day')
   await expect(daysOff).toContainText('Weekly day off')
+
+  // Both exports download the month on the spot, open month included, days off named in Remark.
+  const exportGroup = section.getByRole('group', { name: 'Export the timesheet of Somchai Staff' })
+  const [csvDownload] = await Promise.all([page.waitForEvent('download'), exportGroup.getByRole('button', { name: 'Export CSV' }).click()])
+  expect(csvDownload.suggestedFilename()).toBe('timesheet-Somchai-Staff-2026-10.csv')
+  const csv = readFileSync(await csvDownload.path(), 'utf8')
+  expect(csv.charCodeAt(0)).toBe(0xFEFF)
+  const csvLines = csv.slice(1).split('\r\n')
+  expect(csvLines[0]).toBe('Member timesheets,Somchai Staff · October 2026')
+  expect(csvLines[2]).toBe('Total hours,7.5,Days worked,2,Leave days,1,Days off,5')
+  expect(csvLines[4]).toBe('Date,Start,End,Hours,Task,Detail,Notes,Project,Category,Remark')
+  expect(csvLines).toContain('2026-10-04,,,,Weekly day off,,,,,Days off')
+  expect(csvLines).toContain('2026-10-05,09:00,12:00,3,Design review,Checkout flow,,Apollo,Design,')
+  expect(csvLines).toContain('2026-10-06,22:00,00:00,2,Night support,,On call,,Support,Memorial day')
+  expect(csvLines).toContain('2026-10-09,,,,Vacation,,,,,Leave')
+  // Five days off, one leave day, three entries, after five heading rows.
+  expect(csvLines).toHaveLength(5 + 5 + 1 + 3)
+  const [xlsxDownload] = await Promise.all([page.waitForEvent('download'), exportGroup.getByRole('button', { name: 'Export XLSX' }).click()])
+  expect(xlsxDownload.suggestedFilename()).toBe('timesheet-Somchai-Staff-2026-10.xlsx')
+  // Entries are stored uncompressed, so the sheet's text is readable in the raw package.
+  const xlsx = readFileSync(await xlsxDownload.path())
+  expect(xlsx.subarray(0, 2).toString()).toBe('PK')
+  expect(xlsx.toString('utf8')).toContain('<t xml:space="preserve">Memorial day</t>')
 
   // Changing the month reloads the open member; going back shows everyone again.
   await section.getByLabel('Month').fill('2026-09')
