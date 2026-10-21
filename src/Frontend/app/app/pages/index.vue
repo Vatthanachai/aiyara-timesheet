@@ -2,7 +2,7 @@
 import { fieldErrors, safeError } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
 import type { SignInOrganization } from '../composables/useSession'
-import type { RulerBand } from '../components/DayRuler.vue'
+import DayRuler, { type RulerBand } from '../../../shared/components/DayRuler.vue'
 const { token, role, login, signIn } = useSession()
 const { locale } = useLocale()
 const text = useLocaleText(locale, {

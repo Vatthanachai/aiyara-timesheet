@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 export type RulerBand = { start: number; end: number; label: string }
 
 /**
  * One day drawn along its hours: the working hours as a tinted track, the break hatched, and
  * logged time as solid bands. All positions are minutes after midnight. It is a picture only;
- * the page lists the same entries as text.
+ * the page lists the same entries as text. Shared by the Shell's home page and the Timesheet
+ * remote; each defines the --font-display and --color-* tokens it reads.
  */
 const props = defineProps<{
   workStart: number

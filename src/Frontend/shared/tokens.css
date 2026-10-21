@@ -5,6 +5,15 @@
   --color-muted: #5d687a;
   --color-brand: #155eef;
   --color-border: #d8dee9;
+  /* A working day drawn as time: the display face (Bai Jamjuree, self-hosted by each app that
+     uses it), the working-hours tint, the break, days off, hours outside the day, and overtime. */
+  --font-display: "Bai Jamjuree", Inter, ui-sans-serif, system-ui, sans-serif;
+  --color-brand-strong: #0f4bd1;
+  --color-work-track: #dce6fd;
+  --color-break: #94a3b8;
+  --color-day-off: #eef1f5;
+  --color-hour-off: #a3adbd;
+  --color-overtime: #b45309;
   --radius-card: 0.75rem;
   --space-4: 1rem;
   --space-6: 1.5rem;

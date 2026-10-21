@@ -40,7 +40,7 @@ function dropCard(event: DragEvent, status: TaskStatus) {
 <template>
   <section class="panel board-panel" :aria-label="text.board">
     <div class="panel-heading">
-      <div><span class="eyebrow">{{ text.tasks }}</span><h2>{{ text.board }}</h2><p class="subtle-hint">{{ text.boardHint }}</p></div>
+      <div><h2>{{ text.board }}</h2><p class="subtle-hint">{{ text.boardHint }}</p></div>
       <form class="add-task-form board-add" @submit.prevent="emit('add')"><input v-model="taskName" :aria-label="text.task" maxlength="200" :placeholder="text.newTask" /><button class="icon-button add-task-button" type="submit" :aria-label="text.add">＋</button></form>
     </div>
     <div class="board-columns">

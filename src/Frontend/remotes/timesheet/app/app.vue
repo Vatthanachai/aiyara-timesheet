@@ -3,14 +3,18 @@ import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale } from '../../../shared/i18n'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
-import { defaultWorkHours, readDroppedTrayItem, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
+import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
 const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
-const month = ref(new Date().toISOString().slice(0, 7))
+const pad = (value: number) => String(value).padStart(2, '0')
+// The browser's local date, so the morning in Thailand is not still yesterday in UTC.
+const now = new Date()
+const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+const month = ref(today.slice(0, 7))
 const entries = ref<Entry[]>([])
 const tasks = ref<Task[]>([])
 const leaves = ref<Leave[]>([])
@@ -19,11 +23,11 @@ let workHoursApplied = false
 const error = ref('')
 const notice = ref('')
 const editingId = ref<string | null>(null)
-const form = reactive<EntryForm>({ date: new Date().toISOString().slice(0, 10), startTime: defaultWorkHours.startTime,
+const form = reactive<EntryForm>({ date: today, startTime: defaultWorkHours.startTime,
   endTime: defaultWorkHours.endTime, includesBreak: false, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
 const taskName = ref('')
 const view = ref<'entries' | 'board'>('entries')
-const leaveDate = ref(new Date().toISOString().slice(0, 10))
+const leaveDate = ref(today)
 const leaveKind = ref('annual')
 const currentMonth = ref('')
 const locked = ref(false)
@@ -32,18 +36,40 @@ const formats = ref(readFormats(null))
 const monthLabel = computed(() => formatMonth(month.value, formats.value, locale.value))
 const monthStart = computed(() => `${month.value}-01`)
 const monthEnd = computed(() => `${month.value}-${new Date(Number(month.value.slice(0, 4)), Number(month.value.slice(5)), 0).getDate()}`)
-const totalHours = computed(() => entries.value.reduce((total, entry) => total + entry.durationMinutes, 0) / 60)
-const daysWithEntries = computed(() => new Set(entries.value.map(entry => entry.date)))
-const activeDays = computed(() => daysWithEntries.value.size)
-const daysWithLeave = computed(() => new Set(leaves.value.map(leave => leave.date)))
-const daysWithHoliday = computed(() => new Set(catalog.value.holidays.filter(holiday => holiday.date.startsWith(month.value)).map(holiday => holiday.date)))
 const copy = useTimesheetText(locale)
 const { text, labels } = copy
+const minutesByDay = computed(() => entries.value.reduce((days, entry) =>
+  days.set(entry.date, (days.get(entry.date) ?? 0) + entry.durationMinutes), new Map<string, number>()))
+const leaveLabel = (kind: string) => kind === 'annual' || kind === 'sick' || kind === 'other' ? text.value[kind] : kind
+const leaveByDay = computed(() => new Map(leaves.value.map(leave => [leave.date, leaveLabel(leave.kind)])))
+const holidayByDay = computed(() => new Map(catalog.value.holidays.filter(holiday => holiday.date.startsWith(month.value))
+  .map(holiday => [holiday.date, holiday.name])))
+const normalDay = computed(() => standardMinutes(catalog.value.workHours))
+const monthTotals = computed(() => {
+  const minutes = [...minutesByDay.value.values()].reduce((sum, value) => sum + value, 0)
+  const leave = new Set(leaves.value.map(item => item.date)).size
+  const logged = minutes
+    ? (minutesByDay.value.size === 1 ? labels.value.monthTotalsOneDay : labels.value.monthTotals)
+      .replace('{hours}', decimalHours(minutes)).replace('{days}', String(minutesByDay.value.size))
+    : labels.value.monthEmpty
+  // Thai sentences do not end with a full stop.
+  return `${logged}${leave === 1 ? labels.value.monthLeaveOne : leave ? labels.value.monthLeave.replace('{count}', String(leave)) : ''}${locale.value === 'th' ? '' : '.'}`
+})
+const dayEntries = computed(() => entries.value.filter(entry => entry.date === form.date)
+  .sort((a, b) => a.startTime.localeCompare(b.startTime)))
+const dayHeading = computed(() => {
+  const weekday = new Intl.DateTimeFormat(locale.value === 'th' ? 'th-TH-u-ca-gregory' : 'en-GB', { weekday: 'long', timeZone: 'UTC' })
+    .format(new Date(`${form.date}T00:00:00Z`))
+  return `${weekday} ${formatDate(form.date, formats.value, locale.value)}`
+})
+const dayNote = computed(() => holidayByDay.value.get(form.date) ?? leaveByDay.value.get(form.date) ??
+  (catalog.value.workingDays.includes(new Date(`${form.date}T12:00:00`).getDay()) ? '' : labels.value.dayOff))
+const entriesHeading = computed(() => labels.value.entriesIn.replace('{month}', monthLabel.value))
 const workHoursLabel = computed(() => {
   const { startTime, endTime, breakStart, breakEnd } = catalog.value.workHours
   const hours = labels.value.workHours.replace('{start}', formatTime(startTime, formats.value)).replace('{end}', formatTime(endTime, formats.value))
   return breakStart && breakEnd
-    ? `${hours} · ${labels.value.breakHours.replace('{start}', formatTime(breakStart, formats.value)).replace('{end}', formatTime(breakEnd, formats.value))}`
+    ? `${hours}${locale.value === 'th' ? ' ' : ', '}${labels.value.breakHours.replace('{start}', formatTime(breakStart, formats.value)).replace('{end}', formatTime(breakEnd, formats.value))}`
     : hours
 })
 provide(timesheetTextKey, copy)
@@ -92,6 +118,7 @@ async function load() {
   } catch (cause) { error.value = safeError(cause, locale.value) }
 }
 watch(month, load)
+watch(() => form.date, day => { if (day.startsWith(month.value)) leaveDate.value = day })
 watch(month, value => {
   if (!form.date.startsWith(value)) form.date = `${value}-01`
   if (!leaveDate.value.startsWith(value)) leaveDate.value = `${value}-01`
@@ -109,12 +136,20 @@ function moveMonth(offset: number) {
   form.date = nextDate
   leaveDate.value = nextDate
 }
+function selectDay(day: string) {
+  // Choosing another day while editing leaves the edit, so the entry is not moved by accident.
+  if (editingId.value) resetForm(day)
+  else form.date = day
+}
 function edit(entry: Entry) {
   editingId.value = entry.id
   Object.assign(form, { date: entry.date, startTime: entry.startTime.slice(0, 5), endTime: entry.endTime.slice(0, 5),
     taskName: entry.taskName, detail: entry.detail || '', notes: entry.notes || '',
     projectId: entry.projectId || '', categoryId: entry.categoryId || '', personalTaskId: entry.personalTaskId || '',
     includesBreak: entry.includesBreak ?? false })
+  // Edit from the month list brings the form into view; it sits beside the calendar.
+  void nextTick(() => document.getElementById('entry-heading')?.scrollIntoView({ block: 'nearest',
+    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }))
 }
 function prefill(task: TrayItem, date?: string) {
   if (!canEdit.value) return
@@ -191,19 +226,21 @@ async function updateLeave(leave: Leave) {
     <p v-if="!token" class="sign-in-card">{{ text.signIn }}</p>
     <template v-else>
       <header class="page-heading">
-        <div><span class="eyebrow">AIYARA · WORKSPACE</span><h1>{{ text.title }}</h1><p>{{ text.subtitle }}</p></div>
-        <div class="month-control" :aria-label="text.month">
+        <div class="month-title">
+          <h1>{{ monthLabel }}</h1>
+          <p class="month-totals">{{ monthTotals }}</p>
+          <p class="work-hours-label">{{ workHoursLabel }}</p>
+        </div>
+        <div class="month-control" role="group" :aria-label="text.month">
           <button class="icon-button" type="button" :aria-label="labels.previousMonth" @click="moveMonth(-1)">‹</button>
-          <label class="month-picker"><span>{{ text.month }}</span><input v-model="month" type="month" /></label>
+          <label class="month-picker"><span class="visually-hidden">{{ text.month }}</span><input v-model="month" type="month" /></label>
           <button class="icon-button" type="button" :aria-label="labels.nextMonth" @click="moveMonth(1)">›</button>
         </div>
       </header>
 
-      <p v-if="!canEdit" class="notice" role="status"><span aria-hidden="true">ⓘ</span>{{ text.readOnly }}</p>
+      <p v-if="!canEdit" class="notice" role="status">{{ text.readOnly }}</p>
       <p v-if="error" role="alert" class="feedback error">{{ error }}</p>
       <p v-if="notice" role="status" class="feedback success">{{ notice }}</p>
-
-      <MonthSummary :total-hours="totalHours" :entry-count="entries.length" :active-days="activeDays" :leave-count="leaves.length" />
 
       <div class="view-switch" role="group" :aria-label="text.view">
         <button type="button" :aria-pressed="view === 'entries'" @click="view = 'entries'">{{ text.entriesView }}</button>
@@ -216,23 +253,26 @@ async function updateLeave(leave: Leave) {
       <template v-else>
         <div class="work-layout">
           <div class="main-column">
-            <MonthCalendar v-if="canEdit" v-model:selected="form.date" :month="month" :month-label="monthLabel" :locale="locale"
-              :entry-days="daysWithEntries" :leave-days="daysWithLeave" :holiday-days="daysWithHoliday" :working-days="catalog.workingDays" :work-hours-label="workHoursLabel" @drop="dropTask" />
-            <EntryComposer v-if="canEdit && !editingId" :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd"
-              @save="saveEntry" @cancel="resetForm()" @drop="dropTask" />
+            <MonthCalendar :month="month" :selected="form.date" :today="today" :minutes-by-day="minutesByDay" :leave-by-day="leaveByDay"
+              :holiday-by-day="holidayByDay" :working-days="catalog.workingDays" :standard-minutes="normalDay" @select="selectDay" @drop="dropTask" />
+            <LeavePanel v-model:leave-date="leaveDate" v-model:leave-kind="leaveKind" :leaves="leaves" :holidays="catalog.holidays" :month="month"
+              :can-edit="canEdit" :month-start="monthStart" :month-end="monthEnd" @add="addLeave" @update="updateLeave" @remove="removeLeave" />
           </div>
 
-          <TaskTray v-model:task-name="taskName" :tasks="tasks" :catalog="catalog" @add="addTask" @status="setStatus"
-            @rename="renameTask" @remove="removeTask" @use="prefill" />
+          <div class="side-column">
+            <div class="day-sheet">
+              <DayPanel :day="form.date" :heading="dayHeading" :entries="dayEntries" :catalog="catalog" :can-edit="canEdit"
+                :editing-id="editingId" :note="dayNote" @edit="edit" @remove="removeEntry" />
+              <EntryComposer v-if="canEdit" :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd"
+                :editing="Boolean(editingId)" @save="saveEntry" @cancel="resetForm()" @drop="dropTask" />
+            </div>
+            <TaskTray v-model:task-name="taskName" :tasks="tasks" :catalog="catalog" @add="addTask" @status="setStatus"
+              @rename="renameTask" @remove="removeTask" @use="prefill" />
+          </div>
         </div>
 
-        <EntriesTable :entries="entries" :catalog="catalog" :can-edit="canEdit" :editing-id="editingId" :form="form" :month-label="monthLabel"
-          :month-start="monthStart" :month-end="monthEnd" @edit="edit" @remove="removeEntry" @save="saveEntry" @cancel="resetForm()" />
-
-        <div class="support-grid">
-          <LeavePanel v-model:leave-date="leaveDate" v-model:leave-kind="leaveKind" :leaves="leaves" :holidays="catalog.holidays" :month="month"
-            :can-edit="canEdit" :month-start="monthStart" :month-end="monthEnd" @add="addLeave" @update="updateLeave" @remove="removeLeave" />
-        </div>
+        <EntriesTable :entries="entries" :catalog="catalog" :can-edit="canEdit" :editing-id="editingId" :heading="entriesHeading"
+          @edit="edit" @remove="removeEntry" />
       </template>
     </template>
   </main>
