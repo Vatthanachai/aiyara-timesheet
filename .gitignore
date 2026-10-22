@@ -491,3 +491,6 @@ $RECYCLE.BIN/
 
 # Agent worktrees
 .claude/worktrees/
+
+# Exported report samples kept in docs
+docs/*.pdf
