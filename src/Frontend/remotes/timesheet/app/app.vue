@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
+import TimerPanel from '../../../shared/components/TimerPanel.vue'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
@@ -381,6 +382,9 @@ async function updateLeave(leave: Leave) {
       <p v-if="error" role="alert" class="feedback error">{{ error }}</p>
       <div v-if="notice" role="status" class="feedback success"><p>{{ notice }}</p><template v-if="noticeDetails.length">
         <p class="notice-subhead">{{ labels.skipped }}</p><ul class="notice-details"><li v-for="line in noticeDetails" :key="line">{{ line }}</li></ul></template></div>
+
+      <TimerPanel class="timer-section" :api="api" :locale="locale" :formats="formats" :today="today" :can-edit="canEdit || month !== currentMonth"
+        :default-times="{ startTime: catalog.workHours.startTime.slice(0, 5), endTime: catalog.workHours.endTime.slice(0, 5) }" @stopped="load" />
 
       <div class="view-switch" role="group" :aria-label="text.view">
         <button type="button" :aria-pressed="view === 'entries'" @click="view = 'entries'">{{ text.entriesView }}</button>

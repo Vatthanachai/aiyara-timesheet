@@ -102,7 +102,7 @@ test('a day that cannot load says so and loads again on Try again', async ({ pag
   await expect(page.getByRole('link', { name: 'Record time' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Also here' }).getByRole('link', { name: /Reports/ })).toBeVisible()
   failing = false
-  await page.getByRole('button', { name: 'Try again' }).click()
+  await page.getByRole('alert').getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByText('Today is a holiday: Chulalongkorn Day')).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
@@ -193,4 +193,53 @@ test('the theme switch offers light, dark, and the system theme, and remembers t
   await page.keyboard.press('ArrowLeft')
   await expect(themes.getByRole('radio', { name: 'Light' })).toBeFocused()
   await expect(html).toHaveAttribute('data-theme', 'light')
+})
+
+const serverNow = () => Date.now() + 2 * 3600_000
+const runningTimer = (secondsAgo: number) => ({ timer: { id: 'tm1', startedAtUtc: new Date(serverNow() - secondsAgo * 1000).toISOString(), taskName: 'Design review',
+  detail: null, notes: null, projectId: null, categoryId: null, personalTaskId: null, includesBreak: false }, nowUtc: new Date(serverNow()).toISOString() })
+
+test('today starts a timer, counts from the server clock, and stopping reloads the day', async ({ page }) => {
+  const writes: string[] = []
+  let weekReads = 0
+  let current: unknown = { timer: null, nowUtc: new Date(serverNow()).toISOString() }
+  await page.route('**/api/v1/timesheets/me/timesheet**', route => { weekReads++; return route.fulfill(json(month(2026, 10))) })
+  await page.route('**/api/v1/timesheets/timer**', route => {
+    const request = route.request()
+    if (request.method() === 'GET') return route.fulfill(json(apiOk(current)))
+    writes.push(`${request.method()} ${new URL(request.url()).pathname.replace(/.*\/timesheets/, '')} ${request.postData()}`)
+    expect(request.headers().authorization).toBe('Bearer home-token')
+    if (request.url().endsWith('/start')) { current = runningTimer(5400); return route.fulfill(json(apiOk(current), 201)) }
+    current = { timer: null, nowUtc: new Date(serverNow()).toISOString() }
+    return route.fulfill(json(apiOk({ id: 'e-new' }), 201))
+  })
+  await openSignedIn(page, '2026-10-21T14:05:00')
+
+  const panel = page.getByRole('region', { name: 'Timer' })
+  await panel.getByLabel('Task').fill('Design review')
+  await panel.getByRole('button', { name: 'Start timer' }).click()
+  await expect(panel.locator('.timer-elapsed')).toHaveText(/^1:30:\d\d$/)
+  expect(writes).toEqual(['POST /timer/start {"taskName":"Design review"}'])
+
+  const reads = weekReads
+  await panel.getByRole('button', { name: 'Stop and save' }).click()
+  await expect(panel.getByRole('status')).toHaveText('Timer stopped and the time entry saved')
+  expect(writes.at(-1)).toBe('POST /timer/stop {"taskName":"Design review"}')
+  await expect.poll(() => weekReads).toBeGreaterThan(reads)
+})
+
+test('a timer left running is there after a reload, and the day still loads when the timer does not', async ({ page }) => {
+  await page.route('**/api/v1/timesheets/me/timesheet**', route => route.fulfill(json(month(2026, 10))))
+  await page.route('**/api/v1/timesheets/timer**', route => route.fulfill(json(apiOk(runningTimer(125)))))
+  await openSignedIn(page, '2026-10-21T14:05:00')
+  const panel = page.getByRole('region', { name: 'Timer' })
+  await expect(panel.locator('.timer-elapsed')).toHaveText(/^0:02:\d\d$/)
+  await expect(panel.getByLabel('Task')).toHaveValue('Design review')
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Timer' }).locator('.timer-elapsed')).toHaveText(/^0:02:\d\d$/)
+
+  await page.route('**/api/v1/timesheets/timer**', route => route.fulfill(json({ statusCode: 500, statusMessage: 'Error' }, 500)))
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Timer' }).getByText('The timer could not be loaded')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'This week' })).toBeVisible()
 })

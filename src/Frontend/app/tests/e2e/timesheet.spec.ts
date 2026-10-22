@@ -18,7 +18,7 @@ const entry = (id: string, date: string, startTime: string, endTime: string, dur
 type LeaveMock = { leaves: unknown[]; balances: unknown[]; leaveTypes: unknown[] }
 /** The rest of the mocked organization and member: the work week, holidays, saved entry templates, and a
  * hook that answers a write (a Timesheet path such as `/entries/copy`) instead of the default success. */
-type MockOptions = { workingDays?: number[]; holidays?: unknown[]; templates?: unknown[]
+type MockOptions = { workingDays?: number[]; holidays?: unknown[]; templates?: unknown[]; timer?: () => unknown
   respond?: (method: string, path: string, body: string | null) => { status?: number; result?: unknown; error?: Record<string, unknown> } | undefined }
 
 async function openTimesheet(page: Page, requests: string[] = [], state: Record<string, unknown> = {},
@@ -53,6 +53,10 @@ async function openTimesheet(page: Page, requests: string[] = [], state: Record<
       ])
     }
     if (url.pathname.endsWith('/timesheets/tasks')) return ok([])
+    if (url.pathname.endsWith('/timesheets/timer') && request.method() === 'GET') {
+      const timer = options.timer?.()
+      return timer === undefined ? route.fulfill({ status: 404, headers: cors }) : ok(timer)
+    }
     if (url.pathname.includes('/timesheets/entry-templates')) {
       if (request.method() === 'GET') return ok(options.templates ?? [])
       requests.push(`${request.method()} ${path} ${request.postData()}`)
@@ -423,4 +427,145 @@ test('a template fills the form, the form is saved as a template, and templates 
   await panel.getByRole('button', { name: 'Delete' }).click()
   await expect.poll(() => requests.at(-1)).toBe('DELETE /entry-templates/t1 null')
   expect(question).toBe('Delete the template "Stand-up"?')
+})
+
+
+/** The timer as the server answers it: `nowUtc` is two hours ahead of the device, so a count that follows it proves the server's clock is used. */
+const serverNow = () => Date.now() + 2 * 3600_000
+const runningTimer = (secondsAgo: number, extra: Record<string, unknown> = {}) => ({
+  timer: { id: 'tm1', startedAtUtc: new Date(serverNow() - secondsAgo * 1000).toISOString(), taskName: null, detail: null, notes: null,
+    projectId: null, categoryId: null, personalTaskId: null, includesBreak: false, ...extra }, nowUtc: new Date(serverNow()).toISOString() })
+const idleTimer = () => ({ timer: null, nowUtc: new Date(serverNow()).toISOString() })
+
+test('a timer is started with a task name, counts from the server clock, and stopping creates the entry and reloads', async ({ page }) => {
+  const requests: string[] = []
+  let current: unknown = idleTimer()
+  const entryReads: string[] = []
+  page.on('request', request => { if (request.method() === 'GET' && request.url().includes('/timesheets/entries')) entryReads.push(request.url()) })
+  const timesheet = await openTimesheet(page, requests, {}, undefined, { timer: () => current, respond: (method, path) => {
+    if (method === 'POST' && path === '/timer/start') { current = runningTimer(5400); return { status: 201, result: current } }
+    if (method === 'POST' && path === '/timer/stop') { current = idleTimer(); return { status: 201, result: { id: 'e-new' } } }
+  } })
+  const panel = timesheet.getByRole('region', { name: 'Timer' })
+  await expect(panel.getByRole('button', { name: 'Start timer' })).toBeEnabled()
+  await panel.getByLabel('Task').fill('Review PRs')
+  await panel.getByRole('button', { name: 'Start timer' }).click()
+  await expect.poll(() => requests.at(-1)).toBe('POST /timer/start {"taskName":"Review PRs"}')
+  await expect(panel.getByRole('status')).toHaveText('Timer started')
+  // 1 h 30 min on the server's clock, though the device is two hours behind it.
+  await expect(panel.locator('.timer-elapsed')).toHaveText(/^1:30:\d\d$/)
+  await expect(panel.getByRole('button', { name: 'Start timer' })).toHaveCount(0)
+
+  const reads = entryReads.length
+  await panel.getByRole('button', { name: 'Stop and save' }).click()
+  await expect.poll(() => requests.at(-1)).toBe('POST /timer/stop {"taskName":"Review PRs"}')
+  await expect(panel.getByRole('status')).toHaveText('Timer stopped and the time entry saved')
+  await expect(panel.getByRole('button', { name: 'Start timer' })).toBeVisible()
+  await expect.poll(() => entryReads.length).toBeGreaterThan(reads)
+})
+
+test('a timer running before the page loaded is shown again, and stopping needs a task name', async ({ page }) => {
+  const requests: string[] = []
+  const timesheet = await openTimesheet(page, requests, {}, undefined, { timer: () => runningTimer(600), respond: (method, path) => {
+    if (method === 'POST' && path === '/timer/stop') return { status: 201, result: { id: 'e-new' } }
+  } })
+  const panel = timesheet.getByRole('region', { name: 'Timer' })
+  await expect(panel.locator('.timer-elapsed')).toHaveText(/^0:10:\d\d$/)
+  await expect(panel.getByText('Timer running')).toBeVisible()
+  await panel.getByRole('button', { name: 'Stop and save' }).click()
+  await expect(panel.getByRole('alert')).toHaveText('Enter a task name before stopping the timer.')
+  await expect(panel.getByLabel('Task')).toBeFocused()
+  expect(requests).toEqual([])
+  await panel.getByLabel('Task').fill('Late name')
+  await panel.getByRole('button', { name: 'Stop and save' }).click()
+  await expect.poll(() => requests.at(-1)).toBe('POST /timer/stop {"taskName":"Late name"}')
+})
+
+test('a closed month or a too-long timer keeps the timer and offers a date and times, or discarding it', async ({ page }) => {
+  const requests: string[] = []
+  let attempt = 0
+  const timesheet = await openTimesheet(page, requests, {}, undefined, { timer: () => runningTimer(300, { taskName: 'Sprint review' }), respond: (method, path) => {
+    if (method === 'POST' && path === '/timer/stop') {
+      attempt++
+      if (attempt === 1) return { status: 409, error: { errorCode: 'MONTH_CLOSED', errors: { dates: ['2026-09-30'] } } }
+      if (attempt === 2) return { status: 409, error: { errorCode: 'TIMER_TOO_LONG' } }
+      return { status: 201, result: { id: 'e-new' } }
+    }
+  } })
+  const panel = timesheet.getByRole('region', { name: 'Timer' })
+  await panel.getByRole('button', { name: 'Stop and save' }).click()
+  await expect(panel.getByRole('alert')).toHaveText('These days cannot be changed: 30/09/2026.')
+  await expect(panel.getByText('The timer is still running.')).toBeVisible()
+  await expect(panel.locator('.timer-elapsed')).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Discard timer' })).toBeVisible()
+
+  await panel.getByRole('button', { name: 'Stop and save' }).click()
+  await expect(panel.getByRole('alert')).toContainText('24 hours or more')
+
+  await panel.getByLabel('Date').fill(shownDate(day(2)))
+  await panel.getByLabel('Start', { exact: true }).fill('09:00')
+  await panel.getByLabel('End', { exact: true }).fill('10:30')
+  await panel.getByRole('button', { name: 'Stop with these times' }).click()
+  await expect.poll(() => requests.at(-1)).toBe(`POST /timer/stop {"taskName":"Sprint review","date":"${day(2)}","startTime":"09:00:00","endTime":"10:30:00","includesBreak":false}`)
+  await expect(panel.getByRole('status')).toHaveText('Timer stopped and the time entry saved')
+})
+
+test('each refusal of a stop has its own message and no raw code', async ({ page }) => {
+  const refusals = [['INVALID_TIME_RANGE', 'under a minute'], ['ENTRY_IN_BREAK', 'falls entirely in the break'], ['VALIDATION_FAILED', 'Please check'], ['NOT_FOUND', 'No timer is running.']]
+  let attempt = 0
+  const timesheet = await openTimesheet(page, [], {}, undefined, { timer: () => runningTimer(300, { taskName: 'Sprint review' }), respond: (method, path) => {
+    if (method === 'POST' && path === '/timer/stop') return { status: attempt === 3 ? 404 : 400, error: { errorCode: refusals[attempt++]![0] } }
+  } })
+  const panel = timesheet.getByRole('region', { name: 'Timer' })
+  for (const [code, words] of refusals) {
+    await panel.getByRole('button', { name: 'Stop and save' }).click()
+    await expect(panel.getByRole('alert')).toContainText(words!)
+    await expect(panel.getByRole('alert')).not.toContainText(code!)
+  }
+})
+
+test('discarding a timer asks first', async ({ page }) => {
+  const requests: string[] = []
+  const timesheet = await openTimesheet(page, requests, {}, undefined, { timer: () => runningTimer(60), respond: (method, path) => {
+    if (method === 'DELETE' && path === '/timer') return { status: 200 }
+  } })
+  const panel = timesheet.getByRole('region', { name: 'Timer' })
+  const dialogs: string[] = []
+  page.once('dialog', dialog => { dialogs.push(dialog.message()); void dialog.dismiss() })
+  await panel.getByRole('button', { name: 'Discard timer' }).click()
+  await expect.poll(() => dialogs).toEqual(['Discard this timer? The time it has counted will not be saved.'])
+  expect(requests).toEqual([])
+  page.once('dialog', dialog => void dialog.accept())
+  await panel.getByRole('button', { name: 'Discard timer' }).click()
+  await expect.poll(() => requests.at(-1)).toBe('DELETE /timer null')
+  await expect(panel.getByRole('status')).toHaveText('Timer discarded')
+  await expect(panel.getByRole('button', { name: 'Start timer' })).toBeVisible()
+})
+
+test('a timer cannot be started in a month that cannot be changed', async ({ page }) => {
+  const timesheet = await openTimesheet(page, [], { status: 'submitted', editable: false }, undefined, { timer: () => idleTimer() })
+  const panel = timesheet.getByRole('region', { name: 'Timer' })
+  await expect(panel.getByRole('button', { name: 'Start timer' })).toBeDisabled()
+  await expect(panel.getByText('This month cannot be changed, so a timer cannot be started.')).toBeVisible()
+})
+
+test('a timer that cannot load leaves the page working and loads again on Try again', async ({ page }) => {
+  let failing = true
+  const timesheet = await openTimesheet(page, [], {}, undefined, { timer: () => failing ? undefined : idleTimer() })
+  const panel = timesheet.getByRole('region', { name: 'Timer' })
+  await expect(panel.getByText('The timer could not be loaded')).toBeVisible()
+  await expect(timesheet.locator('.month-totals')).toHaveText(/^19 h logged over 3 days/)
+  await expect(timesheet.getByRole('alert')).toHaveCount(0)
+  failing = false
+  await panel.getByRole('button', { name: 'Try again' }).click()
+  await expect(panel.getByRole('button', { name: 'Start timer' })).toBeEnabled()
+})
+
+test('the running timer fits at 375 and 320 px', async ({ page }) => {
+  const timesheet = await openTimesheet(page, [], {}, undefined, { timer: () => runningTimer(4000, { taskName: 'A fairly long task name to wrap' }) })
+  await timesheet.getByRole('region', { name: 'Timer' }).getByRole('button', { name: 'Choose date and times' }).click()
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
 })

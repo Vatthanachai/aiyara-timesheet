@@ -33,9 +33,9 @@
 
 ## Phase B: UI
 
-- [ ] B1. Today and Timesheet: start, running clock, stop, discard.
-- [ ] B2. Show the refusals: closed month, too long, missing task name.
-- [ ] B3. Playwright at 375 and 320 px; docs.
+- [x] B1. Today and Timesheet: start, running clock, stop, discard.
+- [x] B2. Show the refusals: closed month, too long, missing task name.
+- [x] B3. Playwright at 375 and 320 px; docs.
 
 ## Out Of Scope
 
