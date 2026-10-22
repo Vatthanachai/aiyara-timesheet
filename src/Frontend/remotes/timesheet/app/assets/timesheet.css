@@ -177,6 +177,12 @@ tr.editing td { background: var(--color-brand-soft); }
 .simple-list li > span { margin-right: auto; }
 .simple-list input, .simple-list select { min-height: 2.25rem; padding: .35rem .5rem; }
 .simple-list button { font-size: .8rem; min-height: 2.25rem; padding: .35rem .6rem; }
+.leave-form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); }
+.leave-amount { color: var(--muted); display: inline-block; font-size: .78rem; margin-left: .4rem; white-space: nowrap; }
+.leave-balances { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: .85rem; }
+.leave-balances p { display: flex; flex-wrap: wrap; font-size: .88rem; gap: .25rem .75rem; justify-content: space-between; margin: .35rem 0; }
+.leave-balances p span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+.leave-balances p.overdrawn span:last-child { color: var(--color-danger); font-weight: 600; }
 .holiday-list { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: .85rem; }
 .holiday-list p { color: var(--color-ink-soft); display: flex; font-size: .88rem; gap: .75rem; margin: .35rem 0; }
 .holiday-list time { color: var(--muted); }

@@ -109,6 +109,18 @@ public sealed class ReportFoundationTests
     }
 
     [Fact]
+    public void Part_day_leave_counts_against_the_snapshots_working_day()
+    {
+        // 08:30–17:30 less an hour's break is an 8-hour day: 240 minutes is half of it.
+        const string snapshot = """{"entries":[],"leaves":[{"Date":"2026-10-02","Kind":"Annual","Minutes":240},{"Date":"2026-10-05","Kind":"Sick","Minutes":null}],"workHours":{"startTime":"08:30","endTime":"17:30","breakStart":"12:00","breakEnd":"13:00"}}""";
+
+        Assert.Equal(1.5m, ReportDocumentRenderer.CountLeaveDays(snapshot));
+        Assert.Equal([240, 0], ReportDocumentRenderer.ReadSnapshot(snapshot).Select(x => x.DurationMinutes));
+        Assert.Equal(1m, ReportDocumentRenderer.LeaveDays(null, 480));
+        Assert.Equal(0.33m, ReportDocumentRenderer.LeaveDays(160, 480));
+    }
+
+    [Fact]
     public void Snapshot_reader_maps_work_and_leave_rows_and_calculates_document_totals()
     {
         const string snapshot = """{"entries":[{"Date":"2026-10-01","StartTime":"09:00:00","EndTime":"18:00:00","DurationMinutes":540,"TaskName":"ออกแบบ","Detail":"หน้ารายงาน","Notes":"ทดสอบ","ProjectId":"project-1","CategoryId":"category-1"}],"leaves":[{"Date":"2026-10-02","Kind":"Vacation","Notes":"พักร้อน"}]}""";

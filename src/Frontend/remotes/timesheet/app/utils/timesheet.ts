@@ -6,9 +6,14 @@ export type Entry = { id: string; date: string; startTime: string; endTime: stri
 export const taskStatuses = ['todo', 'doing', 'done'] as const
 export type TaskStatus = typeof taskStatuses[number]
 export type Task = { id: string; name: string; status: TaskStatus; projectId: string | null; categoryId: string | null }
-export type Leave = { id: string; date: string; kind: string; notes: string | null }
+/** A day of leave; `minutes` is a part of the day (null for the whole day). */
+export type Leave = { id: string; date: string; kind: string; notes: string | null; leaveTypeId?: string | null; minutes?: number | null }
+export type LeaveType = { id: string; name: string; annualDays: number | null }
+/** One leave type's calendar year, as `GET /me/leave-balance` returns it. */
+export type LeaveBalance = { leaveTypeId: string; name: string; annualDays: number | null; usedDays: number; remainingDays: number | null }
+export type LeaveAmount = 'day' | 'half' | 'hours'
 export type CatalogItem = { id: string; name: string }
-export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[]; workingDays: number[]; workHours: WorkHours }
+export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holidays: { id: string; date: string; name: string }[]; leaveTypes: LeaveType[]; workingDays: number[]; workHours: WorkHours }
 /** When the organization's working day starts and ends, and its break (null for none), as HH:mm. */
 export type WorkHours = { startTime: string; endTime: string; breakStart?: string | null; breakEnd?: string | null }
 export const defaultWorkHours: WorkHours = { startTime: '09:00', endTime: '17:00' }
@@ -96,7 +101,9 @@ export function useTimesheetText(locale: Ref<Locale>) {
     submitMonth: 'ส่งให้อนุมัติ', resubmitMonth: 'ส่งอีกครั้ง', returnReason: 'เหตุผล',
     submitHint: 'เมื่อบันทึกเดือนนี้ครบแล้ว ส่งให้ผู้ดูแลอนุมัติ', submittedHint: 'ส่งแล้ว ระหว่างรออนุมัติจะแก้ไขเดือนนี้ไม่ได้',
     approvedHint: 'เดือนนี้อนุมัติแล้วและแก้ไขไม่ได้อีก', returnedHint: 'ผู้ดูแลส่งกลับให้แก้ไข แก้ไขแล้วส่งอีกครั้ง', lockedHint: 'เดือนนี้ปิดรอบแล้ว',
-    confirmSubmit: 'ส่ง{month}ให้อนุมัติ? ระหว่างรออนุมัติจะแก้ไขไม่ได้', submittedNotice: 'ส่งให้อนุมัติแล้ว'
+    confirmSubmit: 'ส่ง{month}ให้อนุมัติ? ระหว่างรออนุมัติจะแก้ไขไม่ได้', submittedNotice: 'ส่งให้อนุมัติแล้ว',
+    leaveAmount: 'ระยะเวลา', wholeDay: 'ทั้งวัน', halfDay: 'ครึ่งวัน', someHours: 'ระบุชั่วโมง', leaveHours: 'จำนวนชั่วโมง',
+    leaveHoursShort: '{hours} ชม.', leaveBalance: 'วันลาปี {year}', balanceLeft: 'ใช้ {used} จาก {total} วัน เหลือ {left}', balanceTaken: 'ใช้ {used} วัน'
   }, en: {
     hoursLogged: 'Hours logged', daysTracked: 'Days with entries', leaveDays: 'Leave days',
     previousMonth: 'Previous month', nextMonth: 'Next month', selectedDate: 'Selected date',
@@ -114,7 +121,9 @@ export function useTimesheetText(locale: Ref<Locale>) {
     submitMonth: 'Submit for approval', resubmitMonth: 'Submit again', returnReason: 'Reason',
     submitHint: 'When the month is complete, submit it for your admin to approve.', submittedHint: 'Waiting for approval. The month cannot be changed meanwhile.',
     approvedHint: 'This month is approved and can no longer be changed.', returnedHint: 'Your admin returned this month for changes. Update it, then submit it again.', lockedHint: 'This month is closed.',
-    confirmSubmit: 'Submit {month} for approval? It cannot be changed while it waits.', submittedNotice: 'Submitted for approval'
+    confirmSubmit: 'Submit {month} for approval? It cannot be changed while it waits.', submittedNotice: 'Submitted for approval',
+    leaveAmount: 'How long', wholeDay: 'Whole day', halfDay: 'Half day', someHours: 'Some hours', leaveHours: 'Hours',
+    leaveHoursShort: '{hours} h', leaveBalance: 'Leave in {year}', balanceLeft: '{used} of {total} days taken, {left} left', balanceTaken: '{used} days taken'
   } })
   return { text, labels }
 }

@@ -28,6 +28,8 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
             projects = await db.Projects.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
             categories = await db.Categories.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
             holidays = await db.Holidays.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToListAsync(ct),
+            leaveTypes = await db.LeaveTypes.Where(x => !x.IsDeleted).OrderBy(x => x.Name)
+                .Select(x => new { x.Id, x.Name, x.AnnualDays }).ToListAsync(ct),
             workingDays, workHours
         });
     }
@@ -114,6 +116,71 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         Audit(actor, "holiday", id, "deleted", before, holiday);
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>Tenant Admin only: adds a leave type (<paramref name="id"/> null) or renames it and changes its days.
+    /// Leave already taken keeps the name it was saved with.</summary>
+    public async Task<ServiceResponse> SaveLeaveType(Actor actor, Guid? id, LeaveTypeRequest body, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        var name = body.Name?.Trim();
+        if (string.IsNullOrEmpty(name) || name.Length > 60 ||
+            body.AnnualDays is { } days && (days is < 0 or > 366 || days * 2 != decimal.Truncate(days * 2)))
+            return Error(400, "VALIDATION_FAILED");
+        var type = id is null ? null : await db.LeaveTypes.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct);
+        if (id is not null && type is null) return Error(404, "NOT_FOUND");
+        if (await db.LeaveTypes.AnyAsync(x => !x.IsDeleted && x.Id != id && x.Name.ToLower() == name.ToLower(), ct))
+            return Error(409, "LEAVE_TYPE_EXISTS");
+        var before = type is null ? null : JsonSerializer.Serialize(type);
+        if (type is null)
+        {
+            type = new LeaveType { TenantId = actor.TenantId, Name = name };
+            db.LeaveTypes.Add(type);
+        }
+        type.Name = name; type.AnnualDays = body.AnnualDays;
+        Audit(actor, "leave_type", type.Id, before is null ? "created" : "updated", before, type);
+        await db.SaveChangesAsync(ct);
+        return id is null ? Created(type, $"/api/v1/leave-types/{type.Id}") : Ok(type);
+    }
+
+    /// <summary>Tenant Admin only: retires a leave type; leave already taken with it is kept.</summary>
+    public async Task<ServiceResponse> DeleteLeaveType(Actor actor, Guid id, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        var type = await db.LeaveTypes.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct);
+        if (type is null) return Error(404, "NOT_FOUND");
+        var before = JsonSerializer.Serialize(type);
+        type.IsDeleted = true;
+        Audit(actor, "leave_type", id, "deleted", before, type);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>The signed-in member's leave balance for a calendar year, one row per leave type.</summary>
+    public Task<ServiceResponse> MyLeaveBalance(Actor actor, int year, CancellationToken ct) =>
+        LeaveBalanceAsync(actor.UserId, year, ct);
+
+    /// <summary>Tenant Admin only: a member's leave balance for a calendar year.</summary>
+    public Task<ServiceResponse> MemberLeaveBalance(Actor actor, Guid ownerId, int year, CancellationToken ct) =>
+        actor.IsAdmin ? LeaveBalanceAsync(ownerId, year, ct) : Task.FromResult(Error(403, "FORBIDDEN"));
+
+    private async Task<ServiceResponse> LeaveBalanceAsync(Guid ownerId, int year, CancellationToken ct)
+    {
+        if (!ValidMonth(year, 1)) return Error(400, "INVALID_DATE");
+        var types = await db.LeaveTypes.AsNoTracking().Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct);
+        var taken = await db.LeaveEntries.AsNoTracking().Where(x => x.OwnerId == ownerId && !x.IsDeleted &&
+            x.Date.Year == year && x.LeaveTypeId != null).Select(x => new { x.LeaveTypeId, x.Minutes }).ToListAsync(ct);
+        var standard = await StandardMinutesAsync(ct);
+        return Ok(new
+        {
+            year,
+            balances = types.Select(type =>
+            {
+                var used = taken.Where(x => x.LeaveTypeId == type.Id).Sum(x => LeaveDays(x.Minutes, standard));
+                return new LeaveBalance(type.Id, type.Name, type.AnnualDays, used,
+                    type.AnnualDays is { } days ? days - used : null);
+            })
+        });
     }
 
     public async Task<ServiceResponse> SaveWorkWeek(Actor actor, WorkWeekRequest body, CancellationToken ct)
@@ -280,13 +347,19 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         if (!await CanMutate(actor, body.Date, ct) ||
             leave is not null && !await CanMutate(actor, leave.Date, ct))
             return Error(409, "MONTH_CLOSED");
-        if (string.IsNullOrWhiteSpace(body.Kind) || body.Kind.Length > 60 || body.Notes?.Length > 4000)
+        // With leave types, the leave names one of them; without, its kind is free text.
+        var types = await db.LeaveTypes.AsNoTracking().Where(x => !x.IsDeleted).ToListAsync(ct);
+        var type = types.SingleOrDefault(x => x.Id == body.LeaveTypeId);
+        var kind = types.Count > 0 ? type?.Name : body.Kind?.Trim();
+        if (string.IsNullOrEmpty(kind) || kind.Length > 60 || body.Notes?.Length > 4000 ||
+            types.Count == 0 && body.LeaveTypeId is not null ||
+            body.Minutes is { } minutes && (minutes < 1 || minutes > await StandardMinutesAsync(ct)))
             return Error(400, "VALIDATION_FAILED");
         var before = leave is null ? null : JsonSerializer.Serialize(leave);
-        leave ??= new LeaveEntry { TenantId = actor.TenantId, OwnerId = actor.UserId,
-            Kind = body.Kind.Trim() };
+        leave ??= new LeaveEntry { TenantId = actor.TenantId, OwnerId = actor.UserId, Kind = kind };
         if (id is null) db.LeaveEntries.Add(leave);
-        leave.Date = body.Date; leave.Kind = body.Kind.Trim(); leave.Notes = body.Notes;
+        leave.Date = body.Date; leave.Kind = kind; leave.Notes = body.Notes;
+        leave.LeaveTypeId = type?.Id; leave.Minutes = body.Minutes;
         Audit(actor, "leave", leave.Id, id is null ? "created" : "updated", before, leave);
         Changed(actor, body.Date);
         await db.SaveChangesAsync(ct);
@@ -437,11 +510,13 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
             .GroupBy(x => x.OwnerId)
             .Select(x => new { OwnerId = x.Key, EntryCount = x.Count(), TotalMinutes = x.Sum(e => e.DurationMinutes) })
             .ToListAsync(ct);
-        var leaves = await db.LeaveEntries.AsNoTracking().Where(x => !x.IsDeleted &&
+        var standard = await StandardMinutesAsync(ct);
+        var leaves = (await db.LeaveEntries.AsNoTracking().Where(x => !x.IsDeleted &&
                 x.Date.Year == year && x.Date.Month == month)
+            .Select(x => new { x.OwnerId, x.Minutes }).ToListAsync(ct))
             .GroupBy(x => x.OwnerId)
-            .Select(x => new { OwnerId = x.Key, LeaveDays = x.Count() })
-            .ToListAsync(ct);
+            .Select(x => new { OwnerId = x.Key, LeaveDays = x.Sum(leave => LeaveDays(leave.Minutes, standard)) })
+            .ToList();
         var statuses = await db.MonthApprovals.AsNoTracking().Where(x => x.Year == year && x.Month == month)
             .ToDictionaryAsync(x => x.OwnerId, x => x.Status, ct);
         var members = entries.Select(x => x.OwnerId).Union(leaves.Select(x => x.OwnerId)).Union(statuses.Keys)
@@ -487,7 +562,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
             }).ToArray();
         var leaves = await db.LeaveEntries.AsNoTracking().Where(x => x.OwnerId == ownerId &&
                 !x.IsDeleted && x.Date.Year == year && x.Date.Month == month)
-            .OrderBy(x => x.Date).Select(x => new { x.Id, x.Date, x.Kind, x.Notes }).ToListAsync(ct);
+            .OrderBy(x => x.Date).Select(x => new { x.Id, x.Date, x.Kind, x.Notes, x.LeaveTypeId, x.Minutes }).ToListAsync(ct);
         var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
                 x.Date.Year == year && x.Date.Month == month)
             .OrderBy(x => x.Date).Select(x => new { x.Date, x.Name }).ToListAsync(ct);
@@ -504,6 +579,18 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         var week = await db.WorkWeeks.AsNoTracking().SingleOrDefaultAsync(ct) ?? new WorkWeek();
         return (WorkWeek.Days(week.WorkingDaysMask), Hours(week));
     }
+
+    /// <summary>Minutes of the normal working day: the working hours less the break.</summary>
+    private async Task<int> StandardMinutesAsync(CancellationToken ct)
+    {
+        var week = await db.WorkWeeks.AsNoTracking().SingleOrDefaultAsync(ct) ?? new WorkWeek();
+        var minutes = (int)(week.EndTime - week.StartTime).TotalMinutes;
+        return week.BreakStart is { } from && week.BreakEnd is { } to ? minutes - (int)(to - from).TotalMinutes : minutes;
+    }
+
+    /// <summary>A leave in days: the whole day, or its minutes against the normal working day, to two places.</summary>
+    private static decimal LeaveDays(int? minutes, int standardMinutes) =>
+        minutes is { } part && standardMinutes > 0 ? Math.Round((decimal)part / standardMinutes, 2) : 1;
 
     private static object Hours(WorkWeek week) => new
     {

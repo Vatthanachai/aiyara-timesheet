@@ -10,7 +10,9 @@ import { DATE_FORMATS, TIME_FORMATS, formatDate as formatCalendarDate, formatTim
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; isCurrentUser: boolean; groupId: string | null; groupName: string | null }
 type MemberGroup = { id: string; name: string; memberCount: number }
 type Invitation = { id: string; email: string; role: string; invitedByEmail: string | null; createdAtUtc: string; expiresAtUtc: string; groupName?: string | null }
-type Catalog = { projects: { id: string; name: string }[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[]; workingDays: number[]; workHours?: WorkHours }
+type Catalog = { projects: { id: string; name: string }[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[]; leaveTypes?: LeaveType[]; workingDays: number[]; workHours?: WorkHours }
+/** A leave type and its days a year; null days is no limit. */
+type LeaveType = { id: string; name: string; annualDays: number | null }
 type WorkHours = { startTime: string; endTime: string; breakStart?: string | null; breakEnd?: string | null }
 const token = ref('')
 const config = useRuntimeConfig()
@@ -23,6 +25,9 @@ const projectName = ref('')
 const categoryName = ref('')
 const holidayName = ref('')
 const holidayDate = ref('')
+const leaveTypeName = ref('')
+/** Days a year as typed; empty is no limit. */
+const leaveTypeDays = ref<number | ''>('')
 // Weekday numbers follow Date.getDay() (Sunday = 0); the panel lists Monday first.
 const weekdays = [1, 2, 3, 4, 5, 6, 0]
 const workingDays = ref<number[]>([1, 2, 3, 4, 5])
@@ -131,6 +136,9 @@ const copy = useLocaleText(locale, { th: {
   workDays: 'วันทำงาน', workStart: 'เวลาเริ่มงาน', workEnd: 'เวลาเลิกงาน', hoursOrder: 'เวลาเลิกงานต้องอยู่หลังเวลาเริ่มงาน',
   hasBreak: 'มีเวลาพัก (ไม่นับเป็นเวลาทำงาน)', breakStart: 'เริ่มพัก', breakEnd: 'สิ้นสุดพัก', breakOrder: 'เวลาพักต้องอยู่ในเวลาทำงาน และสิ้นสุดหลังเวลาเริ่มพัก',
   workdayLength: 'ทำงานปกติวันละ {hours} ชั่วโมง เกินจากนี้นับเป็นวันทำงานล่วงเวลาในรายงาน',
+  leaveTypes: 'ประเภทการลา', leaveTypeHint: 'สมาชิกเลือกประเภทเมื่อบันทึกวันลา และเห็นวันลาที่เหลือของปี เว้นจำนวนวันว่างไว้ถ้าไม่จำกัด',
+  leaveTypeName: 'ชื่อประเภท', annualDays: 'วันต่อปี', unlimited: 'ไม่จำกัด', leaveTypeExists: 'มีประเภทการลาชื่อนี้อยู่แล้ว',
+  noLeaveTypes: 'ยังไม่มีประเภทการลา สมาชิกเลือกได้จาก พักร้อน ลาป่วย หรืออื่น ๆ',
   saveWorkWeek: 'บันทึกวันและเวลาทำงาน', workWeekSaved: 'บันทึกวันและเวลาทำงานแล้ว', workWeekRequired: 'ต้องมีวันทำงานอย่างน้อยหนึ่งวัน'
 }, en: {
   title: 'Administration', subtitle: 'Manage projects, categories, holidays and access requirements in one place.', signIn: 'Please sign in through Aiyara Shell',
@@ -185,6 +193,9 @@ const copy = useLocaleText(locale, { th: {
   workDays: 'Working days', workStart: 'Start of work', workEnd: 'End of work', hoursOrder: 'The working day must end after it starts.',
   hasBreak: 'Break (not counted as work)', breakStart: 'Break starts', breakEnd: 'Break ends', breakOrder: 'The break must be within the working hours and end after it starts.',
   workdayLength: 'A normal working day is {hours} hours; reports count a longer day as overtime.',
+  leaveTypes: 'Leave types', leaveTypeHint: 'Members choose a type when they record leave and see what is left of it this year. Leave the days empty for no limit.',
+  leaveTypeName: 'Type name', annualDays: 'Days a year', unlimited: 'No limit', leaveTypeExists: 'A leave type with this name already exists.',
+  noLeaveTypes: 'No leave types yet. Members choose from Annual, Sick, or Other.',
   saveWorkWeek: 'Save working days and hours', workWeekSaved: 'Working days and hours saved.', workWeekRequired: 'Keep at least one working day.'
 } })
 // ---- Tabs: one subject at a time, remembered for the session ----------------------------------
@@ -287,6 +298,22 @@ async function remove(kind: 'projects' | 'categories' | 'holidays', id: string) 
 }
 async function update(kind: 'projects' | 'categories' | 'holidays', item: { id: string; name: string; date?: string }) {
   try { await api(`/${kind}/${item.id}`, { method: 'PUT', body: kind === 'holidays' ? { name: item.name, date: item.date } : { name: item.name } }); await load() }
+  catch (cause) { error.value = safeError(cause, locale.value) }
+}
+async function saveLeaveType(type?: LeaveType) {
+  error.value = ''
+  const annualDays = (value: number | '' | null) => value === '' || value == null ? null : Number(value)
+  try {
+    await api(type ? `/leave-types/${type.id}` : '/leave-types', { method: type ? 'PUT' : 'POST',
+      body: type ? { name: type.name, annualDays: annualDays(type.annualDays) } : { name: leaveTypeName.value, annualDays: annualDays(leaveTypeDays.value) } })
+    if (!type) { leaveTypeName.value = ''; leaveTypeDays.value = '' }
+    await load()
+  } catch (cause) {
+    error.value = (cause as { data?: { errorCode?: string } })?.data?.errorCode === 'LEAVE_TYPE_EXISTS' ? copy.value.leaveTypeExists : safeError(cause, locale.value)
+  }
+}
+async function removeLeaveType(id: string) {
+  try { await api(`/leave-types/${id}`, { method: 'DELETE' }); await load() }
   catch (cause) { error.value = safeError(cause, locale.value) }
 }
 function weekdayName(day: number) {
@@ -619,6 +646,12 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
           <ul v-if="catalog.holidays.length" class="item-list"><li v-for="item in catalog.holidays" :key="item.id"><form class="item-row holiday-row" @submit.prevent="update('holidays', item)"><DateField v-model="item.date" required :label="`${copy.date}: ${item.name}`" :pick-label="`${copy.pickDate}: ${item.name}`" /><input v-model="item.name" required maxlength="200" :aria-label="copy.holidayName" /><div class="row-actions"><button class="button button-subtle">{{ copy.save }}</button><button type="button" class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('holidays', item.id)">×</button></div></form></li></ul>
           <p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p>
         </section>
+        <section class="panel" aria-labelledby="leave-types-heading">
+          <div class="panel-heading"><h2 id="leave-types-heading">{{ copy.leaveTypes }}</h2><p>{{ copy.leaveTypeHint }}</p></div>
+          <form class="add-form leave-type-form" @submit.prevent="saveLeaveType()"><label class="leave-type-name"><span>{{ copy.leaveTypeName }}</span><input v-model="leaveTypeName" required maxlength="60" :placeholder="copy.leaveTypeName" /></label><label><span>{{ copy.annualDays }}</span><input v-model="leaveTypeDays" type="number" min="0" max="366" step="0.5" :placeholder="copy.unlimited" /></label><button class="button button-primary">{{ copy.add }}</button></form>
+          <ul v-if="catalog.leaveTypes?.length" class="item-list"><li v-for="item in catalog.leaveTypes" :key="item.id"><form class="item-row leave-type-row" @submit.prevent="saveLeaveType(item)"><input v-model="item.name" required maxlength="60" :aria-label="copy.leaveTypeName" /><input v-model="item.annualDays" type="number" min="0" max="366" step="0.5" :placeholder="copy.unlimited" :aria-label="`${copy.annualDays}: ${item.name}`" /><div class="row-actions"><button class="button button-subtle">{{ copy.save }}</button><button type="button" class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="removeLeaveType(item.id)">×</button></div></form></li></ul>
+          <p v-else-if="!isLoading" class="empty-list">{{ copy.noLeaveTypes }}</p>
+        </section>
         <section class="panel close-panel" aria-labelledby="close-heading">
           <div class="panel-heading"><h2 id="close-heading">{{ copy.lockMonth }}</h2><p>{{ copy.lockHint }}</p></div>
           <form class="close-form" @submit.prevent="lock"><label :aria-label="copy.lockMonth"><input v-model="lockMonth" type="month" required /></label><button class="button button-warning" :disabled="isLocking">{{ isLocking ? copy.loading : copy.lock }}</button></form>
@@ -775,6 +808,9 @@ input:disabled+.check-mark{opacity:.55}
 .work-week-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem;border-top:1px solid var(--color-border);padding-top:1rem}
 .workday-summary{margin:0;color:var(--color-ink)}
 .holiday-form label{display:grid;gap:.3rem;min-width:9rem}
+.leave-type-form label{display:grid;gap:.3rem;min-width:8rem}
+.leave-type-form .leave-type-name{flex:1}
+.leave-type-row>input[type=number]{max-width:8rem}
 .holiday-form .holiday-name{flex:1}
 .holiday-row>.date-field{max-width:11rem}
 .close-form{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}

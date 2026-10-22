@@ -52,11 +52,24 @@ public sealed class WorkWeek : TenantRecord
     public static int[] Days(int mask) => Enumerable.Range(0, 7).Where(day => (mask & (1 << day)) != 0).ToArray();
 }
 
+/// <summary>A kind of leave the organization offers, with the days a member may take each calendar
+/// year; null days means no limit.</summary>
+public sealed class LeaveType : TenantRecord
+{
+    public required string Name { get; set; }
+    public decimal? AnnualDays { get; set; }
+    public bool IsDeleted { get; set; }
+}
+
 public sealed class LeaveEntry : TenantRecord
 {
     public Guid OwnerId { get; set; }
     public DateOnly Date { get; set; }
+    /// <summary>The leave's name: its type's name when it has one, as it was when the leave was saved.</summary>
     public required string Kind { get; set; }
+    public Guid? LeaveTypeId { get; set; }
+    /// <summary>Minutes of leave in a part of the day; null for the whole working day.</summary>
+    public int? Minutes { get; set; }
     public string? Notes { get; set; }
     public bool IsDeleted { get; set; }
 }

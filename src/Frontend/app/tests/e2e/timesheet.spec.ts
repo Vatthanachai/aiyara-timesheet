@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { monthState, options, shownDate } from './fields'
+import { choose, monthState, options, shownDate } from './fields'
 
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
 const cors = {
@@ -14,7 +14,11 @@ const entry = (id: string, date: string, startTime: string, endTime: string, dur
   ({ id, date, startTime, endTime, durationMinutes, taskName, detail: null, notes: null, projectId: null, categoryId: null, personalTaskId: null, includesBreak: false })
 
 /** Signs in through the Shell and opens Timesheet with a normal working day of 7 hours (09:00–17:00 less a 1-hour break). */
-async function openTimesheet(page: Page, requests: string[] = [], state: Record<string, unknown> = {}) {
+/** Leave the mocked API returns: the month's leave, the year's balances, and the organization's leave types. */
+type LeaveMock = { leaves: unknown[]; balances: unknown[]; leaveTypes: unknown[] }
+
+async function openTimesheet(page: Page, requests: string[] = [], state: Record<string, unknown> = {},
+  leave: LeaveMock = { leaves: [], balances: [], leaveTypes: [] }) {
   await page.route('**/api/v1/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
@@ -35,13 +39,21 @@ async function openTimesheet(page: Page, requests: string[] = [], state: Record<
         entry('e3', day(7), '08:00:00', '17:30:00', 510, 'Long day')
       ])
     }
-    if (url.pathname.endsWith('/timesheets/tasks') || url.pathname.endsWith('/timesheets/leave')) return ok([])
-    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [{ id: 'p1', name: 'Website redesign' }, { id: 'p2', name: 'Mobile app' }, { id: 'p3', name: 'Internal tools' }], categories: [], holidays: [],
+    if (url.pathname.endsWith('/timesheets/tasks')) return ok([])
+    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [{ id: 'p1', name: 'Website redesign' }, { id: 'p2', name: 'Mobile app' }, { id: 'p3', name: 'Internal tools' }], categories: [], holidays: [], leaveTypes: leave.leaveTypes,
       workingDays: [0, 1, 2, 3, 4, 5, 6], workHours: { startTime: '09:00', endTime: '17:00', breakStart: '12:00', breakEnd: '13:00' } })
     if (url.pathname.endsWith('/submit')) {
       requests.push(`${request.method()} ${url.pathname.replace(/.*\/timesheets/, '')}`)
       Object.assign(state, { status: 'submitted', returnReason: null, editable: false })
       return ok({ status: 'submitted' })
+    }
+    if (url.pathname.endsWith('/timesheets/me/leave-balance')) return ok({ year: now.getFullYear(), balances: leave.balances })
+    if (url.pathname.endsWith('/timesheets/leave')) {
+      if (request.method() === 'POST') {
+        requests.push(`POST /leave ${request.postData()}`)
+        return ok({ id: 'l-new' }, 201)
+      }
+      return ok(leave.leaves)
     }
     if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) return ok(monthState(url.pathname, currentMonth, state))
     if (url.pathname.endsWith('/timesheets/context')) return ok({ currentMonth, locked: false })
@@ -54,7 +66,7 @@ async function openTimesheet(page: Page, requests: string[] = [], state: Record<
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.getByRole('link', { name: 'Record time' }).click()
   const timesheet = page.frameLocator('iframe')
-  await expect(timesheet.locator('.month-totals')).toHaveText('19 h logged over 3 days.')
+  await expect(timesheet.locator('.month-totals')).toHaveText(/^19 h logged over 3 days/)
   return timesheet
 }
 
@@ -206,4 +218,33 @@ test('an approved month cannot be changed or submitted', async ({ page }) => {
   await expect(bar.locator('.approval-pill')).toHaveText('Approved')
   await expect(bar.getByRole('button')).toHaveCount(0)
   await expect(timesheet.locator('.entry-panel')).toHaveCount(0)
+})
+
+test('leave names an organization leave type, can be half a day, and shows the year\'s balance', async ({ page }) => {
+  const requests: string[] = []
+  const timesheet = await openTimesheet(page, requests, {}, {
+    leaveTypes: [{ id: 't-annual', name: 'Annual', annualDays: 10 }, { id: 't-sick', name: 'Sick', annualDays: null }],
+    leaves: [{ id: 'l1', date: day(9), kind: 'Annual', notes: null, leaveTypeId: 't-annual', minutes: 210 }],
+    balances: [{ leaveTypeId: 't-annual', name: 'Annual', annualDays: 10, usedDays: 10.5, remainingDays: -0.5 },
+      { leaveTypeId: 't-sick', name: 'Sick', annualDays: null, usedDays: 2, remainingDays: null }]
+  })
+  const panel = timesheet.locator('.support-panel')
+  await expect(timesheet.locator('.month-totals')).toHaveText('19 h logged over 3 days, 0.5 days of leave.')
+  await expect(panel.locator('.leave-amount')).toHaveText('3.5 h')
+  const balances = panel.locator('.leave-balances p')
+  await expect(balances).toHaveText([/^Annual\s*10.5 of 10 days taken, -0.5 left$/, /^Sick\s*2 days taken$/])
+  await expect(balances.first()).toHaveClass(/overdrawn/)
+
+  const form = panel.locator('.leave-form')
+  await expect(form.getByLabel('Kind')).toHaveValue('Annual')
+  await choose(form.getByLabel('Kind'), 'Sick')
+  await choose(form.getByLabel('How long'), 'Half day')
+  await form.getByRole('button', { name: 'Add entry' }).click()
+  // Half of the 7-hour day (09:00–17:00 less the hour's break).
+  await expect.poll(() => requests.at(-1)).toMatch(/^POST \/leave .*"leaveTypeId":"t-sick","minutes":210/)
+
+  await choose(form.getByLabel('How long'), 'Some hours')
+  await form.getByLabel('Hours').fill('1.5')
+  await form.getByRole('button', { name: 'Add entry' }).click()
+  await expect.poll(() => requests.at(-1)).toMatch(/"minutes":90/)
 })

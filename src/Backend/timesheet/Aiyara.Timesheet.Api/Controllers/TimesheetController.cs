@@ -102,6 +102,51 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> UpdateWorkWeek([FromBody] WorkWeekRequest body, CancellationToken ct) =>
         Execute(actor => operations.SaveWorkWeek(actor, body, ct));
 
+    /// <summary>Tenant Admin only: adds a leave type with its yearly days (null for no limit).</summary>
+    [HttpPost("leave-types", Name = "CreateLeaveTypeV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<LeaveType>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CreateLeaveType([FromBody] LeaveTypeRequest body, CancellationToken ct) =>
+        Execute(actor => operations.SaveLeaveType(actor, null, body, ct));
+
+    [HttpPut("leave-types/{id:guid}", Name = "UpdateLeaveTypeV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<LeaveType>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> UpdateLeaveType(Guid id, [FromBody] LeaveTypeRequest body, CancellationToken ct) =>
+        Execute(actor => operations.SaveLeaveType(actor, id, body, ct));
+
+    [HttpDelete("leave-types/{id:guid}", Name = "DeleteLeaveTypeV1")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    public Task<IActionResult> DeleteLeaveType(Guid id, CancellationToken ct) =>
+        Execute(actor => operations.DeleteLeaveType(actor, id, ct));
+
+    /// <summary>The signed-in member's leave taken and left per leave type in a calendar year.</summary>
+    [HttpGet("me/leave-balance", Name = "GetMyLeaveBalanceV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    public Task<IActionResult> MyLeaveBalance([FromQuery] int year, CancellationToken ct) =>
+        Execute(actor => operations.MyLeaveBalance(actor, year, ct));
+
+    /// <summary>Tenant Admin only: a member's leave taken and left per leave type in a calendar year.</summary>
+    [HttpGet("members/{ownerId:guid}/leave-balance", Name = "GetMemberLeaveBalanceV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> MemberLeaveBalance(Guid ownerId, [FromQuery] int year, CancellationToken ct) =>
+        Execute(actor => operations.MemberLeaveBalance(actor, ownerId, year, ct));
+
     [HttpGet("tasks", Name = "GetPersonalTasksV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<IReadOnlyList<PersonalTask>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]

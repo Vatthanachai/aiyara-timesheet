@@ -92,6 +92,12 @@ namespace Aiyara.Timesheet.Databases.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<Guid?>("LeaveTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Minutes")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
@@ -108,6 +114,34 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     b.HasIndex("TenantId", "OwnerId", "Date");
 
                     b.ToTable("leave_entries", (string)null);
+                });
+
+            modelBuilder.Entity("Aiyara.Timesheet.Databases.LeaveType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("AnnualDays")
+                        .HasPrecision(5, 1)
+                        .HasColumnType("numeric(5,1)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("leave_types", (string)null);
                 });
 
             modelBuilder.Entity("Aiyara.Timesheet.Databases.MonthApproval", b =>

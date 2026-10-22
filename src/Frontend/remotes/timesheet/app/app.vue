@@ -4,7 +4,7 @@ import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
-import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type MonthState, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
+import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type LeaveAmount, type LeaveBalance, type MonthState, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
 const config = useRuntimeConfig()
@@ -20,7 +20,8 @@ const month = ref(today.slice(0, 7))
 const entries = ref<Entry[]>([])
 const tasks = ref<Task[]>([])
 const leaves = ref<Leave[]>([])
-const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5], workHours: defaultWorkHours })
+const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [], leaveTypes: [], workingDays: [1, 2, 3, 4, 5], workHours: defaultWorkHours })
+const balances = ref<LeaveBalance[]>([])
 let workHoursApplied = false
 const error = ref('')
 const notice = ref('')
@@ -30,7 +31,10 @@ const form = reactive<EntryForm>({ date: today, startTime: defaultWorkHours.star
 const taskName = ref('')
 const view = ref<'entries' | 'board'>('entries')
 const leaveDate = ref(today)
+/** A built-in kind, or the leave type's id once the organization has leave types. */
 const leaveKind = ref('annual')
+const leaveAmount = ref<LeaveAmount>('day')
+const leaveHours = ref(1)
 const currentMonth = ref('')
 /** The viewed month's approval state; the API decides whether it can be edited. */
 const monthState = ref<MonthState>({ locked: false, status: 'open', returnReason: null, editable: false })
@@ -47,14 +51,18 @@ const copy = useTimesheetText(locale)
 const { text, labels } = copy
 const minutesByDay = computed(() => entries.value.reduce((days, entry) =>
   days.set(entry.date, (days.get(entry.date) ?? 0) + entry.durationMinutes), new Map<string, number>()))
-const leaveLabel = (kind: string) => kind === 'annual' || kind === 'sick' || kind === 'other' ? text.value[kind] : kind
-const leaveByDay = computed(() => new Map(leaves.value.map(leave => [leave.date, leaveLabel(leave.kind)])))
+const leaveLabel = (leave: Leave) => {
+  const kind = leave.kind === 'annual' || leave.kind === 'sick' || leave.kind === 'other' ? text.value[leave.kind] : leave.kind
+  return leave.minutes ? `${kind} (${labels.value.leaveHoursShort.replace('{hours}', decimalHours(leave.minutes))})` : kind
+}
+const leaveByDay = computed(() => new Map(leaves.value.map(leave => [leave.date, leaveLabel(leave)])))
 const holidayByDay = computed(() => new Map(catalog.value.holidays.filter(holiday => holiday.date.startsWith(month.value))
   .map(holiday => [holiday.date, holiday.name])))
 const normalDay = computed(() => standardMinutes(catalog.value.workHours))
 const monthTotals = computed(() => {
   const minutes = [...minutesByDay.value.values()].reduce((sum, value) => sum + value, 0)
-  const leave = new Set(leaves.value.map(item => item.date)).size
+  // Leave in days: a part day counts against the normal working day.
+  const leave = Math.round(leaves.value.reduce((sum, item) => sum + (item.minutes && normalDay.value ? item.minutes / normalDay.value : 1), 0) * 100) / 100
   const logged = minutes
     ? (minutesByDay.value.size === 1 ? labels.value.monthTotalsOneDay : labels.value.monthTotals)
       .replace('{hours}', decimalHours(minutes)).replace('{days}', String(minutesByDay.value.size))
@@ -107,15 +115,21 @@ async function api<T>(path: string, options: { method?: string; body?: object } 
 async function load() {
   if (!token.value) return
   try {
-    const [e, t, l, c, context, state] = await Promise.all([
+    const [e, t, l, c, context, state, balance] = await Promise.all([
       api<Entry[]>(`/entries?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
       api<Task[]>('/tasks'),
       api<Leave[]>(`/leave?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
       api<Catalog>('/catalog'),
       api<{ currentMonth: string }>('/context'),
-      api<MonthState>(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}`)
+      api<MonthState>(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}`),
+      api<{ balances: LeaveBalance[] }>(`/me/leave-balance?year=${month.value.slice(0, 4)}`)
     ])
-    entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
+    entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, leaveTypes: c.leaveTypes ?? [], workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
+    balances.value = balance.balances
+    // With leave types the kind is a type's id; keep a valid choice as the types change.
+    const types = catalog.value.leaveTypes
+    if (types.length && !types.some(type => type.id === leaveKind.value)) leaveKind.value = types[0]!.id
+    if (!types.length && !['annual', 'sick', 'other'].includes(leaveKind.value)) leaveKind.value = 'annual'
     // The first time the organization's hours are known, an untouched new entry starts with them.
     if (!workHoursApplied && !editingId.value && !form.taskName)
       Object.assign(form, { startTime: catalog.value.workHours.startTime, endTime: catalog.value.workHours.endTime })
@@ -225,7 +239,10 @@ async function removeTask(id: string) {
 }
 async function addLeave() {
   if (!canEdit.value) return
-  try { await api('/leave', { method: 'POST', body: { date: leaveDate.value, kind: leaveKind.value } }); await load() }
+  const minutes = leaveAmount.value === 'half' ? Math.round(normalDay.value / 2)
+    : leaveAmount.value === 'hours' ? Math.round(leaveHours.value * 60) : null
+  const kind = catalog.value.leaveTypes.length ? { leaveTypeId: leaveKind.value } : { kind: leaveKind.value }
+  try { await api('/leave', { method: 'POST', body: { date: leaveDate.value, ...kind, minutes } }); await load() }
   catch (cause) { error.value = safeError(cause, locale.value) }
 }
 async function removeLeave(id: string) {
@@ -235,7 +252,8 @@ async function removeLeave(id: string) {
 }
 async function updateLeave(leave: Leave) {
   if (!canEdit.value) return
-  try { await api(`/leave/${leave.id}`, { method: 'PUT', body: { date: leave.date, kind: leave.kind, notes: leave.notes } }); await load() }
+  try { await api(`/leave/${leave.id}`, { method: 'PUT', body: { date: leave.date, kind: leave.kind, notes: leave.notes,
+    leaveTypeId: leave.leaveTypeId ?? null, minutes: leave.minutes ?? null } }); await load() }
   catch (cause) { error.value = safeError(cause, locale.value) }
 }
 </script>
@@ -275,7 +293,8 @@ async function updateLeave(leave: Leave) {
           <div class="main-column">
             <MonthCalendar :month="month" :selected="form.date" :today="today" :minutes-by-day="minutesByDay" :leave-by-day="leaveByDay"
               :holiday-by-day="holidayByDay" :working-days="catalog.workingDays" :standard-minutes="normalDay" @select="selectDay" @drop="dropTask" />
-            <LeavePanel v-model:leave-date="leaveDate" v-model:leave-kind="leaveKind" :leaves="leaves" :holidays="catalog.holidays" :month="month"
+            <LeavePanel v-model:leave-date="leaveDate" v-model:leave-kind="leaveKind" v-model:leave-amount="leaveAmount" v-model:leave-hours="leaveHours"
+              :leaves="leaves" :holidays="catalog.holidays" :leave-types="catalog.leaveTypes" :balances="balances" :month="month" :standard-minutes="normalDay"
               :can-edit="canEdit" :month-start="monthStart" :month-end="monthEnd" @add="addLeave" @update="updateLeave" @remove="removeLeave" />
           </div>
 

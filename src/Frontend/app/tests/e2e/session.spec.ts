@@ -255,6 +255,10 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
       })) })
       return
     }
+    if (url.pathname.endsWith('/timesheets/me/leave-balance')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk({ year: 2026, balances: [] })) })
+      return
+    }
     if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) {
       await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk(monthState(url.pathname, currentMonth))) })
       return
@@ -379,6 +383,10 @@ test('timesheet task tray keeps a rejected task name, prefills the entry form, a
       await route.fulfill(json({ projects: [{ id: 'project-1', name: 'Website' }], categories: [], holidays: [] }))
       return
     }
+    if (url.pathname.endsWith('/timesheets/me/leave-balance')) {
+      await route.fulfill(json({ year: 2026, balances: [] }))
+      return
+    }
     if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) {
       await route.fulfill(json(monthState(url.pathname, currentMonth)))
       return
@@ -419,7 +427,7 @@ test('timesheet task tray keeps a rejected task name, prefills the entry form, a
   await leaveForm.getByLabel('Date').fill(shownDate(`${currentMonth}-10`))
   await choose(leaveForm.getByLabel('Kind'), 'Sick')
   await leaveForm.getByRole('button', { name: 'Add entry' }).click()
-  await expect.poll(() => leaveRequest).toEqual({ date: `${currentMonth}-10`, kind: 'sick' })
+  await expect.poll(() => leaveRequest).toEqual({ date: `${currentMonth}-10`, kind: 'sick', minutes: null })
   await expect(timesheet.locator('.simple-list li .date-field-text')).toHaveValue(shownDate(`${currentMonth}-10`))
 })
 
@@ -479,6 +487,10 @@ test('timesheet task board moves cards by button and drag, reverts a rejected mo
     }
     if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
       await route.fulfill(json({ projects: [{ id: 'project-1', name: 'Website' }], categories: [], holidays: [] }))
+      return
+    }
+    if (url.pathname.endsWith('/timesheets/me/leave-balance')) {
+      await route.fulfill(json({ year: 2026, balances: [] }))
       return
     }
     if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) {
@@ -1921,6 +1933,7 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [], categories: [],
       holidays: [{ id: 'h1', date: '2026-10-13', name: 'Memorial day' }], workingDays: [1, 2, 3, 4, 5],
       workHours: { startTime: '09:00', endTime: '17:00', breakStart: '12:00', breakEnd: '13:00' } })
+    if (url.pathname.endsWith('/leave-balance')) return ok({ year: 2026, balances: [] })
     if (url.pathname.includes('/timesheets/members/')) {
       state.timesheetQueries.push(`${url.pathname.replace(/^.*\/timesheets/, '')}?${url.searchParams}`)
       if (role !== 'TenantAdmin') return route.fulfill({ status: 403, headers: cors })
@@ -2423,6 +2436,7 @@ test('timesheet calendar shades the days the organization does not work and new 
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [0, 1, 2, 3, 4],
       workHours: { startTime: '08:30', endTime: '17:30' } })
     if (path === '/timesheets/entries' || path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (path === '/timesheets/me/leave-balance') return ok({ year: 2026, balances: [] })
     if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(path)) return ok(monthState(path, currentMonth))
     if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
@@ -2555,6 +2569,7 @@ test('timesheet shows dates and times in the organization\'s format', async ({ p
     if (path === '/timesheets/entries') return ok([{ id: 'e1', date: `${currentMonth}-05`, startTime: '13:00:00', endTime: '14:30:00', durationMinutes: 90,
       taskName: 'Afternoon review', detail: null, notes: null, projectId: null, categoryId: null, personalTaskId: null }])
     if (path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (path === '/timesheets/me/leave-balance') return ok({ year: 2026, balances: [] })
     if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(path)) return ok(monthState(path, currentMonth))
     if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
@@ -2708,6 +2723,7 @@ test('timesheet leaves the break out of an entry unless the member worked throug
       return ok({ id: `e${posted.length}` }, 201)
     }
     if (path === '/timesheets/entries' || path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (path === '/timesheets/me/leave-balance') return ok({ year: 2026, balances: [] })
     if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(path)) return ok(monthState(path, currentMonth))
     if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
@@ -2802,4 +2818,81 @@ test('an admin returns a submitted month with a reason, then approves it once it
   await expect(section.locator('.approval-panel')).toHaveCount(0)
   await section.getByRole('button', { name: 'All members' }).click()
   await expect(somchai.locator('.approval-status')).toHaveText('Approved')
+})
+
+test('tenant admin adds, changes, and retires leave types from Administration', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  let leaveTypes: { id: string; name: string; annualDays: number | null }[] = [{ id: 't1', name: 'Annual', annualDays: 10 }]
+  const requests: string[] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], leaveTypes, workingDays: [1, 2, 3, 4, 5] })
+    if (path.startsWith('/timesheets/leave-types')) {
+      requests.push(`${request.method()} ${path.replace('/timesheets', '')} ${request.postData() ?? ''}`.trim())
+      if (request.method() === 'POST') {
+        const body = request.postDataJSON()
+        if (leaveTypes.some(type => type.name.toLowerCase() === body.name.toLowerCase()))
+          return route.fulfill({ status: 409, headers: cors, contentType: 'application/json',
+            body: JSON.stringify({ statusCode: 409, statusMessage: 'Conflict', errorCode: 'LEAVE_TYPE_EXISTS' }) })
+        leaveTypes = [...leaveTypes, { id: `t${leaveTypes.length + 1}`, ...body }]
+        return ok(leaveTypes.at(-1), 201)
+      }
+      const id = path.split('/').at(-1)
+      if (request.method() === 'PUT') leaveTypes = leaveTypes.map(type => type.id === id ? { id, ...request.postDataJSON() } : type)
+      if (request.method() === 'DELETE') leaveTypes = leaveTypes.filter(type => type.id !== id)
+      return ok(null)
+    }
+    if (path === `/identity/tenants/${tenantId}/password-policy`)
+      return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
+    if (path === '/identity/members' || path === '/identity/members/invitations' || path === '/identity/members/groups') return ok([])
+    if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null })
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+  const frame = page.frameLocator('iframe')
+  await frame.getByRole('tab', { name: 'Working time' }).click()
+  const panel = frame.getByRole('region', { name: 'Leave types' })
+  const add = panel.locator('.leave-type-form')
+
+  await add.getByLabel('Type name').fill('Sick')
+  await add.getByRole('button', { name: 'Add item' }).click()
+  // An empty number of days is no limit.
+  await expect.poll(() => requests.at(-1)).toBe('POST /leave-types {"name":"Sick","annualDays":null}')
+  await expect(panel.locator('.leave-type-row')).toHaveCount(2)
+
+  await add.getByLabel('Type name').fill('annual')
+  await add.getByLabel('Days a year').fill('5')
+  await add.getByRole('button', { name: 'Add item' }).click()
+  await expect(frame.getByRole('alert')).toContainText('A leave type with this name already exists.')
+
+  const annual = panel.locator('.leave-type-row').first()
+  await annual.getByLabel('Days a year: Annual').fill('12.5')
+  await annual.getByRole('button', { name: 'Save' }).click()
+  await expect.poll(() => requests.at(-1)).toBe('PUT /leave-types/t1 {"name":"Annual","annualDays":12.5}')
+  await panel.getByRole('button', { name: 'Delete: Sick' }).click()
+  await expect.poll(() => requests.at(-1)).toBe('DELETE /leave-types/t2')
+  await expect(panel.locator('.leave-type-row')).toHaveCount(1)
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
 })
