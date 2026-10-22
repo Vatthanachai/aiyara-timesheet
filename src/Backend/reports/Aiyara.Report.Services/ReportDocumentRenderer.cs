@@ -17,7 +17,7 @@ public sealed record ReportLine(DateOnly Date, string Start, string End, int Dur
 /// break); a day with more work than that counts as overtime.</summary>
 public sealed record ReportDocumentData(string EmployeeName, string Department, string Period,
     IReadOnlyList<ReportLine> Lines, decimal LeaveDays, ReportFormats? Formats = null,
-    int StandardDayMinutes = ReportDocumentRenderer.DefaultStandardDayMinutes);
+    int StandardDayMinutes = ReportDocumentRenderer.DefaultStandardDayMinutes, string Language = "en");
 
 /// <summary>The organization's date and time formats (Identity's <c>OrganizationFormats</c>):
 /// <c>bbbb</c> is the Buddhist year; documents are in English, so <c>MMM</c> is an English month.
@@ -116,6 +116,7 @@ public static class ReportDocumentRenderer
     public static byte[] RenderPdf(ReportDocumentData data)
     {
         ConfigureFont();
+        var text = data.Language == "th" ? PdfText.Thai : PdfText.English;
         var document = new PdfDocument();
         document.Info.Title = $"Timesheet {data.Period}";
         var page = document.AddPage();
@@ -128,23 +129,23 @@ public static class ReportDocumentRenderer
         var pale = new XSolidBrush(XColor.FromArgb(224, 234, 250));
         var dayOff = new XSolidBrush(XColor.FromArgb(232, 234, 238));
         const double left = 35, right = 560;
-        gfx.DrawString($"Timesheet report · {data.Period}", title, XBrushes.Black,
+        gfx.DrawString($"{text.Title} · {data.Period}", title, XBrushes.Black,
             new XRect(left, 30, right - left, 24), XStringFormats.TopCenter);
-        gfx.DrawString($"Employee: {data.EmployeeName}    Department: {data.Department}", body,
+        gfx.DrawString($"{text.Employee}: {data.EmployeeName}    {text.Department}: {data.Department}", body,
             XBrushes.Black, left, 76);
         var workLines = data.Lines.Where(x => x.Kind == "work").ToArray();
         var workedDays = workLines.Select(x => x.Date).Distinct().Count();
         var hours = workLines.Sum(x => x.DurationMinutes) / 60d;
         var overtimeDays = OvertimeDays(data);
-        gfx.DrawString($"Leave days: {data.LeaveDays:0.##}    Days off: {DaysOff(data)}    Worked days: {workedDays}    Work hours: {hours:0.##}    Overtime days: {overtimeDays}",
+        gfx.DrawString($"{text.LeaveDays}: {data.LeaveDays:0.##}    {text.DaysOff}: {DaysOff(data)}    {text.WorkedDays}: {workedDays}    {text.WorkHours}: {hours:0.##}    {text.OvertimeDays}: {overtimeDays}",
             body, XBrushes.Black, left, 91);
         var y = 112d;
         var showMember = data.Lines.Any(x => x.Member.Length > 0);
         // A Member column narrows Task so the table keeps the same width.
         var widths = showMember ? new[] { 42d, 76d, 76d, 214d, 82d } : new[] { 42d, 76d, 290d, 82d };
         var headers = showMember
-            ? new[] { "Date", "Member", "Time", "Task / activity", "Notes" }
-            : new[] { "Date", "Time", "Task / activity", "Notes" };
+            ? new[] { text.Date, text.Member, text.Time, text.Task, text.Notes }
+            : new[] { text.Date, text.Time, text.Task, text.Notes };
         double x = left;
         for (var i = 0; i < headers.Length; i++)
         {
@@ -190,9 +191,9 @@ public static class ReportDocumentRenderer
             y += height;
         }
         y = Math.Min(y + 24, 760);
-        gfx.DrawString($"Work period: {data.Period}    Employee signature: ____________________",
+        gfx.DrawString($"{text.WorkPeriod}: {data.Period}    {text.EmployeeSignature}: ____________________",
             body, XBrushes.Black, left, y);
-        gfx.DrawString("Supervisor signature: ____________________    Date: ______________",
+        gfx.DrawString($"{text.SupervisorSignature}: ____________________    {text.Date}: ______________",
             body, XBrushes.Black, left, y + 18);
         using var output = new MemoryStream();
         document.Save(output, closeStream: false);
@@ -299,6 +300,20 @@ public static class ReportDocumentRenderer
     private static string Get(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? "" : "";
+
+    /// <summary>The fixed words of the PDF, in the language the member chose on the page.</summary>
+    private sealed record PdfText(string Title, string Employee, string Department, string LeaveDays, string DaysOff,
+        string WorkedDays, string WorkHours, string OvertimeDays, string Date, string Member, string Time, string Task,
+        string Notes, string WorkPeriod, string EmployeeSignature, string SupervisorSignature)
+    {
+        public static readonly PdfText English = new("Timesheet report", "Employee", "Department", "Leave days", "Days off",
+            "Worked days", "Work hours", "Overtime days", "Date", "Member", "Time", "Task / activity", "Notes",
+            "Work period", "Employee signature", "Supervisor signature");
+
+        public static readonly PdfText Thai = new("รายงานบันทึกเวลา", "พนักงาน", "แผนก", "วันลา", "วันหยุด",
+            "วันทำงาน", "ชั่วโมงทำงาน", "วันทำงานล่วงเวลา", "วันที่", "สมาชิก", "เวลา", "งาน / กิจกรรม", "หมายเหตุ",
+            "ช่วงเวลาทำงาน", "ลายเซ็นพนักงาน", "ลายเซ็นหัวหน้างาน");
+    }
 
     private const double LineHeight = 12;
 

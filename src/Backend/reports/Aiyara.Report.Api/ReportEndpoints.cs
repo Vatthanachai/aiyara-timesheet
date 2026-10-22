@@ -26,9 +26,11 @@ public sealed record RetentionRequest(int Years);
 /// a generated monthly report. Report reads and stores nothing for it: like the page's XLSX and CSV
 /// exports, the file holds exactly what the caller sent. DateFormat and TimeFormat are the
 /// organization's (<see cref="Services.ReportFormats"/>); StandardDayMinutes is its normal working day,
-/// which marks overtime days.</summary>
+/// which marks overtime days. Locale is <c>th</c> or <c>en</c> (the default): the language of the PDF's
+/// fixed words, as chosen on the page.</summary>
 public sealed record TimesheetPdfRequest(string MemberName, string Period, IReadOnlyList<TimesheetPdfLine> Lines,
-    string? Department = null, int? StandardDayMinutes = null, string? DateFormat = null, string? TimeFormat = null)
+    string? Department = null, int? StandardDayMinutes = null, string? DateFormat = null, string? TimeFormat = null,
+    string? Locale = null)
 {
     public const int MaxLines = 1000;
 }

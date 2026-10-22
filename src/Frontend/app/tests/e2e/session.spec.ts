@@ -2265,7 +2265,7 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   expect(readFileSync(await pdfDownload.path()).subarray(0, 5).toString()).toBe('%PDF-')
   const pdfRequest = state.pdfRequests[0] as { lines: { kind: string; date: string; start: string | null; task: string }[] }
   expect(pdfRequest).toMatchObject({ memberName: 'Somchai Staff', period: 'October 2026', department: 'Outsource',
-    standardDayMinutes: 420, dateFormat: 'dd/MM/yyyy', timeFormat: 'HH:mm' })
+    standardDayMinutes: 420, dateFormat: 'dd/MM/yyyy', timeFormat: 'HH:mm', locale: 'en' })
   // Five days off, one leave day, and three entries, as in the spreadsheet.
   expect(pdfRequest.lines).toHaveLength(9)
   expect(pdfRequest.lines).toContainEqual(expect.objectContaining({ date: '2026-10-06', kind: 'holiday', task: 'Memorial day' }))

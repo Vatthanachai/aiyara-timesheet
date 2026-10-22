@@ -383,7 +383,7 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         var data = new ReportDocumentData(body.MemberName.Trim(), body.Department?.Trim() ?? "", body.Period.Trim(),
             lines, lines.Where(x => x.Kind == "leave").Sum(x => ReportDocumentRenderer.LeaveDays(x.DurationMinutes, standardDay)),
             new ReportFormats(body.DateFormat ?? ReportFormats.Default.DateFormat, body.TimeFormat ?? ReportFormats.Default.TimeFormat),
-            standardDay);
+            standardDay, body.Locale ?? "en");
         return new ServiceFileResponse(ReportDocumentRenderer.RenderPdf(data), "application/pdf", "timesheet.pdf");
     }
 
@@ -401,7 +401,7 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
             System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _);
         return body.Lines is { Count: <= TimesheetPdfRequest.MaxLines } &&
             Text(body.MemberName, 200, required: true) && Text(body.Period, 100, required: true) &&
-            Text(body.Department, 200) && body.StandardDayMinutes is null or (> 0 and <= 1440) &&
+            Text(body.Department, 200) && body.Locale is null or "th" or "en" && body.StandardDayMinutes is null or (> 0 and <= 1440) &&
             body.Lines.All(line => line is not null && TimesheetPdfKinds.Contains(line.Kind) &&
                 Text(line.Task, 200) && line.Task is not null && Text(line.Detail, 4000) && Text(line.Notes, 4000) &&
                 Text(line.Project, 200) && Text(line.Category, 200) &&

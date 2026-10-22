@@ -277,7 +277,7 @@ function pdfRequest() {
   const current = detail.value!
   const holidays = new Set(current.holidays.map(x => x.date))
   return {
-    memberName: selectedName.value, period: monthLabel.value,
+    memberName: selectedName.value, period: monthLabel.value, locale: props.locale,
     department: props.self ? null : memberById(selectedId.value)?.groupName ?? null,
     standardDayMinutes: detailSchedule.value?.standardMinutes ?? null,
     dateFormat: props.formats.dateFormat, timeFormat: props.formats.timeFormat,
