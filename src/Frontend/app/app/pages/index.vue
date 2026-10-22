@@ -3,6 +3,7 @@ import { fieldErrors, safeError } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
 import type { SignInOrganization } from '../composables/useSession'
 import DayRuler, { type RulerBand } from '../../../shared/components/DayRuler.vue'
+import { DEFAULT_FORMATS, formatDate } from '../../../shared/date-format'
 const { token, role, login, signIn } = useSession()
 const { locale } = useLocale()
 const text = useLocaleText(locale, {
@@ -13,6 +14,8 @@ const text = useLocaleText(locale, {
     chooseOrganization: 'เลือกองค์กร', chooseOrganizationHint: 'บัญชีนี้อยู่ในหลายองค์กร เลือกองค์กรที่ต้องการเข้าใช้งาน',
     back: 'ย้อนกลับ', newHere: 'เพิ่งเริ่มใช้งาน?', signUp: 'สมัครใช้งานให้องค์กรของคุณ',
     acceptInvitation: 'เข้าร่วมด้วยรหัสคำเชิญ', activateAccount: 'เปิดใช้งานบัญชีที่ได้รับทางอีเมล',
+    signUpHint: 'ตั้งค่า Aiyara Timesheet ให้ทีมของคุณ', acceptInvitationHint: 'ผู้ดูแลส่งรหัสคำเชิญให้คุณแล้ว',
+    activateAccountHint: 'มีผู้สร้างบัญชีให้คุณ และส่งอีเมลเปิดใช้งานมาแล้ว',
     adminSignIn: 'เข้าสู่ระบบผู้ดูแลระบบ', adminHomeTitle: 'ผู้ดูแลระบบ',
     adminHomeHint: 'ดูภาพรวมทุกองค์กร จัดการองค์กรและผู้ดูแล และตรวจประวัติการดำเนินการของระบบ', openAdmin: 'เปิดหน้าผู้ดูแลระบบ',
     sampleStandup: 'ประชุมเช้า', sampleReview: 'รีวิวงานออกแบบ', sampleWorkshop: 'เวิร์กช็อปกับลูกค้า', samplePlanning: 'วางแผนสปรินต์'
@@ -24,6 +27,8 @@ const text = useLocaleText(locale, {
     chooseOrganization: 'Choose an organization', chooseOrganizationHint: 'This account belongs to several organizations. Choose the one to open.',
     back: 'Back', newHere: 'New here?', signUp: 'Sign up your organization',
     acceptInvitation: 'Join with an invitation code', activateAccount: 'Activate an account from your email',
+    signUpHint: 'Set up Aiyara Timesheet for your team.', acceptInvitationHint: 'Your administrator sent you a code.',
+    activateAccountHint: 'An account was made for you and an activation email is waiting.',
     adminSignIn: 'System administrator sign in', adminHomeTitle: 'System admin',
     adminHomeHint: 'See every organization at a glance, manage organizations and administrators, and review the platform audit log.', openAdmin: 'Open System admin',
     sampleStandup: 'Standup', sampleReview: 'Design review', sampleWorkshop: 'Client workshop', samplePlanning: 'Sprint planning'
@@ -37,6 +42,15 @@ const sampleBands = computed<RulerBand[]>(() => [
   { start: 930, end: 1050, label: text.value.samplePlanning }
 ])
 const sampleHour = (hour: number) => String(hour).padStart(2, '0')
+const ways = computed(() => [
+  { to: '/signup', label: text.value.signUp, hint: text.value.signUpHint },
+  { to: '/accept-invitation', label: text.value.acceptInvitation, hint: text.value.acceptInvitationHint },
+  { to: '/activate', label: text.value.activateAccount, hint: text.value.activateAccountHint }
+])
+// Today's date, printed on the sign-in card as on a time card; set in the browser, whose day it is.
+const today = ref('')
+onMounted(() => { today.value = new Date().toLocaleDateString('sv-SE') })
+const todayText = computed(() => today.value && formatDate(today.value, DEFAULT_FORMATS, locale.value, { weekday: true }))
 const email = ref('')
 const password = ref('')
 const organizations = ref<SignInOrganization[]>([])
@@ -102,8 +116,11 @@ function backToSignIn() {
       :bands="sampleBands" :hour-label="sampleHour" animate />
 
     <div class="welcome-access">
-      <section v-if="organizations.length" class="login-card" aria-labelledby="choose-organization">
-        <h2 id="choose-organization">{{ text.chooseOrganization }}</h2>
+      <section v-if="organizations.length" class="login-card punch-card" aria-labelledby="choose-organization">
+        <div class="card-head">
+          <h2 id="choose-organization">{{ text.chooseOrganization }}</h2>
+          <time v-if="today" :datetime="today">{{ todayText }}</time>
+        </div>
         <p>{{ text.chooseOrganizationHint }}</p>
         <button v-for="organization in organizations" :key="organization.organizationCode"
           class="button organization-choice" type="button" :disabled="pending" @click="chooseOrganization(organization)">
@@ -113,8 +130,11 @@ function backToSignIn() {
         <button type="button" class="link-button" @click="backToSignIn">{{ text.back }}</button>
       </section>
 
-      <form v-else class="login-card" @submit.prevent="signInByEmail">
-        <h2>{{ text.signIn }}</h2>
+      <form v-else class="login-card punch-card" @submit.prevent="signInByEmail">
+        <div class="card-head">
+          <h2>{{ text.signIn }}</h2>
+          <time v-if="today" :datetime="today">{{ todayText }}</time>
+        </div>
         <label for="sign-in-email">{{ text.email }}</label>
         <input id="sign-in-email" v-model="email" required type="email" autocomplete="username"
           :aria-invalid="validation.email?.length ? 'true' : undefined"
@@ -132,13 +152,17 @@ function backToSignIn() {
         <button class="button" type="submit" :disabled="pending">{{ text.signIn }}</button>
       </form>
 
-      <nav class="welcome-new" :aria-label="text.newHere">
-        <h2>{{ text.newHere }}</h2>
-        <NuxtLink to="/signup">{{ text.signUp }}</NuxtLink>
-        <NuxtLink to="/accept-invitation">{{ text.acceptInvitation }}</NuxtLink>
-        <NuxtLink to="/activate">{{ text.activateAccount }}</NuxtLink>
-      </nav>
     </div>
+
+    <nav class="welcome-new" :aria-label="text.newHere">
+      <h2>{{ text.newHere }}</h2>
+      <ul>
+        <li v-for="way in ways" :key="way.to">
+          <NuxtLink :to="way.to">{{ way.label }}</NuxtLink>
+          <span>{{ way.hint }}</span>
+        </li>
+      </ul>
+    </nav>
 
     <p class="welcome-foot"><NuxtLink to="/sys-admin/login">{{ text.adminSignIn }}</NuxtLink></p>
   </div>
@@ -146,20 +170,23 @@ function backToSignIn() {
 
 <style scoped>
 .welcome {
-  align-items: start; display: grid; gap: 2rem 4rem;
-  grid-template-areas: "intro access" "ruler access" "foot foot";
-  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 25rem);
+  align-items: end; display: grid; gap: 2.5rem 4rem;
+  grid-template-areas: "intro access" "ruler ruler" "new new" "foot foot";
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
 }
-.welcome-intro { grid-area: intro; }
-.welcome-ruler { grid-area: ruler; margin-top: 1rem; }
-.welcome-access { display: grid; gap: 1.75rem; grid-area: access; }
-.welcome-foot { border-top: 1px solid var(--color-border); font-size: .9rem; grid-area: foot; margin: 1rem 0 0; padding-top: 1.25rem; }
+.welcome-intro { grid-area: intro; padding-bottom: .5rem; }
+/* The sample day runs the full width, between the welcome and the ways in. */
+.welcome-ruler { grid-area: ruler; }
+.welcome-access { grid-area: access; }
+.welcome-foot { font-size: .9rem; grid-area: foot; margin: 0; }
 .welcome-product { color: var(--color-brand); font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; margin: 0; }
-.welcome h1 { font-family: var(--font-display); font-size: clamp(2.4rem, 6.5vw, 4.5rem); font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin: .6rem 0 1.25rem; }
+.welcome h1 { font-family: var(--font-display); font-size: clamp(2.4rem, 6.5vw, 4.75rem); font-weight: 600; letter-spacing: -.015em; line-height: 1.08; margin: .6rem 0 1.25rem; }
 .welcome h1 span { display: inline-block; }
 .welcome-lede { font-size: 1.125rem; margin: 0; max-width: 34rem; }
-.login-card { box-shadow: 0 1px 0 var(--color-border), 0 1.25rem 2.5rem -1.5rem rgb(23 32 51 / 22%); gap: .45rem; max-width: none; padding: 1.75rem; }
-.login-card h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin: 0 0 .6rem; }
+.login-card { gap: .45rem; max-width: none; padding: 2.4rem 1.75rem 1.75rem; }
+.card-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: .25rem 1rem; justify-content: space-between; margin-bottom: .6rem; }
+.card-head h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin: 0; }
+.card-head time { color: var(--color-muted); font-family: var(--font-display); font-size: .95rem; font-variant-numeric: tabular-nums; font-weight: 500; }
 .login-card p { margin: 0 0 .5rem; }
 .login-card label { font-weight: 600; }
 .login-card input { margin-bottom: .6rem; }
@@ -172,13 +199,21 @@ function backToSignIn() {
 .password-label a { color: var(--color-brand); font-size: .9rem; }
 .form-error { color: #8a2424; }
 .organization-choice { text-align: left; }
-.welcome-new { display: grid; gap: .5rem; padding: 0 .25rem; }
-.welcome-new h2 { font-size: 1rem; margin: 0 0 .15rem; }
-.welcome-new a { color: var(--color-brand); justify-self: start; }
+/* Three doors in, side by side, each saying who it is for. */
+.welcome-new { border-top: 1px solid var(--color-border); display: grid; gap: 1rem 2.5rem; grid-area: new; grid-template-columns: 10rem minmax(0, 1fr); padding-top: 1.75rem; }
+.welcome-new h2 { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; margin: 0; }
+.welcome-new ul { display: grid; gap: 1.25rem 2.5rem; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
+.welcome-new li { align-content: start; display: grid; gap: .3rem; justify-items: start; }
+.welcome-new a { color: var(--color-brand); font-weight: 600; text-underline-offset: .2em; }
+.welcome-new span { color: var(--color-muted); font-size: .95rem; line-height: 1.5; }
 .admin-home { display: grid; gap: .5rem; justify-items: start; max-width: 40rem; }
 .admin-home h1 { font-family: var(--font-display); font-weight: 600; }
 .admin-home p { font-size: 1.125rem; margin: 0 0 1rem; }
+@media (max-width: 60rem) {
+  .welcome-new { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 52rem) {
-  .welcome { gap: 1.75rem; grid-template-areas: "intro" "access" "ruler" "foot"; grid-template-columns: minmax(0, 1fr); }
+  .welcome { align-items: start; gap: 2rem; grid-template-areas: "intro" "access" "ruler" "new" "foot"; grid-template-columns: minmax(0, 1fr); }
+  .welcome-new ul { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

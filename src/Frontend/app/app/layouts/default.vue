@@ -115,6 +115,7 @@ async function signOut() {
   closeProfileMenu()
   profile.value = null
   await logout()
+  await navigateTo('/signed-out')
 }
 
 onMounted(() => {
