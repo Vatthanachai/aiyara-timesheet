@@ -77,7 +77,7 @@ if (!remote.value) {
     <p>{{ text.accessRestrictedBody }}</p>
     <NuxtLink to="/">{{ text.goHome }}</NuxtLink>
   </section>
-  <section v-else-if="remote && token" class="remote-workspace">
+  <section v-else-if="remote && token" class="remote-workspace" :data-remote="remote.id">
     <h1>{{ remote.label[locale] }}</h1>
     <iframe v-if="remoteUrl" ref="frame" :src="remoteUrl" :title="remote.label[locale]" @load="sendSession" />
   </section>

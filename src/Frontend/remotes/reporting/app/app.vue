@@ -654,7 +654,8 @@ onMounted(() => {
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--color-ink);background:var(--color-canvas)}
 *{box-sizing:border-box}body{margin:0}
 :focus-visible{outline:2px solid var(--color-brand);outline-offset:2px}
-.reports{max-width:76rem;margin:0 auto;padding:clamp(1rem,3vw,2rem)}
+/* The Shell sets the width and the side margins; a few pixels keep focus outlines inside the frame. */
+.reports{margin:0 auto;padding:clamp(1rem,3vw,2rem) 3px}
 .page-heading h1{font-family:var(--font-display);font-size:clamp(1.7rem,3.5vw,2.4rem);font-weight:600;line-height:1.15;margin:0 0 .35rem}
 .page-heading p{color:var(--color-muted);margin:0 0 1.5rem;max-width:40rem}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:.75rem;padding:clamp(1rem,2vw,1.35rem);margin:0 0 1.25rem;min-width:0}
