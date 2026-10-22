@@ -488,3 +488,6 @@ $RECYCLE.BIN/
 
 # Generated secrets for the test-only Compose stack
 .env.test
+
+# Agent worktrees
+.claude/worktrees/
