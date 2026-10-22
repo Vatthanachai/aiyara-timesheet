@@ -36,6 +36,20 @@ public sealed class TimesheetPdfExportTests
         Assert.Contains("Timesheet October 2026", Encoding.Latin1.GetString(file.Content));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("en")]
+    [InlineData("th")]
+    public void The_pdf_is_made_in_the_language_the_member_chose(string? locale)
+    {
+        var english = Assert.IsType<ServiceFileResponse>(Operations.TimesheetPdf(Employee, Month(Work(5, "09:00", "12:00", 180, "Review"))));
+        var chosen = Assert.IsType<ServiceFileResponse>(Operations.TimesheetPdf(Employee,
+            Month(Work(5, "09:00", "12:00", 180, "Review")) with { Locale = locale }));
+        Assert.StartsWith("%PDF-", Encoding.ASCII.GetString(chosen.Content, 0, 5));
+        // Thai words need Thai glyphs, so a Thai document embeds a different face subset than an English one.
+        if (locale == "th") Assert.NotEqual(english.Content.Length, chosen.Content.Length);
+    }
+
     [Fact]
     public void An_empty_month_still_renders()
     {
@@ -48,6 +62,7 @@ public sealed class TimesheetPdfExportTests
         Month() with { MemberName = " " },
         Month() with { Period = new string('x', 101) },
         Month() with { StandardDayMinutes = 0 },
+        Month() with { Locale = "fr" },
         Month(Work(5, "9:00", "12:00", 180, "Single-digit hour")),
         Month(Work(5, "09:00", "", 180, "No end")),
         Month(Work(5, "09:00", "12:00", 1441, "Longer than a day")),
