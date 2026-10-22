@@ -11,6 +11,18 @@ public abstract class TenantRecord
 public sealed class Project : TenantRecord
 {
     public required string Name { get; set; }
+    /// <summary>The client the project is for, free text; null when it has none. Projects with the same
+    /// client (ignoring case) are grouped in the by-client report.</summary>
+    public string? Client { get; set; }
+    /// <summary>Time on the project is billable work; its hours count towards the billable amount.</summary>
+    public bool IsBillable { get; set; }
+    /// <summary>Money per hour in <see cref="CurrencyCode"/>; null when no rate is set. Reports multiply
+    /// today's rate by the hours, so a rate change reprices past time too.</summary>
+    public decimal? HourlyRate { get; set; }
+    /// <summary>ISO 4217 code (three capital letters) of the rate; set with the rate.</summary>
+    public string? CurrencyCode { get; set; }
+    /// <summary>Hours the project may use in total; null when it has no budget. Going over only warns.</summary>
+    public decimal? BudgetHours { get; set; }
     public bool IsDeleted { get; set; }
 }
 

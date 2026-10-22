@@ -90,6 +90,10 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
         modelBuilder.Entity<PersonalTask>().HasIndex(x => new { x.TenantId, x.OwnerId });
         modelBuilder.Entity<Holiday>().HasIndex(x => new { x.TenantId, x.Date });
         modelBuilder.Entity<Project>().Property(x => x.Name).HasMaxLength(200);
+        modelBuilder.Entity<Project>().Property(x => x.Client).HasMaxLength(200);
+        modelBuilder.Entity<Project>().Property(x => x.HourlyRate).HasPrecision(12, 2);
+        modelBuilder.Entity<Project>().Property(x => x.CurrencyCode).HasMaxLength(3);
+        modelBuilder.Entity<Project>().Property(x => x.BudgetHours).HasPrecision(10, 2);
         modelBuilder.Entity<Category>().Property(x => x.Name).HasMaxLength(200);
         modelBuilder.Entity<PersonalTask>().Property(x => x.Name).HasMaxLength(200);
         modelBuilder.Entity<PersonalTask>().Property(x => x.Status).HasMaxLength(20);

@@ -23,7 +23,7 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
-    public Task<IActionResult> CreateProject([FromBody] NameRequest body, CancellationToken ct) =>
+    public Task<IActionResult> CreateProject([FromBody] ProjectRequest body, CancellationToken ct) =>
         Execute(actor => operations.SaveCatalog(actor, body, "project", ct));
 
     [HttpPost("categories")]
@@ -51,6 +51,45 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
     public Task<IActionResult> UpdateCategory(Guid id, [FromBody] NameRequest body, CancellationToken ct) =>
         Execute(actor => operations.UpdateCatalog(actor, id, body, "category", ct));
+
+    /// <summary>Tenant Admin only: replaces a project's client, billable flag, hourly rate and currency, and hours budget.</summary>
+    [HttpPut("projects/{id:guid}/billing", Name = "UpdateProjectBillingV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<Project>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    public Task<IActionResult> UpdateProjectBilling(Guid id, [FromBody] ProjectBillingRequest body, CancellationToken ct) =>
+        Execute(actor => operations.SaveProjectBilling(actor, id, body, ct));
+
+    /// <summary>Tenant Admin only: every project's hours used against its budget and its billable amount for
+    /// the period (inclusive <c>from</c> and <c>to</c> dates; all time when both are left out).</summary>
+    [HttpGet("projects/usage", Name = "GetProjectsUsageV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> ProjectsUsage([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) =>
+        Execute(actor => operations.ProjectsUsage(actor, from, to, ct));
+
+    /// <summary>Tenant Admin only: one project's usage, with the minutes each member logged on it in the period.</summary>
+    [HttpGet("projects/{id:guid}/usage", Name = "GetProjectUsageV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    public Task<IActionResult> ProjectUsage(Guid id, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to,
+        CancellationToken ct) => Execute(actor => operations.ProjectUsageOf(actor, id, from, to, ct));
+
+    /// <summary>Tenant Admin only: usage grouped by client, with the billable amount per currency.</summary>
+    [HttpGet("clients/usage", Name = "GetClientsUsageV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> ClientsUsage([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) =>
+        Execute(actor => operations.ClientsUsage(actor, from, to, ct));
 
     [HttpDelete("projects/{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

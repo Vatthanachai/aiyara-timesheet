@@ -479,6 +479,9 @@ const timeZoneChoices = computed(() => timeZones.value.map(zone => ({ value: zon
       <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :export-pdf="exportTimesheetPdf" :post="timesheetPost" />
       <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :export-pdf="exportTimesheetPdf" :self="{ name: myName }" />
 
+      <!-- Usage reads live entries and rates; only Tenant Admins may see them. -->
+      <ProjectUsage v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" />
+
       <section class="card documents" aria-labelledby="documents-heading">
         <div class="card-heading">
           <h2 id="documents-heading">{{ copy.documents }}</h2>

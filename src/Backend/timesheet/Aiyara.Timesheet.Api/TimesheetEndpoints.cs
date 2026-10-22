@@ -6,7 +6,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Aiyara.Timesheet.Api;
 
-public sealed record NameRequest(string Name);
+public record NameRequest(string Name);
+/// <summary>A new project: its name and, optionally, its billing details (see <see cref="ProjectBillingRequest"/>).</summary>
+public sealed record ProjectRequest(string Name, string? Client = null, bool IsBillable = false,
+    decimal? HourlyRate = null, string? CurrencyCode = null, decimal? BudgetHours = null) : NameRequest(Name);
+/// <summary>A project's billing details, replaced as a whole: <c>Client</c> (free text, at most 200 characters),
+/// whether its time is billable, the hourly rate (0 to 1,000,000, two decimals) with its ISO 4217
+/// <c>CurrencyCode</c> (required with a rate), and the hours budget (above 0 to 1,000,000, two decimals).
+/// Null clears a value.</summary>
+public sealed record ProjectBillingRequest(string? Client, bool IsBillable, decimal? HourlyRate, string? CurrencyCode,
+    decimal? BudgetHours);
 public sealed record HolidayRequest(DateOnly Date, string Name);
 /// <summary>Working weekdays as <see cref="DayOfWeek"/> numbers (Sunday = 0), and optionally when the
 /// working day starts and ends with its break: sending the hours also sets the break (both break

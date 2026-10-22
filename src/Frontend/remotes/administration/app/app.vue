@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
+import { fieldErrors, safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
+import { formatHours, formatMoney } from '../../../shared/money'
+import { billingBody, validateBilling, type BillingDraft, type BillingField, type BillingProblem } from './utils/billing'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, useLocaleText, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import AutoComplete from '../../../shared/components/AutoComplete.vue'
@@ -10,7 +12,9 @@ import { DATE_FORMATS, TIME_FORMATS, formatDate as formatCalendarDate, formatTim
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; isCurrentUser: boolean; groupId: string | null; groupName: string | null }
 type MemberGroup = { id: string; name: string; memberCount: number }
 type Invitation = { id: string; email: string; role: string; invitedByEmail: string | null; createdAtUtc: string; expiresAtUtc: string; groupName?: string | null }
-type Catalog = { projects: { id: string; name: string }[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[]; leaveTypes?: LeaveType[]; workingDays: number[]; workHours?: WorkHours }
+/** A project with its billing details; a catalog from an older API leaves them out. */
+type Project = { id: string; name: string; client?: string | null; isBillable?: boolean; hourlyRate?: number | null; currencyCode?: string | null; budgetHours?: number | null }
+type Catalog = { projects: Project[]; categories: { id: string; name: string }[]; holidays: { id: string; date: string; name: string }[]; leaveTypes?: LeaveType[]; workingDays: number[]; workHours?: WorkHours }
 /** A leave type and its days a year; null days is no limit. */
 type LeaveType = { id: string; name: string; annualDays: number | null }
 type WorkHours = { startTime: string; endTime: string; breakStart?: string | null; breakEnd?: string | null }
@@ -148,7 +152,16 @@ const copy = useLocaleText(locale, { th: {
   dailyReminder: 'เตือนรายวัน', dailyReminderHint: 'ทุกวันทำงาน ถึงสมาชิกที่ไม่ได้ลงเวลาหรือวันลาในวันทำงานก่อนหน้า',
   monthEndReminder: 'เตือนสิ้นเดือน', monthEndReminderHint: 'วันทำงานสุดท้ายของเดือน ถึงสมาชิกที่ชั่วโมงยังไม่ครบตามที่ควรลงถึงเมื่อวาน',
   sendAt: 'เวลาส่ง', saveReminders: 'บันทึกการแจ้งเตือน', remindersSaved: 'บันทึกการแจ้งเตือนแล้ว',
-  saveWorkWeek: 'บันทึกวันและเวลาทำงาน', workWeekSaved: 'บันทึกวันและเวลาทำงานแล้ว', workWeekRequired: 'ต้องมีวันทำงานอย่างน้อยหนึ่งวัน'
+  saveWorkWeek: 'บันทึกวันและเวลาทำงาน', workWeekSaved: 'บันทึกวันและเวลาทำงานแล้ว', workWeekRequired: 'ต้องมีวันทำงานอย่างน้อยหนึ่งวัน',
+  billing: 'การเรียกเก็บเงินและงบประมาณ', hideBilling: 'ซ่อนการเรียกเก็บเงิน', billingHint: 'ผู้ดูแลองค์กรเท่านั้นที่เห็นอัตราค่าบริการ รายงานคำนวณจากอัตราปัจจุบัน หากเปลี่ยนอัตรา เวลาที่บันทึกไว้แล้วจะคำนวณใหม่ด้วยอัตรานั้น',
+  client: 'ลูกค้า', clientHint: 'ไม่บังคับ ไม่เกิน 200 ตัวอักษร', billable: 'เรียกเก็บเงินได้', nonBillable: 'เรียกเก็บเงินไม่ได้', billableSwitch: 'โครงการนี้เรียกเก็บเงินได้',
+  hourlyRate: 'อัตราต่อชั่วโมง', rateHint: '0–1,000,000 ทศนิยมไม่เกิน 2 ตำแหน่ง', currency: 'สกุลเงิน', currencyHint: 'รหัส 3 ตัวอักษร เช่น THB ต้องระบุเมื่อกำหนดอัตรา',
+  budgetHours: 'งบประมาณชั่วโมง', budgetHint: 'ชั่วโมงรวมตลอดโครงการ มากกว่า 0 ถึง 1,000,000 เกินงบแล้วระบบเตือนเท่านั้น ไม่ห้ามบันทึกเวลา',
+  perHour: 'ต่อชั่วโมง', budgetOf: 'งบ {hours} ชั่วโมง', saveBilling: 'บันทึกข้อมูลการเรียกเก็บเงิน', billingSaved: 'บันทึกข้อมูลการเรียกเก็บเงินของ {name} แล้ว',
+  billingInvalid: 'บันทึกไม่สำเร็จ กรุณาแก้ช่องที่มีเครื่องหมายแล้วลองใหม่',
+  rateInvalid: 'อัตราต้องเป็นตัวเลข 0–1,000,000 ทศนิยมไม่เกิน 2 ตำแหน่ง', currencyInvalid: 'สกุลเงินต้องเป็นตัวอักษร 3 ตัว เช่น THB', currencyRequired: 'ต้องระบุสกุลเงินเมื่อกำหนดอัตรา',
+  budgetInvalid: 'งบประมาณต้องมากกว่า 0 ถึง 1,000,000 ชั่วโมง ทศนิยมไม่เกิน 2 ตำแหน่ง', clientInvalid: 'ชื่อลูกค้าต้องไม่เกิน 200 ตัวอักษร',
+  billingForbidden: 'เฉพาะผู้ดูแลองค์กรเท่านั้นที่แก้ข้อมูลการเรียกเก็บเงินได้', billingGone: 'ไม่พบโครงการนี้ อาจถูกลบไปแล้ว รายการถูกโหลดใหม่'
 }, en: {
   title: 'Administration', subtitle: 'Manage projects, categories, holidays and access requirements in one place.', signIn: 'Please sign in through Aiyara Shell',
   settingsTabs: 'Settings', tabOrganization: 'Organization', tabPeople: 'People', tabTime: 'Working time', tabCatalog: 'Projects and categories', tabSecurity: 'Security',
@@ -209,7 +222,16 @@ const copy = useLocaleText(locale, { th: {
   dailyReminder: 'Daily reminder', dailyReminderHint: 'Each working day, to members who logged no time or leave on the previous working day.',
   monthEndReminder: 'Month-end reminder', monthEndReminderHint: 'On the last working day, to members whose month is short of the hours expected up to yesterday.',
   sendAt: 'Send at', saveReminders: 'Save reminders', remindersSaved: 'Reminders saved.',
-  saveWorkWeek: 'Save working days and hours', workWeekSaved: 'Working days and hours saved.', workWeekRequired: 'Keep at least one working day.'
+  saveWorkWeek: 'Save working days and hours', workWeekSaved: 'Working days and hours saved.', workWeekRequired: 'Keep at least one working day.',
+  billing: 'Billing and budget', hideBilling: 'Hide billing', billingHint: 'Only organization admins see rates. Reports multiply hours by the current rate, so changing a rate also reprices time already logged.',
+  client: 'Client', clientHint: 'Optional, at most 200 characters.', billable: 'Billable', nonBillable: 'Not billable', billableSwitch: 'This project is billable',
+  hourlyRate: 'Hourly rate', rateHint: '0 to 1,000,000, at most 2 decimals.', currency: 'Currency', currencyHint: 'Three letters such as THB. Required when a rate is set.',
+  budgetHours: 'Budget (hours)', budgetHint: 'Total hours for the life of the project, above 0 up to 1,000,000. Going over only warns; time can still be saved.',
+  perHour: 'per hour', budgetOf: '{hours} h budget', saveBilling: 'Save billing', billingSaved: 'Saved the billing details of {name}.',
+  billingInvalid: 'Could not save. Fix the marked fields and try again.',
+  rateInvalid: 'The rate must be a number from 0 to 1,000,000 with at most 2 decimals.', currencyInvalid: 'The currency must be exactly 3 letters, such as THB.', currencyRequired: 'Choose a currency when you set a rate.',
+  budgetInvalid: 'The budget must be above 0 and at most 1,000,000 hours, with at most 2 decimals.', clientInvalid: 'The client name must be at most 200 characters.',
+  billingForbidden: 'Only organization admins can change billing details.', billingGone: 'This project no longer exists. The list was reloaded.'
 } })
 // ---- Tabs: one subject at a time, remembered for the session ----------------------------------
 type TabId = 'organization' | 'people' | 'time' | 'catalog' | 'security'
@@ -313,6 +335,64 @@ async function remove(kind: 'projects' | 'categories' | 'holidays', id: string) 
 async function update(kind: 'projects' | 'categories' | 'holidays', item: { id: string; name: string; date?: string }) {
   try { await api(`/${kind}/${item.id}`, { method: 'PUT', body: kind === 'holidays' ? { name: item.name, date: item.date } : { name: item.name } }); await load() }
   catch (cause) { error.value = safeError(cause, locale.value) }
+}
+// ---- Project billing: client, billable flag, hourly rate with currency, and an hours budget ----------------
+/** The project whose billing form is open, its draft, and the problems and refusal shown on that form. */
+const billingOpenId = ref('')
+const billingDrafts = reactive<Record<string, BillingDraft>>({})
+const billingBusyId = ref('')
+const billingErrors = reactive<Record<string, string>>({})
+const billingServerProblems = reactive<Record<string, Partial<Record<BillingField, BillingProblem>>>>({})
+const draftFrom = (item: Project): BillingDraft => ({ client: item.client ?? '', isBillable: item.isBillable ?? false,
+  hourlyRate: item.hourlyRate == null ? '' : String(item.hourlyRate), currencyCode: item.currencyCode ?? '',
+  budgetHours: item.budgetHours == null ? '' : String(item.budgetHours) })
+const draftOf = (item: Project) => billingDrafts[item.id] ??= draftFrom(item)
+const billingProblems = (item: Project) => ({ ...validateBilling(draftOf(item)), ...billingServerProblems[item.id] })
+/** The text for the rule a field broke. */
+const problemText = (problem: BillingProblem) => ({ rate: copy.value.rateInvalid, currencyFormat: copy.value.currencyInvalid,
+  currencyRequired: copy.value.currencyRequired, budget: copy.value.budgetInvalid, client: copy.value.clientInvalid })[problem]
+function toggleBilling(item: Project) {
+  const closing = billingOpenId.value === item.id
+  billingOpenId.value = closing ? '' : item.id
+  if (!closing) { billingDrafts[item.id] = draftFrom(item); billingErrors[item.id] = ''; billingServerProblems[item.id] = {} }
+}
+/** "Contoso · Billable · THB 1,200.00 per hour · 100 h budget" for a project's closed row. */
+function billingSummary(item: Project) {
+  const parts = [item.client, item.isBillable ? copy.value.billable : copy.value.nonBillable]
+  if (item.hourlyRate != null) parts.push(`${formatMoney(item.hourlyRate, item.currencyCode, locale.value)} ${copy.value.perHour}`)
+  if (item.budgetHours != null) parts.push(copy.value.budgetOf.replace('{hours}', formatHours(item.budgetHours, locale.value)))
+  return parts.filter(Boolean).join(' · ')
+}
+async function saveBilling(item: Project) {
+  const draft = draftOf(item)
+  billingServerProblems[item.id] = {}
+  billingErrors[item.id] = ''
+  notice.value = ''
+  if (Object.keys(validateBilling(draft)).length) { billingErrors[item.id] = copy.value.billingInvalid; return }
+  billingBusyId.value = item.id
+  try {
+    const saved = await api<Project>(`/projects/${item.id}/billing`, { method: 'PUT', body: billingBody(draft) })
+    Object.assign(item, { client: saved.client ?? null, isBillable: saved.isBillable ?? false, hourlyRate: saved.hourlyRate ?? null,
+      currencyCode: saved.currencyCode ?? null, budgetHours: saved.budgetHours ?? null })
+    billingDrafts[item.id] = draftFrom(item)
+    notice.value = copy.value.billingSaved.replace('{name}', item.name)
+  } catch (cause) {
+    const failure = cause as { data?: { statusCode?: number; errorCode?: string; errors?: Record<string, string[]> }; status?: number }
+    const status = failure?.data?.statusCode ?? failure?.status
+    const code = failure?.data?.errorCode
+    if (code === 'VALIDATION_FAILED' || status === 400) {
+      const named = fieldErrors(cause, locale.value)
+      const map: Partial<Record<BillingField, BillingProblem>> = {}
+      if (named.hourlyRate) map.hourlyRate = 'rate'
+      if (named.currencyCode) map.currencyCode = failure?.data?.errors?.CurrencyCode?.includes('REQUIRED') ? 'currencyRequired' : 'currencyFormat'
+      if (named.budgetHours) map.budgetHours = 'budget'
+      if (named.client) map.client = 'client'
+      billingServerProblems[item.id] = map
+      billingErrors[item.id] = copy.value.billingInvalid
+    } else if (code === 'FORBIDDEN' || status === 403) billingErrors[item.id] = copy.value.billingForbidden
+    else if (code === 'NOT_FOUND' || status === 404) { billingErrors[item.id] = copy.value.billingGone; void load() }
+    else billingErrors[item.id] = safeError(cause, locale.value)
+  } finally { billingBusyId.value = '' }
 }
 async function saveLeaveType(type?: LeaveType) {
   error.value = ''
@@ -693,7 +773,23 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
 
       <!-- Projects and categories offered when recording time. -->
       <div v-show="activeTab === 'catalog'" id="panel-catalog" class="tab-panel two-columns" role="tabpanel" aria-labelledby="tab-catalog" tabindex="0">
-        <section class="panel" aria-labelledby="projects-heading"><div class="panel-heading"><h2 id="projects-heading">{{ copy.projects }}</h2><p>{{ copy.projectHint }}</p></div><form class="add-form" @submit.prevent="add('projects')"><label class="sr-only" for="new-project">{{ copy.projectName }}</label><input id="new-project" v-model="projectName" required maxlength="200" :placeholder="copy.projectName" /><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.projects.length" class="item-list"><li v-for="item in catalog.projects" :key="item.id" class="item-row"><input v-model="item.name" :aria-label="copy.projectName" /><div class="row-actions"><button class="button button-subtle" @click="update('projects', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('projects', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
+        <section class="panel projects-panel" aria-labelledby="projects-heading"><div class="panel-heading"><h2 id="projects-heading">{{ copy.projects }}</h2><p>{{ copy.projectHint }}</p></div><form class="add-form" @submit.prevent="add('projects')"><label class="sr-only" for="new-project">{{ copy.projectName }}</label><input id="new-project" v-model="projectName" required maxlength="200" :placeholder="copy.projectName" /><button class="button button-primary">{{ copy.add }}</button></form>
+          <ul v-if="catalog.projects.length" class="item-list">
+            <li v-for="item in catalog.projects" :key="item.id" class="project-item">
+              <div class="item-row"><input v-model="item.name" :aria-label="copy.projectName" /><div class="row-actions"><button type="button" class="button button-subtle" :aria-expanded="billingOpenId === item.id" :aria-controls="`billing-${item.id}`" :aria-label="`${billingOpenId === item.id ? copy.hideBilling : copy.billing}: ${item.name}`" @click="toggleBilling(item)">{{ billingOpenId === item.id ? copy.hideBilling : copy.billing }}</button><button class="button button-subtle" @click="update('projects', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('projects', item.id)">×</button></div></div>
+              <p class="billing-summary">{{ billingSummary(item) }}</p>
+              <form v-if="billingOpenId === item.id" :id="`billing-${item.id}`" class="billing-form" :aria-label="`${copy.billing}: ${item.name}`" novalidate @submit.prevent="saveBilling(item)">
+                <p class="field-hint billing-hint">{{ copy.billingHint }}</p>
+                <label class="billing-client"><span>{{ copy.client }}</span><input v-model="draftOf(item).client" maxlength="200" :aria-invalid="Boolean(billingProblems(item).client)" :aria-describedby="`billing-client-note-${item.id}`" /><small :id="`billing-client-note-${item.id}`" :class="{ 'field-error': billingProblems(item).client }">{{ billingProblems(item).client ? problemText(billingProblems(item).client!) : copy.clientHint }}</small></label>
+                <label class="check-card billing-switch"><input v-model="draftOf(item).isBillable" type="checkbox" /><span class="check-mark"></span><span>{{ copy.billableSwitch }}</span></label>
+                <label><span>{{ copy.hourlyRate }}</span><input v-model="draftOf(item).hourlyRate" inputmode="decimal" autocomplete="off" :aria-invalid="Boolean(billingProblems(item).hourlyRate)" :aria-describedby="`billing-rate-note-${item.id}`" /><small :id="`billing-rate-note-${item.id}`" :class="{ 'field-error': billingProblems(item).hourlyRate }">{{ billingProblems(item).hourlyRate ? problemText(billingProblems(item).hourlyRate!) : copy.rateHint }}</small></label>
+                <label><span>{{ copy.currency }}</span><input v-model="draftOf(item).currencyCode" list="currency-options" maxlength="3" autocapitalize="characters" autocomplete="off" :aria-invalid="Boolean(billingProblems(item).currencyCode)" :aria-describedby="`billing-currency-note-${item.id}`" /><small :id="`billing-currency-note-${item.id}`" :class="{ 'field-error': billingProblems(item).currencyCode }">{{ billingProblems(item).currencyCode ? problemText(billingProblems(item).currencyCode!) : copy.currencyHint }}</small></label>
+                <label><span>{{ copy.budgetHours }}</span><input v-model="draftOf(item).budgetHours" inputmode="decimal" autocomplete="off" :aria-invalid="Boolean(billingProblems(item).budgetHours)" :aria-describedby="`billing-budget-note-${item.id}`" /><small :id="`billing-budget-note-${item.id}`" :class="{ 'field-error': billingProblems(item).budgetHours }">{{ billingProblems(item).budgetHours ? problemText(billingProblems(item).budgetHours!) : copy.budgetHint }}</small></label>
+                <div class="billing-footer"><p class="field-error" role="alert">{{ billingErrors[item.id] }}</p><button class="button button-primary" :disabled="billingBusyId === item.id">{{ billingBusyId === item.id ? copy.loading : copy.saveBilling }}</button></div>
+              </form>
+            </li>
+          </ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p>
+          <datalist id="currency-options"><option v-for="code in ['THB', 'USD', 'EUR', 'GBP', 'JPY', 'SGD', 'AUD', 'CNY']" :key="code" :value="code" /></datalist></section>
         <section class="panel" aria-labelledby="categories-heading"><div class="panel-heading"><h2 id="categories-heading">{{ copy.categories }}</h2><p>{{ copy.categoryHint }}</p></div><form class="add-form" @submit.prevent="add('categories')"><label class="sr-only" for="new-category">{{ copy.categoryName }}</label><input id="new-category" v-model="categoryName" required maxlength="200" :placeholder="copy.categoryName" /><button class="button button-primary">{{ copy.add }}</button></form><ul v-if="catalog.categories.length" class="item-list"><li v-for="item in catalog.categories" :key="item.id" class="item-row"><input v-model="item.name" :aria-label="copy.categoryName" /><div class="row-actions"><button class="button button-subtle" @click="update('categories', item)">{{ copy.save }}</button><button class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('categories', item.id)">×</button></div></li></ul><p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p></section>
       </div>
 
@@ -853,6 +949,22 @@ input:disabled+.check-mark{opacity:.55}
 .holiday-form .holiday-name{flex:1}
 .holiday-row>.date-field{max-width:11rem}
 .close-form{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
+/* Project billing: a form that opens under the project's row. */
+.projects-panel{grid-column:1/-1}
+.project-item{border-top:1px solid var(--color-border);padding:.15rem 0}
+.project-item:first-child{border-top:0}
+.project-item .item-row{border-top:0}
+.billing-summary{margin:0 .65rem .4rem;color:var(--color-muted);font-size:.82rem}
+.billing-summary:empty{display:none}
+.billing-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:.85rem;align-items:start;margin:.25rem 0 .75rem;padding:1rem;border:1px solid var(--color-border);border-radius:.6rem;background:var(--color-surface-muted)}
+.billing-form label:not(.check-card){display:grid;gap:.3rem}
+.billing-form small{color:var(--color-muted);font-size:.78rem;font-weight:400;line-height:1.4}
+.billing-form small.field-error{color:var(--color-danger);font-weight:600}
+.billing-form input[aria-invalid="true"]{border-color:var(--color-danger)}
+.billing-hint,.billing-client,.billing-footer{grid-column:1/-1}
+.billing-switch{align-self:start;background:var(--color-surface)}
+.billing-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem}
+.billing-footer .field-error{flex:1 1 14rem}
 /* Security. */
 .policy-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.85rem;margin-bottom:1rem}
 .policy-fields>label{display:grid;gap:.35rem}

@@ -10,8 +10,9 @@
 4. [[#4. Copy and bulk entry|Copy and bulk entry]] — `feature/copy-and-bulk-entry` (done)
 5. [[#5. Running timer|Running timer]] — `feature/running-timer` (done)
 - Tooling, outside the numbered order: a separate test stack and a deploy step for the main stack, on `feature/test-compose` (see [[Test Stack Plan]]).
-6. [[#6. Billable work and budgets|Billable work and budgets]] — next, not started
-7. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+6. [[#6. Billable work and budgets|Billable work and budgets]] — `feature/billable-budgets` (done)
+7. [[#7. MFA for organization members|MFA for organization members]] — next, in progress
+- [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -72,7 +73,9 @@ Out of scope in [[Timesheet Page Plan]] and [[Home Page Plan]].
 
 ### 6. Billable work and budgets
 
-`Project` and `Category` carry only names today.
+> Done 22 October 2026 on `feature/billable-budgets`: see [[Billable Work And Budgets Plan]]. Still open: rate history, generated XLSX/CSV/PDF and scheduled by-project and by-client reports, a client entity, budgets per period or in money, and an over-budget warning for members.
+
+Before this item `Project` and `Category` carried only names.
 
 - Billable / non-billable flag and an hourly rate per project.
 - An hours budget per project, with used against budget.
@@ -108,7 +111,7 @@ Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with
 
 ### 13. Broader end-to-end tests
 
-Playwright now runs 78 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
+Playwright now runs 85 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
 
 ### 14. Mobile and offline
 
