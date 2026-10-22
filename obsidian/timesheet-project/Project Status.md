@@ -255,7 +255,7 @@ Note: the solution build reports 0 warnings since `fix/nullable-warnings` (13 Oc
 
 ## Agreed Direction
 
-The target solution is now defined as a multi-tenant timesheet platform with a Docker Compose local runtime. See [[Target Architecture]], [[Security And Tenant Model]], and [[Development Roadmap]] for the agreed design and delivery order.
+The target solution is now defined as a multi-tenant timesheet platform with a Docker Compose local runtime. See [[Target Architecture]], [[Security And Tenant Model]], and [[Development Roadmap]] for the agreed design and delivery order. Candidate work after Phase 5 is listed in [[Product Backlog]].
 
 ## Related
 
@@ -264,3 +264,4 @@ The target solution is now defined as a multi-tenant timesheet platform with a D
 - [[Services And Projects]]
 - [[Target Architecture]]
 - [[Development Roadmap]]
+- [[Product Backlog]]
