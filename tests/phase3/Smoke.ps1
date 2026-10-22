@@ -124,6 +124,22 @@ if (@($adminEntries).Count -ne 0) { throw 'Another user can read employee entrie
 Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $admin) 404 'owner update isolation' | Out-Null
 $entryBody.notes = 'Revised'
 Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $employee) 200 'inline entry update' | Out-Null
+
+# Billable work and budgets: the project gets a client, rate, and budget; the 4-hour entry is billed at the
+# rate and goes over a 3-hour budget; rates stay hidden from members and the reports are for admins.
+$billing = @{ client = 'Acme'; isBillable = $true; hourlyRate = 100; currencyCode = 'THB'; budgetHours = 3 }
+Expect (Request Put "/api/v1/timesheets/projects/$($project.id)/billing" $billing $employee) 403 'employee billing permission' | Out-Null
+Expect (Request Put "/api/v1/timesheets/projects/$($project.id)/billing" @{ client = 'Acme'; isBillable = $true; hourlyRate = -1; currencyCode = 'THB'; budgetHours = 3 } $admin) 400 'negative rate' | Out-Null
+Expect (Request Put "/api/v1/timesheets/projects/$($project.id)/billing" $billing $admin) 200 'project billing' | Out-Null
+$usage = Expect (Request Get "/api/v1/timesheets/projects/$($project.id)/usage?from=$year-$month-01&to=$year-$month-28" $null $admin) 200 'project usage'
+if ($usage.project.usedMinutes -ne 240 -or $usage.project.billableAmount -ne 400 -or -not $usage.project.overBudget -or $usage.project.remainingHours -ne -1) { throw 'Project usage is incorrect.' }
+$projectsUsage = Expect (Request Get '/api/v1/timesheets/projects/usage' $null $admin) 200 'projects usage'
+if (@($projectsUsage.projects).Count -ne 1 -or $projectsUsage.totals.amounts[0].currencyCode -ne 'THB') { throw 'Usage by project is incorrect.' }
+$clientsUsage = Expect (Request Get '/api/v1/timesheets/clients/usage' $null $admin) 200 'clients usage'
+if (@($clientsUsage.clients).Count -ne 1 -or $clientsUsage.clients[0].client -ne 'Acme' -or $clientsUsage.clients[0].amounts[0].amount -ne 400) { throw 'Usage by client is incorrect.' }
+Expect (Request Get '/api/v1/timesheets/projects/usage' $null $employee) 403 'employee usage permission' | Out-Null
+$memberCatalog = Expect (Request Get '/api/v1/timesheets/catalog' $null $employee) 200 'employee catalog with billing'
+if ($null -ne $memberCatalog.projects[0].hourlyRate -or $memberCatalog.projects[0].client -ne 'Acme') { throw 'The catalog shows a member the rate or hides the client.' }
 $leave = Expect (Request Post '/api/v1/timesheets/leave' @{
     date = $date; kind = 'annual'; notes = 'Half day'
 } $employee) 201 'leave entry'

@@ -21,6 +21,7 @@
 - [[Missing Entry Reminders Plan]] — daily and month-end emails about time not logged (phases A–B).
 - [[Copy And Bulk Entry Plan]] — copy the previous working day or week, one entry on several days, and saved entry templates (phases A–B).
 - [[Running Timer Plan]] — start and stop a server-kept timer from Today and Timesheet, stopping into a time entry (phases A–B).
+- [[Billable Work And Budgets Plan]] — project client, billable flag, hourly rate, and hours budget, with hours used and the billable amount by project and client (phase A done, B open).
 - [[Test Stack Plan]] — a separate Compose stack for validation, with its own ports and database, and the deploy step that rebuilds the main stack after merge (phases A–B).
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.

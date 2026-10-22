@@ -10,7 +10,7 @@ namespace Aiyara.Timesheet.Api;
 
 /// <param name="notifier">Emails a member whose month was returned; none in tests that do not need it.</param>
 /// <param name="clock">Tells a timer the time; the system clock unless a test fixes it.</param>
-public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotifier? notifier = null,
+public sealed partial class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotifier? notifier = null,
     TimeProvider? clock = null)
 {
     public async Task<ServiceResponse> Context(Actor actor, CancellationToken ct)
@@ -25,9 +25,17 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
     public async Task<ServiceResponse> Catalog(Actor actor, CancellationToken ct)
     {
         var (workingDays, workHours) = await ScheduleAsync(ct);
+        var projects = await db.Projects.AsNoTracking().Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct);
+        // Rates are the organization's business; members see a project, its client, and whether it is billable.
+        if (!actor.IsAdmin)
+            foreach (var project in projects)
+            {
+                project.HourlyRate = null;
+                project.CurrencyCode = null;
+            }
         return Ok(new
         {
-            projects = await db.Projects.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
+            projects,
             categories = await db.Categories.Where(x => !x.IsDeleted).OrderBy(x => x.Name).ToListAsync(ct),
             holidays = await db.Holidays.Where(x => !x.IsDeleted).OrderBy(x => x.Date).ToListAsync(ct),
             leaveTypes = await db.LeaveTypes.Where(x => !x.IsDeleted).OrderBy(x => x.Name)
@@ -45,10 +53,18 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         TenantRecord item = kind == "project"
             ? new Project { TenantId = actor.TenantId, Name = body.Name.Trim() }
             : new Category { TenantId = actor.TenantId, Name = body.Name.Trim() };
+        if (item is Project created && body is ProjectRequest request)
+        {
+            var billing = CheckBilling(request.Client, request.HourlyRate, request.CurrencyCode, request.BudgetHours);
+            if (billing is null) return Error(400, "VALIDATION_FAILED");
+            created.IsBillable = request.IsBillable;
+            ApplyBilling(created, billing);
+        }
         db.Add(item);
         Audit(actor, kind, item.Id, "created", null, item);
         await db.SaveChangesAsync(ct);
-        return Created(item, $"/api/v1/{kind}s/{item.Id}");
+        // As object so the response carries the project's or category's own fields, not only the record's.
+        return Created<object>(item, $"/api/v1/{kind}s/{item.Id}");
     }
 
     public async Task<ServiceResponse> UpdateCatalog(Actor actor, Guid id, NameRequest body,
@@ -64,7 +80,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         if (item is Category category) category.Name = body.Name.Trim();
         Audit(actor, kind, id, "updated", before, item);
         await db.SaveChangesAsync(ct);
-        return Ok(item);
+        return Ok<object>(item);
     }
 
     public async Task<ServiceResponse> DeleteCatalog(Actor actor, Guid id, string kind,
