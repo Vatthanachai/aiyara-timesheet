@@ -15,7 +15,7 @@ const text = useLocaleText(locale, {
     back: 'ย้อนกลับ', newHere: 'เพิ่งเริ่มใช้งาน?', signUp: 'สมัครใช้งานให้องค์กรของคุณ',
     acceptInvitation: 'เข้าร่วมด้วยรหัสคำเชิญ', activateAccount: 'เปิดใช้งานบัญชีที่ได้รับทางอีเมล',
     signUpHint: 'ตั้งค่า Aiyara Timesheet ให้ทีมของคุณ', acceptInvitationHint: 'ผู้ดูแลส่งรหัสคำเชิญให้คุณแล้ว',
-    activateAccountHint: 'มีผู้สร้างบัญชีให้คุณ และส่งอีเมลเปิดใช้งานมาแล้ว',
+    activateAccountHint: 'บัญชีใหม่ของคุณรออยู่ในอีเมล',
     adminSignIn: 'เข้าสู่ระบบผู้ดูแลระบบ', adminHomeTitle: 'ผู้ดูแลระบบ',
     adminHomeHint: 'ดูภาพรวมทุกองค์กร จัดการองค์กรและผู้ดูแล และตรวจประวัติการดำเนินการของระบบ', openAdmin: 'เปิดหน้าผู้ดูแลระบบ',
     sampleStandup: 'ประชุมเช้า', sampleReview: 'รีวิวงานออกแบบ', sampleWorkshop: 'เวิร์กช็อปกับลูกค้า', samplePlanning: 'วางแผนสปรินต์'
@@ -28,7 +28,7 @@ const text = useLocaleText(locale, {
     back: 'Back', newHere: 'New here?', signUp: 'Sign up your organization',
     acceptInvitation: 'Join with an invitation code', activateAccount: 'Activate an account from your email',
     signUpHint: 'Set up Aiyara Timesheet for your team.', acceptInvitationHint: 'Your administrator sent you a code.',
-    activateAccountHint: 'An account was made for you and an activation email is waiting.',
+    activateAccountHint: 'Your new account is waiting in your email.',
     adminSignIn: 'System administrator sign in', adminHomeTitle: 'System admin',
     adminHomeHint: 'See every organization at a glance, manage organizations and administrators, and review the platform audit log.', openAdmin: 'Open System admin',
     sampleStandup: 'Standup', sampleReview: 'Design review', sampleWorkshop: 'Client workshop', samplePlanning: 'Sprint planning'
@@ -105,7 +105,6 @@ function backToSignIn() {
 
   <div v-else class="welcome">
     <section class="welcome-intro" aria-labelledby="welcome-title">
-      <p class="welcome-product">Aiyara Timesheet</p>
       <!-- Thai has no spaces to break at, so each phrase is kept on one line. -->
       <!-- The space goes between the spans: Vue trims one left at the end of a span's text. -->
       <h1 id="welcome-title"><template v-for="(phrase, index) in text.heroTitle.split('|')" :key="phrase"><span>{{ phrase }}</span>{{ index ? '' : ' ' }}</template></h1>
@@ -152,6 +151,8 @@ function backToSignIn() {
         <button class="button" type="submit" :disabled="pending">{{ text.signIn }}</button>
       </form>
 
+      <p class="welcome-admin"><NuxtLink to="/sys-admin/login">{{ text.adminSignIn }}</NuxtLink></p>
+
     </div>
 
     <nav class="welcome-new" :aria-label="text.newHere">
@@ -163,25 +164,25 @@ function backToSignIn() {
         </li>
       </ul>
     </nav>
-
-    <p class="welcome-foot"><NuxtLink to="/sys-admin/login">{{ text.adminSignIn }}</NuxtLink></p>
   </div>
 </template>
 
 <style scoped>
 .welcome {
-  align-items: end; display: grid; gap: 2.5rem 4rem;
-  grid-template-areas: "intro access" "ruler ruler" "new new" "foot foot";
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+  align-content: center; align-items: end; display: grid; gap: clamp(1.25rem, 4vh, 2.75rem) 4rem;
+  grid-template-areas: "intro access" "ruler access" "new new";
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); min-height: var(--shell-fill);
 }
-.welcome-intro { grid-area: intro; padding-bottom: .5rem; }
-/* The sample day runs the full width, between the welcome and the ways in. */
-.welcome-ruler { grid-area: ruler; }
-.welcome-access { grid-area: access; }
-.welcome-foot { font-size: .9rem; grid-area: foot; margin: 0; }
-.welcome-product { color: var(--color-brand); font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; margin: 0; }
-.welcome h1 { font-family: var(--font-display); font-size: clamp(2.4rem, 6.5vw, 4.75rem); font-weight: 600; letter-spacing: -.015em; line-height: 1.08; margin: .6rem 0 1.25rem; }
-.welcome h1 span { display: inline-block; }
+/* The headline is sized from its own column, so each phrase keeps to one line at any width. */
+.welcome-intro { container-type: inline-size; grid-area: intro; padding-bottom: .5rem; }
+/* The sample day sits under the welcome, beside the card. */
+.welcome-ruler { align-self: start; grid-area: ruler; padding-bottom: 0; }
+.welcome-access { align-self: center; display: grid; gap: .9rem; grid-area: access; }
+/* The other way to sign in sits under the card it belongs with. */
+.welcome-admin { font-size: .9rem; margin: 0; text-align: center; }
+.welcome h1 { font-family: var(--font-display); font-size: clamp(1.75rem, min(11.8cqi, 8.5vh), 5.25rem); font-weight: 600; letter-spacing: -.015em; line-height: 1.08; margin: 0 0 1.25rem; }
+/* The longest phrase, “Your working day,”, is about 8.1em wide; 11.8cqi keeps it inside the column. */
+.welcome h1 span { display: inline-block; white-space: nowrap; }
 .welcome-lede { font-size: 1.125rem; margin: 0; max-width: 34rem; }
 .login-card { gap: .45rem; max-width: none; padding: 2.4rem 1.75rem 1.75rem; }
 .card-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: .25rem 1rem; justify-content: space-between; margin-bottom: .6rem; }
@@ -200,7 +201,7 @@ function backToSignIn() {
 .form-error { color: #8a2424; }
 .organization-choice { text-align: left; }
 /* Three doors in, side by side, each saying who it is for. */
-.welcome-new { border-top: 1px solid var(--color-border); display: grid; gap: 1rem 2.5rem; grid-area: new; grid-template-columns: 10rem minmax(0, 1fr); padding-top: 1.75rem; }
+.welcome-new { border-top: 1px solid var(--color-border); display: grid; gap: 1rem 2.5rem; grid-area: new; grid-template-columns: 10rem minmax(0, 1fr); padding-top: clamp(1rem, 3vh, 1.75rem); }
 .welcome-new h2 { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; margin: 0; }
 .welcome-new ul { display: grid; gap: 1.25rem 2.5rem; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
 .welcome-new li { align-content: start; display: grid; gap: .3rem; justify-items: start; }
@@ -209,11 +210,36 @@ function backToSignIn() {
 .admin-home { display: grid; gap: .5rem; justify-items: start; max-width: 40rem; }
 .admin-home h1 { font-family: var(--font-display); font-weight: 600; }
 .admin-home p { font-size: 1.125rem; margin: 0 0 1rem; }
+/* Short laptop screens: a tighter card keeps the whole page on one screen. */
+@media (min-width: 46.01rem) and (max-height: 50rem) {
+  .login-card { padding: 2.1rem 1.5rem 1.4rem; }
+  .card-head { margin-bottom: .3rem; }
+  .login-card input { margin-bottom: .3rem; }
+  .login-card .button { padding: .75rem 1rem; }
+}
+@media (min-width: 46.01rem) and (max-height: 46rem) {
+  .welcome-ruler :deep(.ruler-hours) { height: 2rem; }
+  .welcome-ruler :deep(.ruler-track) { height: 2.9rem; }
+  .welcome h1 { margin-bottom: .9rem; }
+}
+@media (max-width: 64rem) {
+  .welcome { column-gap: 2.5rem; grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem); }
+}
 @media (max-width: 60rem) {
+  .welcome-new { column-gap: 1.5rem; grid-template-columns: 6.5rem minmax(0, 1fr); }
+  .welcome-new ul { column-gap: 1.5rem; }
+}
+/* Tablets and phones: one column, with the card kept to a form's width. */
+@media (max-width: 46rem) {
+  .welcome { align-items: start; gap: 2rem; grid-template-areas: "intro" "access" "ruler" "new"; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .welcome-access { max-width: 28rem; width: 100%; }
   .welcome-new { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 52rem) {
-  .welcome { align-items: start; gap: 2rem; grid-template-areas: "intro" "access" "ruler" "new" "foot"; grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 40rem) {
+  .welcome { gap: 1.5rem; }
+  .welcome h1 { margin-bottom: .9rem; }
+  .welcome-lede { font-size: 1rem; }
+  .login-card { padding: 2.1rem 1.25rem 1.25rem; }
   .welcome-new ul { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

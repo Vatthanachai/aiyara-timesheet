@@ -130,6 +130,11 @@ test('signed out, the page explains the product and groups the ways in', async (
     await page.setViewportSize({ width, height: 800 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
   }
+  // On laptop and tablet screens the whole page fits without scrolling.
+  for (const [width, height] of [[1366, 768], [1280, 720], [768, 1024]]) {
+    await page.setViewportSize({ width, height })
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(height)
+  }
 })
 
 test('the signed-in home has no sideways scroll on a phone', async ({ page }) => {
