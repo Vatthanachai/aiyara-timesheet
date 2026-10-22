@@ -130,18 +130,17 @@ async function api<T>(path: string, options: { method?: string; body?: object } 
 async function load() {
   if (!token.value) return
   try {
-    const [e, t, l, c, context, state, balance, saved] = await Promise.all([
+    const [e, t, l, c, context, state, balance] = await Promise.all([
       api<Entry[]>(`/entries?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
       api<Task[]>('/tasks'),
       api<Leave[]>(`/leave?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
       api<Catalog>('/catalog'),
       api<{ currentMonth: string }>('/context'),
       api<MonthState>(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}`),
-      api<{ balances: LeaveBalance[] }>(`/me/leave-balance?year=${month.value.slice(0, 4)}`),
-      api<EntryTemplate[]>('/entry-templates')
+      api<{ balances: LeaveBalance[] }>(`/me/leave-balance?year=${month.value.slice(0, 4)}`)
     ])
     entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, leaveTypes: c.leaveTypes ?? [], workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
-    balances.value = balance.balances; templates.value = saved ?? []
+    balances.value = balance.balances
     // With leave types the kind is a type's id; keep a valid choice as the types change.
     const types = catalog.value.leaveTypes
     if (types.length && !types.some(type => type.id === leaveKind.value)) leaveKind.value = types[0]!.id
@@ -155,6 +154,11 @@ async function load() {
         month.value !== context.currentMonth) month.value = context.currentMonth
     error.value = ''
   } catch (cause) { error.value = safeError(cause, locale.value) }
+  await loadTemplates()
+}
+// Templates are an extra: a failed request leaves the rest of the page as it was.
+async function loadTemplates() {
+  try { templates.value = (await api<EntryTemplate[]>('/entry-templates')) ?? [] } catch { /* the panel keeps its last list */ }
 }
 watch(month, load)
 watch(() => form.date, day => { if (day.startsWith(month.value)) leaveDate.value = day })
