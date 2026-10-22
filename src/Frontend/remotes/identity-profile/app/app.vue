@@ -362,7 +362,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.profile-page { box-sizing: border-box; color: var(--color-ink); margin: 0 auto; max-width: 60rem; min-width: 0; padding: clamp(1rem, 3vw, 2.5rem); width: 100%; }
+/* The Shell sets the width and the side margins; a few pixels keep focus outlines inside the frame. */
+.profile-page { box-sizing: border-box; color: var(--color-ink); min-width: 0; padding: clamp(1rem, 3vw, 2.5rem) 3px; width: 100%; }
 h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); font-weight: 600; line-height: 1.2; margin: 0 0 1.5rem; }
 .profile-layout { align-items: start; display: grid; gap: 1.5rem; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); }
 /* Your card. */
@@ -421,7 +422,7 @@ h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); 
   .photo-preview { font-size: 2rem; height: 6.5rem; width: 6.5rem; }
 }
 @media (max-width: 30rem) {
-  .profile-page { padding: 1rem; }
+  .profile-page { padding: 1rem 3px; }
   .fields-grid { grid-template-columns: minmax(0, 1fr); }
   .form-actions { width: 100%; }
   .form-actions .button { flex: 1; }

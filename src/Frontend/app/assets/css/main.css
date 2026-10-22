@@ -26,11 +26,12 @@ a { color: inherit; }
 .navigation { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .navigation a { color: var(--color-muted); text-decoration: none; }
 .navigation a.router-link-active { color: var(--color-brand); font-weight: 600; }
-/* The space above and below follows the screen's height, so short laptop screens lose less of it.
+/* Every page shares one column, 88rem at most; the remotes inside it add no side margins of their own.
+   The space above and below follows the screen's height, so short laptop screens lose less of it.
    --shell-fill is the height left for a page that fills the screen under the header. */
 .shell-main {
   --main-pad-y: clamp(var(--space-6), min(5vw, 6vh), 4rem); --shell-fill: calc(100dvh - 4.75rem - 2 * var(--main-pad-y));
-  margin: 0 auto; max-width: 72rem; padding: var(--main-pad-y) clamp(var(--space-4), 4vw, var(--space-8));
+  margin: 0 auto; max-width: 88rem; padding: var(--main-pad-y) clamp(var(--space-4), 4vw, var(--space-8));
 }
 .hero, .remote-delegation { max-width: 48rem; }
 .remote-workspace h1, .remote-delegation h1 { font-family: var(--font-display); font-weight: 600; letter-spacing: -.015em; }
@@ -60,8 +61,6 @@ button { cursor: pointer; }
 .punch-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .6rem; box-shadow: var(--elev-2); position: relative; }
 .punch-card::before { background: var(--color-canvas); border: 1px solid var(--color-hour-off); border-radius: 50%; box-shadow: inset 0 1px 2px rgb(var(--shadow-rgb) / calc(12% * var(--shadow-k))); content: ""; height: .85rem; left: 50%; position: absolute; top: .8rem; transform: translateX(-50%); width: .85rem; }
 .link-button { background: none; border: 0; color: var(--color-brand); font: inherit; justify-self: start; padding: 0; text-decoration: underline; }
-/* Timesheet (the month card beside the day) and Reports (wide tables) may use more of a wide screen. */
-.shell-main:has(.remote-workspace:is([data-remote="timesheet"], [data-remote="reporting"])) { max-width: 88rem; }
 .remote-workspace iframe { border: 0; display: block; height: 75vh; overflow: hidden; width: 100%; }
 
 /* SysAdmin console (shared by the /sys-admin pages and their components). */

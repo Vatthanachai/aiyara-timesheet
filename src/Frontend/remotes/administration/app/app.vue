@@ -642,7 +642,8 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--color-ink);background:var(--color-canvas)}
 *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}
 :focus-visible{outline:2px solid var(--color-brand);outline-offset:2px}
-.admin-page{max-width:76rem;margin:0 auto;padding:clamp(1rem,3vw,2rem)}
+/* The Shell sets the width and the side margins; a few pixels keep focus outlines inside the frame. */
+.admin-page{padding:clamp(1rem,3vw,2rem) 3px}
 h1,h2,h3{font-family:var(--font-display);font-weight:600}
 /* The organization heads the page. */
 .org-heading{display:flex;align-items:center;gap:1rem;margin:0 0 1.5rem}
