@@ -13,6 +13,8 @@ type OrganizationSummary = { name: string; logoUrl: string | null; dateFormat?: 
 
 const { visibleNavigation } = useRemoteNavigation()
 const { locale } = useLocale()
+const { start: startTheme } = useTheme()
+let stopTheme: (() => void) | undefined
 const { token, role, logout, restore } = useSession()
 const authorizedFetch = useAuthorizedFetch()
 const config = useRuntimeConfig()
@@ -115,6 +117,7 @@ async function signOut() {
 }
 
 onMounted(() => {
+  stopTheme = startTheme()
   restore()
   window.addEventListener('message', onProfileUpdated)
 })
@@ -130,6 +133,7 @@ watch(token, (value) => {
 })
 
 onUnmounted(() => {
+  stopTheme?.()
   window.removeEventListener('message', onProfileUpdated)
   if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
   clearOrganization()
@@ -152,6 +156,7 @@ onUnmounted(() => {
         </NuxtLink>
       </nav>
       <div class="header-actions">
+        <ThemeSwitch />
         <LocaleSwitch />
         <details v-if="token" ref="profileMenu" class="profile-menu">
           <summary class="profile-trigger" :aria-label="profileName">
@@ -178,7 +183,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.shell-header { position: relative; }
+/* Sticky on wider screens (main.css); on phones the two-line header scrolls away with the page. */
+.shell-header { position: sticky; }
 .brand { align-items: center; color: inherit; display: inline-flex; gap: .6rem; min-width: 0; }
 .brand-logo { flex: 0 0 auto; height: 2.25rem; max-width: 7rem; object-fit: contain; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(22rem, 45vw); }
@@ -189,18 +195,20 @@ onUnmounted(() => {
 .profile-trigger { align-items: center; border: 1px solid var(--color-border); border-radius: 999px; cursor: pointer; display: flex; gap: .6rem; max-width: min(20rem, 55vw); padding: .25rem .75rem .25rem .3rem; }
 .profile-trigger:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
 .profile-avatar { border-radius: 50%; flex: 0 0 2.25rem; height: 2.25rem; object-fit: cover; width: 2.25rem; }
-.profile-avatar-fallback { align-items: center; background: #eaf1ff; color: var(--color-brand); display: inline-flex; font-size: .9rem; font-weight: 700; justify-content: center; }
+.profile-avatar-fallback { align-items: center; background: var(--color-brand-soft); color: var(--color-brand); display: inline-flex; font-size: .9rem; font-weight: 700; justify-content: center; }
 .profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-chevron { fill: none; flex: 0 0 1rem; height: 1rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; transition: transform 150ms ease; width: 1rem; }
 .profile-menu[open] .profile-chevron { transform: rotate(180deg); }
-.profile-dropdown { background: white; border: 1px solid var(--color-border); border-radius: .75rem; box-shadow: 0 0.75rem 2rem rgb(20 32 52 / 14%); min-width: 13rem; padding: .4rem; position: absolute; right: 0; top: calc(100% + .5rem); z-index: 20; }
+.profile-dropdown { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .75rem; box-shadow: var(--elev-2); min-width: 13rem; padding: .4rem; position: absolute; right: 0; top: calc(100% + .5rem); z-index: 20; }
 .profile-dropdown a, .sign-out-button { background: transparent; border: 0; border-radius: .45rem; color: inherit; display: block; font: inherit; padding: .7rem .75rem; text-align: left; text-decoration: none; width: 100%; }
-.profile-dropdown a:hover, .sign-out-button:hover { background: #f3f6fa; }
-.sign-out-button { color: #a62828; }
+.profile-dropdown a:hover, .sign-out-button:hover { background: var(--color-surface-muted); }
+.sign-out-button { color: var(--color-danger); }
 @media (max-width: 40rem) {
-  .shell-header { align-items: center; flex-direction: row; flex-wrap: wrap; }
+  .shell-header { align-items: center; flex-direction: row; flex-wrap: wrap; position: relative; }
   .navigation { order: 3; width: 100%; }
-  .header-actions { margin-left: auto; }
+  /* The profile stays beside the brand; when the switches do not fit they wrap under it, to the right. */
+  .header-actions { flex: 1 1 0; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; min-width: 0; row-gap: .5rem; }
+  .profile-menu { order: -1; }
   .profile-trigger { gap: .4rem; max-width: min(55vw, 15rem); }
   .profile-name { max-width: clamp(3.5rem, 25vw, 8rem); }
   .profile-dropdown { max-width: calc(100vw - 2rem); min-width: min(13rem, calc(100vw - 2rem)); }

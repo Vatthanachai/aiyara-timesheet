@@ -61,8 +61,8 @@ watch([model, () => props.formats], () => {
 <style scoped>
 .date-field{position:relative;display:flex;align-items:center;min-width:0;width:100%}
 .date-field input[type="text"]{padding-right:2.4rem!important}
-.date-field-pick{position:absolute;right:.3rem;display:grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:.45rem;color:#64718a;font-size:.95rem;pointer-events:none}
-.date-field-picker:hover+.date-field-pick{background:#eef2f9;color:#263753}
+.date-field-pick{position:absolute;right:.3rem;display:grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:.45rem;color:var(--color-muted);font-size:.95rem;pointer-events:none}
+.date-field-picker:hover+.date-field-pick{background:var(--color-surface-muted);color:var(--color-ink-soft)}
 /* The browser's date input over the icon; its calendar indicator fills it, so any click opens it. */
 .date-field-picker{position:absolute;right:.3rem;width:1.9rem;height:1.9rem;margin:0;padding:0;border:0;opacity:0;cursor:pointer}
 .date-field-picker::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:auto;height:auto;margin:0;padding:0;cursor:pointer}

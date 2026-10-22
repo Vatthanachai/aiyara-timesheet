@@ -192,13 +192,13 @@ function backToSignIn() {
 .login-card label { font-weight: 600; }
 .login-card input { margin-bottom: .6rem; }
 .login-card input:focus-visible { border-color: var(--color-brand); outline: 2px solid var(--color-brand); outline-offset: 0; }
-.login-card small { color: #8a2424; margin: -.4rem 0 .5rem; }
+.login-card small { color: var(--color-danger); margin: -.4rem 0 .5rem; }
 .login-card .button { border: 0; font: inherit; font-weight: 600; margin-top: .4rem; padding: .85rem 1rem; }
 .login-card .button:hover:not(:disabled) { background: var(--color-brand-strong); }
 .login-card .button:disabled { cursor: wait; opacity: .65; }
 .password-label { align-items: baseline; display: flex; gap: 1rem; justify-content: space-between; }
 .password-label a { color: var(--color-brand); font-size: .9rem; }
-.form-error { color: #8a2424; }
+.form-error { color: var(--color-danger); }
 .organization-choice { text-align: left; }
 /* Three doors in, side by side, each saying who it is for. */
 .welcome-new { border-top: 1px solid var(--color-border); display: grid; gap: 1rem 2.5rem; grid-area: new; grid-template-columns: 10rem minmax(0, 1fr); padding-top: clamp(1rem, 3vh, 1.75rem); }

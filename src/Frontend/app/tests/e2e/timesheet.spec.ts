@@ -100,3 +100,11 @@ test('the selected day lists its entries, and Edit opens one in the form until a
   await form.getByRole('button', { name: 'Save changes' }).click()
   await expect.poll(() => requests.at(-1)).toMatch(/^PUT \/entries\/e1 .*"endTime":"16:00:00"/)
 })
+
+test('Timesheet takes the theme chosen in the Shell', async ({ page }) => {
+  const timesheet = await openTimesheet(page)
+  await expect(timesheet.locator('html')).toHaveAttribute('data-theme', 'light')
+  await page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Dark' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(timesheet.locator('html')).toHaveAttribute('data-theme', 'dark')
+})

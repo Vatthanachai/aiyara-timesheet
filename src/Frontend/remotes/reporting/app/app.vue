@@ -2,6 +2,7 @@
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
+import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDateTime as formatInstant, formatMonth, readFormats } from '../../../shared/date-format'
 import {
   addDays, formatPeriod, monthPeriod, previousPeriod, rangePeriod, weekPeriod, yearPeriod, zonedDate,
@@ -421,6 +422,7 @@ onMounted(() => {
     token.value = event.data.token || ''
     gateway.value = event.data.gatewayUrl || gateway.value
     locale.value = readSessionLocale(event.data)
+    applyTheme(readSessionTheme(event.data))
     formats.value = readFormats(event.data)
     if (token.value && firstSession) load()
   })
@@ -661,14 +663,14 @@ h2,h3{font-family:var(--font-display);font-weight:600}
 .card h3{font-size:1.05rem;margin:0 0 .75rem}
 .card-heading{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:flex-end;justify-content:space-between;margin-bottom:1rem}
 form{margin:0}label{display:grid;gap:.3rem;font-size:.85rem;color:var(--color-muted)}
-input,select,button{font:inherit;color:var(--color-ink);border:1px solid #cfd8e5;border-radius:.5rem;padding:.5rem .65rem;background:var(--color-surface);min-width:0}
-button{cursor:pointer;background:var(--color-surface);font-weight:600;font-size:.88rem}button:hover:not(:disabled){background:#f3f6fa}button:disabled{opacity:.55;cursor:not-allowed}
-button.primary{background:var(--color-brand);border-color:var(--color-brand);color:#fff}button.primary:hover:not(:disabled){background:var(--color-brand-strong)}
-button.primary-quiet{background:var(--color-work-track);border-color:var(--color-work-track);color:#1d3f9e}button.primary-quiet:hover:not(:disabled){background:#c9d8fb}
+input,select,button{font:inherit;color:var(--color-ink);border:1px solid var(--color-border-strong);border-radius:.5rem;padding:.5rem .65rem;background:var(--color-surface);min-width:0}
+button{cursor:pointer;background:var(--color-surface);font-weight:600;font-size:.88rem}button:hover:not(:disabled){background:var(--color-surface-muted)}button:disabled{opacity:.55;cursor:not-allowed}
+button.primary{background:var(--color-brand);border-color:var(--color-brand);color:var(--color-on-brand)}button.primary:hover:not(:disabled){background:var(--color-brand-strong)}
+button.primary-quiet{background:var(--color-work-track);border-color:var(--color-work-track);color:var(--color-brand-ink)}button.primary-quiet:hover:not(:disabled){background:var(--color-brand-line)}
 button.secondary{background:transparent;border-color:transparent;color:var(--color-muted)}
 /* Documents: one sentence of counts, the request form, then the history. */
 .doc-status{margin:0;color:var(--color-ink)}
-.doc-status .count-attention{color:#b42318;font-weight:600}
+.doc-status .count-attention{color:var(--color-danger);font-weight:600}
 .request{border-bottom:1px solid var(--color-border);padding-bottom:1.25rem;margin-bottom:1.25rem}
 .request-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:.85rem;align-items:end}
 @media (min-width:48rem){.request-report{grid-column:span 2}}
@@ -687,24 +689,24 @@ td small{display:block;color:var(--color-muted);font-size:.78rem;margin-top:.15r
 .history-table .col-document{width:38%}.history-table.with-person .col-document{width:31%}
 .history-table .col-person{width:15%}.history-table .col-actions{width:15.5rem}
 .document-name strong{overflow-wrap:anywhere}.document{display:flex;gap:.75rem;align-items:flex-start}
-.file-tag{flex:0 0 auto;width:2.6rem;padding:.55rem 0 .45rem;border-radius:.3rem;font-family:var(--font-display);font-size:.7rem;font-weight:600;text-align:center;background:#fdecea;color:#9f1d14}
-.file-tag[data-format="Xlsx"]{background:#e3f4ea;color:#17663b}
+.file-tag{flex:0 0 auto;width:2.6rem;padding:.55rem 0 .45rem;border-radius:.3rem;font-family:var(--font-display);font-size:.7rem;font-weight:600;text-align:center;background:var(--color-danger-soft);color:var(--color-danger)}
+.file-tag[data-format="Xlsx"]{background:var(--color-success-soft);color:var(--color-success)}
 .document-name{display:grid;gap:.1rem}
 .document-period{font-family:var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap}
 .person-cell{overflow-wrap:anywhere}
 .status-cell .badge{margin-left:.5rem}
 .run-times{font-variant-numeric:tabular-nums}
-.status{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:600;color:#334155}
-.status::before{content:"";width:.55rem;height:.55rem;border-radius:50%;background:#94a3b8}
-.status[data-status="Succeeded"]{color:#17663b}.status[data-status="Succeeded"]::before{background:#22a05a}
+.status{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:600;color:var(--color-ink-soft)}
+.status::before{content:"";width:.55rem;height:.55rem;border-radius:50%;background:var(--color-faint)}
+.status[data-status="Succeeded"]{color:var(--color-success)}.status[data-status="Succeeded"]::before{background:var(--color-success-strong)}
 .status[data-status="Running"]::before,.status[data-status="Queued"]::before{background:var(--color-brand)}
-.status[data-status="Failed"]{color:#b42318}.status[data-status="Failed"]::before{background:#b42318}
-.status[data-status="Blocked"]{color:#7a5412}.status[data-status="Blocked"]::before{background:#d29b25}
+.status[data-status="Failed"]{color:var(--color-danger)}.status[data-status="Failed"]::before{background:var(--color-danger)}
+.status[data-status="Blocked"]{color:var(--color-warn)}.status[data-status="Blocked"]::before{background:var(--color-warn-strong)}
 .actions{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;justify-content:flex-end}
 .actions button,.actions .upload{font-size:.82rem;padding:.4rem .6rem}
-.badge{border-radius:.35rem;background:#e3f4ea;color:#17663b;font-size:.75rem;font-weight:700;padding:.2rem .45rem}
+.badge{border-radius:.35rem;background:var(--color-success-soft);color:var(--color-success);font-size:.75rem;font-weight:700;padding:.2rem .45rem}
 /* The file input is invisible over its label, so the label reads as a button and still opens the picker. */
-.upload{position:relative;display:inline-flex;align-items:center;border:1px solid #cfd8e5;border-radius:.5rem;padding:.5rem .65rem;color:var(--color-ink);font-size:.88rem;font-weight:600;cursor:pointer}.upload:hover{background:#f3f6fa}.upload:focus-within{outline:2px solid var(--color-brand);outline-offset:2px}.upload input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;padding:0}
+.upload{position:relative;display:inline-flex;align-items:center;border:1px solid var(--color-border-strong);border-radius:.5rem;padding:.5rem .65rem;color:var(--color-ink);font-size:.88rem;font-weight:600;cursor:pointer}.upload:hover{background:var(--color-surface-muted)}.upload:focus-within{outline:2px solid var(--color-brand);outline-offset:2px}.upload input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;padding:0}
 .pagination{display:flex;gap:.75rem;align-items:center;justify-content:center;margin-top:1rem}
 /* Settings: three separate panels. */
 .settings h2{margin:2rem 0 .85rem}
@@ -717,7 +719,7 @@ td small{display:block;color:var(--color-muted);font-size:.78rem;margin-top:.15r
 .setting-actions{display:flex;gap:.4rem}
 .schedule-name{display:grid;gap:.1rem;color:var(--color-ink)}
 .schedule-name small{color:var(--color-muted)}
-.feedback{border-radius:.6rem;padding:.7rem .9rem;margin:0 0 1rem}.feedback-error{background:#fff0ef;color:#a53d38}.feedback-ok{background:#eaf8f1;color:#287751}
+.feedback{border-radius:.6rem;padding:.7rem .9rem;margin:0 0 1rem}.feedback-error{background:var(--color-danger-soft);color:var(--color-danger)}.feedback-ok{background:var(--color-success-soft);color:var(--color-success)}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 /* On a phone each report stacks into a block instead of scrolling sideways. */
 @media (max-width:48rem){

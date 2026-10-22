@@ -407,7 +407,7 @@ onMounted(async () => {
 .search-form { display: flex; flex: 1 1 30rem; gap: .6rem; }
 .search-form input, .create-form input { border: 1px solid var(--color-border); border-radius: .45rem; font: inherit; min-width: 0; padding: .7rem .8rem; }
 .search-form input { flex: 1; }
-.button-secondary { background: #edf2f8; border: 1px solid var(--color-border); color: var(--color-ink); cursor: pointer; font: inherit; }
+.button-secondary { background: var(--color-surface-muted); border: 1px solid var(--color-border); color: var(--color-ink); cursor: pointer; font: inherit; }
 .result-count { font-size: .9rem; margin: .75rem 0; }
 .management-card, .organization-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-6); }
 .create-form, .organization-edit { display: grid; gap: .85rem; margin: 1rem 0; }
@@ -422,17 +422,17 @@ onMounted(async () => {
 .organization-heading { align-items: flex-start; display: flex; gap: 1rem; justify-content: space-between; }
 .organization-heading h2 { margin: 0; }
 .organization-heading p, .created-date, .empty-admin { margin: .25rem 0 0; }
-.organization-code { background: #edf3ff; border-radius: .4rem; color: var(--color-brand); font-weight: 700; letter-spacing: .08em; padding: .45rem .65rem; white-space: nowrap; }
+.organization-code { background: var(--color-brand-soft); border-radius: .4rem; color: var(--color-brand); font-weight: 700; letter-spacing: .08em; padding: .45rem .65rem; white-space: nowrap; }
 .admin-list { border-top: 1px solid var(--color-border); display: grid; margin-top: .5rem; padding-top: .5rem; }
 .admin-row { align-items: center; display: flex; flex-wrap: wrap; gap: .65rem; min-height: 2.5rem; }
 .status-pill { border-radius: 999px; font-size: .78rem; font-weight: 700; padding: .25rem .55rem; }
-.status-active { background: #e8f6ef; color: #17663b; }
-.status-pending { background: #fff4dc; color: #795400; }
-.status-off { background: #eef0f3; color: #4a5260; }
+.status-active { background: var(--color-success-soft); color: var(--color-success); }
+.status-pending { background: var(--color-warn-soft); color: var(--color-warn); }
+.status-off { background: var(--color-surface-muted); color: var(--color-ink-soft); }
 .text-button { background: transparent; border: 0; color: var(--color-brand); cursor: pointer; font: inherit; text-decoration: underline; }
 .admin-row small { color: var(--color-muted); flex-basis: 100%; }
 .empty-state { margin-top: 1rem; }
-.notice-error { background: #fff0f0; color: #8a2424; }
+.notice-error { background: var(--color-danger-soft); color: var(--color-danger); }
 .pagination { align-items: center; display: flex; gap: 1rem; justify-content: center; margin: 1.5rem 0; }
 .visually-hidden { clip: rect(0, 0, 0, 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
 @media (max-width: 40rem) { .management-toolbar { align-items: stretch; } .search-form { flex-basis: 100%; } }

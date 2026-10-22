@@ -16,6 +16,7 @@ const remoteUrl = computed(() => {
 })
 const { token, tenantId, renew, restore } = useSession()
 const { locale } = useLocale()
+const { theme } = useTheme()
 // Set by the layout from the signed-in organization.
 const formats = useState<Formats>('organization-formats', () => DEFAULT_FORMATS)
 const text = useLocaleText(locale, {
@@ -60,10 +61,10 @@ async function sendSession() {
   if (!import.meta.client || !frame.value || !remoteUrl.value) return
   if (token.value) await renew()
   frame.value.contentWindow?.postMessage({ type: 'aiyara.session', token: token.value,
-    locale: locale.value, tenantId: tenantId.value, ...formats.value,
+    locale: locale.value, theme: theme.value, tenantId: tenantId.value, ...formats.value,
     gatewayUrl: config.public.gatewayUrl }, new URL(remoteUrl.value).origin)
 }
-watch([token, locale, formats], () => sendSession())
+watch([token, locale, theme, formats], () => sendSession())
 
 if (!remote.value) {
   throw createError({ statusCode: 404, statusMessage: 'Remote application not found' })

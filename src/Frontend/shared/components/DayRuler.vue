@@ -68,7 +68,7 @@ const showNow = computed(() => props.now != null && props.now >= from.value && p
 }
 .ruler-band {
   align-items: center; background: var(--color-brand); border-radius: .3rem; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 35%);
-  color: white; display: flex; font-size: .78rem; font-weight: 600; min-width: 3px; overflow: hidden; padding: 0 .45rem;
+  color: var(--color-on-brand); display: flex; font-size: .78rem; font-weight: 600; min-width: 3px; overflow: hidden; padding: 0 .45rem;
 }
 .ruler-band span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ruler-now { border-left: 2px solid var(--color-ink); bottom: -1.6rem; position: absolute; top: -.45rem; }
