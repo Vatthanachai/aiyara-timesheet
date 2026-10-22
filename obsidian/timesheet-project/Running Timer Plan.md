@@ -1,6 +1,6 @@
 # Running Timer Plan
 
-> Drafted 22 October 2026 from item 5 of [[Product Backlog]]. Phase A (API) implemented on `feature/running-timer`; Phase B (UI) follows. A member starts a timer on Today or Timesheet and stops it into a time entry, with the organization's break left out.
+> Drafted 22 October 2026 from item 5 of [[Product Backlog]]. Implemented 22 October 2026 on `feature/running-timer`: Phase A (API) and Phase B (UI). A member starts a timer on Today or Timesheet and stops it into a time entry, with the organization's break left out.
 
 ## Audit: What Exists On `develop`
 
@@ -33,9 +33,15 @@
 
 ## Phase B: UI
 
-- [x] B1. Today and Timesheet: start, running clock, stop, discard.
-- [x] B2. Show the refusals: closed month, too long, missing task name.
+- [x] B1. Today and Timesheet: start, running clock, stop, discard. One shared `TimerPanel` component; the clock counts from the server's `nowUtc`.
+- [x] B2. Show the refusals: closed month, too long, missing task name, under a minute, inside the break. A refusal keeps the timer and offers a date and times to stop with.
 - [x] B3. Playwright at 375 and 320 px; docs.
+
+## Known Limits
+
+- The panel exposes only the task name. The project, category, personal task, detail, and notes that the API accepts as a prefill are not offered; the stop request sends only the name, and the member edits the entry afterwards.
+- Start is disabled on Today when the month is locked, and on Timesheet only when the current month is not editable (the panel is shown for any month, but the timer always starts now).
+- A timer left running is stopped by hand: with chosen date and times, or by discarding it.
 
 ## Out Of Scope
 
