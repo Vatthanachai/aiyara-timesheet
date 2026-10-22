@@ -4,7 +4,7 @@ import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
-import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type LeaveAmount, type LeaveBalance, type MonthState, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
+import { closedDatesOf, daysFrom, decimalHours, defaultWorkHours, errorCodeOf, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type BulkDay, type Catalog, type CopyResult, type Entry, type EntryForm, type EntryTemplate, type Leave, type LeaveAmount, type LeaveBalance, type MonthState, type SkipReason, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
 const config = useRuntimeConfig()
@@ -25,6 +25,13 @@ const balances = ref<LeaveBalance[]>([])
 let workHoursApplied = false
 const error = ref('')
 const notice = ref('')
+/** Lines under the notice: the days a copy skipped and why. */
+const noticeDetails = ref<string[]>([])
+const templates = ref<EntryTemplate[]>([])
+const several = ref(false)
+const bulkDates = ref<string[]>([])
+const templateName = ref<string | null>(null)
+const copying = ref(false)
 const editingId = ref<string | null>(null)
 const form = reactive<EntryForm>({ date: today, startTime: defaultWorkHours.startTime,
   endTime: defaultWorkHours.endTime, includesBreak: false, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
@@ -79,6 +86,14 @@ const dayHeading = computed(() => {
 })
 const dayNote = computed(() => holidayByDay.value.get(form.date) ?? leaveByDay.value.get(form.date) ??
   (catalog.value.workingDays.includes(new Date(`${form.date}T12:00:00`).getDay()) ? '' : labels.value.dayOff))
+const isWorkingDay = (day: string) => catalog.value.workingDays.includes(new Date(`${day}T12:00:00`).getDay())
+/** The month's days for the several-days form: days off, holidays, and whole-day leave start unticked. */
+const bulkDays = computed<BulkDay[]>(() => daysFrom(monthStart.value, monthEnd.value).map(date => {
+  const holiday = holidayByDay.value.get(date)
+  const wholeLeave = leaves.value.some(leave => leave.date === date && !leave.minutes)
+  const note = holiday ?? (wholeLeave ? leaveByDay.value.get(date) : undefined) ?? (isWorkingDay(date) ? '' : labels.value.dayOff)
+  return { date, offDay: Boolean(holiday) || wholeLeave || !isWorkingDay(date), note: note ?? '' }
+}))
 const entriesHeading = computed(() => labels.value.entriesIn.replace('{month}', monthLabel.value))
 const workHoursLabel = computed(() => {
   const { startTime, endTime, breakStart, breakEnd } = catalog.value.workHours
@@ -139,10 +154,17 @@ async function load() {
         month.value !== context.currentMonth) month.value = context.currentMonth
     error.value = ''
   } catch (cause) { error.value = safeError(cause, locale.value) }
+  await loadTemplates()
+}
+// Templates are an extra: a failed request leaves the rest of the page as it was.
+async function loadTemplates() {
+  try { templates.value = (await api<EntryTemplate[]>('/entry-templates')) ?? [] } catch { /* the panel keeps its last list */ }
 }
 watch(month, load)
 watch(() => form.date, day => { if (day.startsWith(month.value)) leaveDate.value = day })
 watch(month, value => {
+  // The several-days choice belongs to the month it was made in.
+  several.value = false; bulkDates.value = []
   if (!form.date.startsWith(value)) form.date = `${value}-01`
   if (!leaveDate.value.startsWith(value)) leaveDate.value = `${value}-01`
 })
@@ -150,6 +172,9 @@ function resetForm(date = form.date) {
   editingId.value = null
   Object.assign(form, { date, startTime: catalog.value.workHours.startTime, endTime: catalog.value.workHours.endTime,
     includesBreak: false, taskName: '', detail: '', notes: '', projectId: '', categoryId: '', personalTaskId: '' })
+}
+function cancelEntry() {
+  resetForm(); several.value = false; templateName.value = null
 }
 function moveMonth(offset: number) {
   const [year, monthNumber] = month.value.split('-').map(Number)
@@ -165,7 +190,7 @@ function selectDay(day: string) {
   else form.date = day
 }
 function edit(entry: Entry) {
-  editingId.value = entry.id
+  editingId.value = entry.id; several.value = false
   Object.assign(form, { date: entry.date, startTime: entry.startTime.slice(0, 5), endTime: entry.endTime.slice(0, 5),
     taskName: entry.taskName, detail: entry.detail || '', notes: entry.notes || '',
     projectId: entry.projectId || '', categoryId: entry.categoryId || '', personalTaskId: entry.personalTaskId || '',
@@ -188,19 +213,95 @@ function dropTask(event: DragEvent, date?: string) {
   const item = readDroppedTrayItem(event)
   if (item) prefill(item, date)
 }
+function announce(message: string, details: string[] = []) {
+  notice.value = message; noticeDetails.value = details
+}
+/** What a refused change says: a closed month names its days, and the entry rules have their own words. */
+function failure(cause: unknown) {
+  const code = errorCodeOf(cause)
+  if (code === 'MONTH_CLOSED') {
+    const days = closedDatesOf(cause)
+    return days.length ? labels.value.monthClosedDays.replace('{dates}', days.map(day => formatDate(day, formats.value, locale.value)).join(', '))
+      : labels.value.monthClosed
+  }
+  if (code === 'ENTRY_IN_BREAK') return labels.value.entryInBreak
+  if (code === 'INVALID_TIME_RANGE') return labels.value.invalidTimeRange
+  return safeError(cause, locale.value)
+}
+const entryBody = () => ({ startTime: `${form.startTime}:00`, endTime: `${form.endTime}:00`, taskName: form.taskName, detail: form.detail,
+  notes: form.notes, projectId: form.projectId || null, categoryId: form.categoryId || null, includesBreak: form.includesBreak })
 async function saveEntry() {
   if (!canEdit.value) return
+  const bulk = several.value && !editingId.value
+  if (bulk && !bulkDates.value.length) return
   try {
     const savedDate = form.date
-    await api(`/entries${editingId.value ? `/${editingId.value}` : ''}`, { method: editingId.value ? 'PUT' : 'POST',
-      body: { ...form, startTime: `${form.startTime}:00`, endTime: `${form.endTime}:00`,
-        projectId: form.projectId || null, categoryId: form.categoryId || null, personalTaskId: form.personalTaskId || null } })
-    notice.value = text.value.saved
+    if (bulk) {
+      const count = bulkDates.value.length
+      await api('/entries/bulk', { method: 'POST', body: { dates: [...bulkDates.value].sort(), ...entryBody(),
+        personalTaskId: form.personalTaskId || null, reason: null } })
+      announce(labels.value.addedToDays.replace('{count}', String(count)))
+      several.value = false; bulkDates.value = []
+    } else {
+      await api(`/entries${editingId.value ? `/${editingId.value}` : ''}`, { method: editingId.value ? 'PUT' : 'POST',
+        body: { ...form, startTime: `${form.startTime}:00`, endTime: `${form.endTime}:00`,
+          projectId: form.projectId || null, categoryId: form.categoryId || null, personalTaskId: form.personalTaskId || null } })
+      announce(text.value.saved)
+    }
     resetForm(savedDate); await load()
-  } catch (cause) {
-    const code = (cause as { data?: { errorCode?: string } })?.data?.errorCode
-    error.value = code === 'ENTRY_IN_BREAK' ? labels.value.entryInBreak : safeError(cause, locale.value)
-  }
+  } catch (cause) { error.value = failure(cause) }
+}
+const skipLabel = (reason: SkipReason) => ({ holiday: labels.value.skipHoliday, 'day-off': labels.value.skipDayOff,
+  leave: labels.value.skipLeave, 'has-entries': labels.value.skipHasEntries })[reason] ?? reason
+async function copyEntries(request: { from: string; to: string; days: number }) {
+  if (!canEdit.value || copying.value) return
+  copying.value = true
+  try {
+    const result = await api<CopyResult>('/entries/copy', { method: 'POST', body: request })
+    const created = result?.created ?? []
+    const skipped = result?.skipped ?? []
+    await load()
+    announce(created.length === 1 ? labels.value.copiedOne : created.length ? labels.value.copied.replace('{count}', String(created.length)) : labels.value.copiedNone,
+      skipped.map(day => `${formatDate(day.date, formats.value, locale.value)}: ${skipLabel(day.reason)}`))
+  } catch (cause) { error.value = failure(cause) }
+  finally { copying.value = false }
+}
+function useTemplate(template: EntryTemplate | undefined) {
+  if (!template || !canEdit.value) return
+  if (editingId.value) resetForm()
+  Object.assign(form, { taskName: template.taskName, startTime: template.startTime.slice(0, 5), endTime: template.endTime.slice(0, 5),
+    projectId: template.projectId || '', categoryId: template.categoryId || '', detail: template.detail || '', notes: template.notes || '',
+    includesBreak: template.includesBreak ?? false, personalTaskId: '' })
+}
+const templateBody = (name: string) => ({ name: name.trim(), ...entryBody(), detail: form.detail || null, notes: form.notes || null })
+function templateFailure(cause: unknown, name: string) {
+  error.value = errorCodeOf(cause) === 'TEMPLATE_EXISTS' ? labels.value.templateExists.replace('{name}', name.trim()) : failure(cause)
+}
+async function saveTemplate() {
+  const name = templateName.value ?? ''
+  if (!name.trim()) return
+  if (!form.taskName.trim()) { error.value = labels.value.templateTaskFirst; return }
+  try {
+    await api('/entry-templates', { method: 'POST', body: templateBody(name) })
+    templateName.value = null
+    await load()
+    announce(labels.value.templateSaved)
+  } catch (cause) { templateFailure(cause, name) }
+}
+/** Saves a template's new name, or (from the form) replaces what it fills in. */
+async function updateTemplate(template: EntryTemplate, fromForm = false) {
+  if (!template.name.trim()) return
+  if (fromForm && !form.taskName.trim()) { error.value = labels.value.templateTaskFirst; return }
+  const body = fromForm ? templateBody(template.name) : { name: template.name.trim(), taskName: template.taskName, startTime: template.startTime,
+    endTime: template.endTime, projectId: template.projectId, categoryId: template.categoryId, detail: template.detail, notes: template.notes,
+    includesBreak: template.includesBreak }
+  try { await api(`/entry-templates/${template.id}`, { method: 'PUT', body }); await load(); announce(labels.value.templateSaved) }
+  catch (cause) { templateFailure(cause, template.name) }
+}
+async function removeTemplate(template: EntryTemplate) {
+  if (!confirm(labels.value.confirmDeleteTemplate.replace('{name}', template.name))) return
+  try { await api(`/entry-templates/${template.id}`, { method: 'DELETE' }); await load(); announce(labels.value.templateDeleted) }
+  catch (cause) { error.value = failure(cause) }
 }
 async function removeEntry(id: string) {
   if (!canEdit.value || !confirm(text.value.confirmDeleteEntry)) return
@@ -213,7 +314,7 @@ async function submitMonth() {
   try {
     await api(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}/submit`, { method: 'POST' })
     resetForm(); await load()
-    notice.value = labels.value.submittedNotice
+    announce(labels.value.submittedNotice)
   } catch (cause) { error.value = safeError(cause, locale.value) }
   finally { submitting.value = false }
 }
@@ -278,7 +379,8 @@ async function updateLeave(leave: Leave) {
       <ApprovalBar v-if="currentMonth && month <= currentMonth" :state="monthState" :can-submit="canSubmit" :busy="submitting" @submit="submitMonth" />
       <p v-if="!canEdit && monthState.status === 'open' && !monthState.locked" class="notice" role="status">{{ text.readOnly }}</p>
       <p v-if="error" role="alert" class="feedback error">{{ error }}</p>
-      <p v-if="notice" role="status" class="feedback success">{{ notice }}</p>
+      <div v-if="notice" role="status" class="feedback success"><p>{{ notice }}</p><template v-if="noticeDetails.length">
+        <p class="notice-subhead">{{ labels.skipped }}</p><ul class="notice-details"><li v-for="line in noticeDetails" :key="line">{{ line }}</li></ul></template></div>
 
       <div class="view-switch" role="group" :aria-label="text.view">
         <button type="button" :aria-pressed="view === 'entries'" @click="view = 'entries'">{{ text.entriesView }}</button>
@@ -302,11 +404,17 @@ async function updateLeave(leave: Leave) {
             <div class="day-sheet">
               <DayPanel :day="form.date" :heading="dayHeading" :entries="dayEntries" :catalog="catalog" :can-edit="canEdit"
                 :editing-id="editingId" :note="dayNote" @edit="edit" @remove="removeEntry" />
-              <EntryComposer v-if="canEdit" :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd"
-                :editing="Boolean(editingId)" @save="saveEntry" @cancel="resetForm()" @drop="dropTask" />
+              <CopyDays v-if="canEdit" :day="form.date" :month-start="monthStart" :month-end="monthEnd" :busy="copying"
+                :working-days="catalog.workingDays" :holidays="catalog.holidays.map(holiday => holiday.date)" @copy="copyEntries" />
+              <EntryComposer v-if="canEdit" v-model:several="several" v-model:bulk-dates="bulkDates" v-model:template-name="templateName"
+                :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd" :templates="templates" :bulk-days="bulkDays"
+                :editing="Boolean(editingId)" @save="saveEntry" @cancel="cancelEntry" @drop="dropTask"
+                @template="id => useTemplate(templates.find(template => template.id === id))" @save-template="saveTemplate" />
             </div>
             <TaskTray v-model:task-name="taskName" :tasks="tasks" :catalog="catalog" @add="addTask" @status="setStatus"
               @rename="renameTask" @remove="removeTask" @use="prefill" />
+            <TemplatePanel v-if="canEdit" :templates="templates" @use="useTemplate" @rename="template => updateTemplate(template)"
+              @replace="template => updateTemplate(template, true)" @remove="removeTemplate" />
           </div>
         </div>
 

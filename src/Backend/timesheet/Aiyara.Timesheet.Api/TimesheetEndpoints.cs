@@ -19,6 +19,17 @@ public sealed record TaskRequest(string Name, string Status, Guid? ProjectId, Gu
 public sealed record EntryRequest(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,
     Guid? PersonalTaskId, string? Reason, bool IncludesBreak = false);
+/// <summary>One entry written on each of 1–31 distinct dates, all or none.</summary>
+public sealed record BulkEntryRequest(DateOnly[] Dates, TimeOnly StartTime, TimeOnly EndTime,
+    string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,
+    Guid? PersonalTaskId, string? Reason, bool IncludesBreak = false);
+/// <summary>Copies the member's entries on <c>Days</c> (1–7) days from <c>From</c> onto as many days from <c>To</c>.</summary>
+public sealed record CopyEntriesRequest(DateOnly From, DateOnly To, int Days = 1);
+/// <summary>A day a copy left alone: <c>holiday</c>, <c>day-off</c>, <c>leave</c> (whole day), or <c>has-entries</c>.</summary>
+public sealed record SkippedDay(DateOnly Date, string Reason);
+/// <summary>A member's saved entry: its name (1–100 characters, unique for the member) and what it fills in.</summary>
+public sealed record EntryTemplateRequest(string Name, string TaskName, TimeOnly StartTime, TimeOnly EndTime,
+    Guid? ProjectId, Guid? CategoryId, string? Detail, string? Notes, bool IncludesBreak = false);
 /// <summary>A day of leave: with the organization's leave types, <c>LeaveTypeId</c> names the type
 /// and <c>Kind</c> is ignored; without them <c>Kind</c> is free text. <c>Minutes</c> is a part of the
 /// day (at most the normal working day); leave it out for the whole day.</summary>

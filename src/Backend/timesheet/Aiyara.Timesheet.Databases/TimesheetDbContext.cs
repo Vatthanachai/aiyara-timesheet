@@ -13,6 +13,7 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveEntry> LeaveEntries => Set<LeaveEntry>();
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
+    public DbSet<EntryTemplate> EntryTemplates => Set<EntryTemplate>();
     public DbSet<MonthLock> MonthLocks => Set<MonthLock>();
     public DbSet<MonthApproval> MonthApprovals => Set<MonthApproval>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
@@ -54,6 +55,14 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
         modelBuilder.Entity<LeaveType>().Property(x => x.AnnualDays).HasPrecision(5, 1);
         Configure<LeaveEntry>(modelBuilder, "leave_entries");
         Configure<TimeEntry>(modelBuilder, "time_entries");
+        Configure<EntryTemplate>(modelBuilder, "entry_templates");
+        modelBuilder.Entity<EntryTemplate>().HasIndex(x => new { x.TenantId, x.OwnerId });
+        // A deleted template's name may be used again; the filter reads the same on PostgreSQL and SQLite.
+        modelBuilder.Entity<EntryTemplate>().HasIndex(x => new { x.TenantId, x.OwnerId, x.NormalizedName })
+            .IsUnique().HasFilter("\"IsDeleted\" = false");
+        modelBuilder.Entity<EntryTemplate>().Property(x => x.Name).HasMaxLength(100);
+        modelBuilder.Entity<EntryTemplate>().Property(x => x.NormalizedName).HasMaxLength(100);
+        modelBuilder.Entity<EntryTemplate>().Property(x => x.TaskName).HasMaxLength(200);
         Configure<MonthLock>(modelBuilder, "month_locks");
         Configure<TimesheetAudit>(modelBuilder, "timesheet_audit");
         Configure<TimesheetOutboxEvent>(modelBuilder, "timesheet_outbox");

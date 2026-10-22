@@ -144,6 +144,40 @@ $balance = Expect (Request Get "/api/v1/timesheets/me/leave-balance?year=$year" 
 $annualBalance = @($balance.balances) | Where-Object leaveTypeId -eq $annual.id
 if ($annualBalance.usedDays -ne 0.5 -or $annualBalance.remainingDays -ne 9.5) { throw 'The leave balance does not count the half day.' }
 
+# Copy and bulk entry, in the admin's own month: a saved template fills one entry written on two working
+# days at once, that week is copied a week later (copying again skips the days that now have entries),
+# and anything reaching into last month is refused whole.
+$template = Expect (Request Post '/api/v1/timesheets/entry-templates' @{ name = 'Standup'; taskName = 'Daily standup'
+    startTime = '09:00:00'; endTime = '09:30:00'; projectId = $project.id; categoryId = $category.id
+    detail = 'Team'; notes = $null; includesBreak = $false } $admin) 201 'entry template'
+Expect (Request Post '/api/v1/timesheets/entry-templates' @{ name = 'standup'; taskName = 'Other'
+    startTime = '10:00:00'; endTime = '11:00:00' } $admin) 409 'duplicate entry template' | Out-Null
+if (@(Expect (Request Get '/api/v1/timesheets/entry-templates' $null $admin) 200 'entry templates').Count -ne 1) { throw 'The template was not listed.' }
+if (@(Expect (Request Get '/api/v1/timesheets/entry-templates' $null $employee) 200 'employee entry templates').Count -ne 0) { throw 'Another member can read the template.' }
+# The first two of the tenant's working days in the 8th–14th (the holiday is the 7th); a week later
+# falls on the same weekdays, so the copy writes both whatever the month.
+$workingDays = @((Expect (Request Get '/api/v1/timesheets/catalog' $null $admin) 200 'admin catalog').workingDays)
+$bulkDays = @(8..14 | ForEach-Object { [datetime]::new([int]$year, [int]$month, $_) } |
+    Where-Object { $workingDays -contains [int]$_.DayOfWeek } | Select-Object -First 2 | ForEach-Object { $_.ToString('yyyy-MM-dd') })
+if ($bulkDays.Count -ne 2) { throw 'The work week has fewer than two working days for the bulk step.' }
+$bulk = Expect (Request Post '/api/v1/timesheets/entries/bulk' @{ dates = $bulkDays; startTime = $template.startTime
+    endTime = $template.endTime; taskName = $template.taskName; detail = $template.detail; notes = $null
+    projectId = $template.projectId; categoryId = $template.categoryId; personalTaskId = $null; reason = $null
+    includesBreak = $template.includesBreak } $admin) 200 'bulk entry'
+if (@($bulk.created).Count -ne 2 -or @($bulk.created)[0].durationMinutes -ne 30) { throw 'Bulk entry did not write both days.' }
+$weekCopy = @{ from = "$year-$month-08"; to = "$year-$month-15"; days = 7 }
+$copied = Expect (Request Post '/api/v1/timesheets/entries/copy' $weekCopy $admin) 200 'week copy'
+if (@($copied.created).Count -ne 2 -or @($copied.skipped).Count -ne 0) { throw 'The week was not copied.' }
+$again = Expect (Request Post '/api/v1/timesheets/entries/copy' $weekCopy $admin) 200 'repeated week copy'
+if (@($again.created).Count -ne 0 -or @(@($again.skipped) | Where-Object reason -eq 'has-entries').Count -ne 2) { throw 'Copying again did not skip the copied days.' }
+$lastMonth = [datetime]::new([int]$year, [int]$month, 1).AddDays(-1).ToString('yyyy-MM-dd')
+$closed = Request Post '/api/v1/timesheets/entries/bulk' @{ dates = @($bulkDays[0], $lastMonth); startTime = '09:00:00'
+    endTime = '10:00:00'; taskName = 'Late'; includesBreak = $false } $admin
+if ($closed.StatusCode -ne 409 -or ($closed.Content | ConvertFrom-Json).errors.dates -notcontains $lastMonth) { throw 'Bulk entry into last month was not refused by date.' }
+Expect (Request Post '/api/v1/timesheets/entries/copy' @{ from = "$year-$month-08"; to = $lastMonth; days = 1 } $admin) 409 'copy into last month' | Out-Null
+Expect (Request Delete "/api/v1/timesheets/entry-templates/$($template.id)" $null $employee) 404 'template owner isolation' | Out-Null
+Expect (Request Delete "/api/v1/timesheets/entry-templates/$($template.id)" $null $admin) 204 'template deletion' | Out-Null
+
 # Reminders: off until a Tenant Admin turns them on; only a Tenant Admin may change them.
 $reminders = Expect (Request Get '/api/v1/timesheets/reminders' $null $admin) 200 'reminder settings'
 if ($reminders.dailyEnabled -or $reminders.monthEndEnabled -or $reminders.sendAt -ne '09:00') { throw 'Reminders are not off by default.' }
@@ -182,4 +216,4 @@ Expect (Request Get "/api/v1/timesheets/months/$year/$month/snapshot" $null $emp
 Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $employee) 409 'locked entry' | Out-Null
 Expect (Request Delete "/api/v1/timesheets/leave/$($leave.id)" $null $employee) 409 'locked leave' | Out-Null
 
-Write-Output 'Phase 3 profile, catalog, task, overnight time entry, leave, isolation, approval, month lock and snapshot smoke test passed.'
+Write-Output 'Phase 3 profile, catalog, task, overnight time entry, templates, bulk and copied entries, leave, isolation, approval, month lock and snapshot smoke test passed.'

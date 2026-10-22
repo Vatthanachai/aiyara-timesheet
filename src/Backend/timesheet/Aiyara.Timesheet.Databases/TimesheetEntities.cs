@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Aiyara.Timesheet.Databases;
 
 public abstract class TenantRecord
@@ -91,6 +93,27 @@ public sealed class TimeEntry : TenantRecord
     public bool IncludesBreak { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+}
+
+/// <summary>A member's own saved entry for recurring work, used to fill the entry form.</summary>
+public sealed class EntryTemplate : TenantRecord
+{
+    public Guid OwnerId { get; set; }
+    public required string Name { get; set; }
+    /// <summary>The name in upper case, unique among the member's live templates.</summary>
+    [JsonIgnore] public string NormalizedName { get; set; } = "";
+    public required string TaskName { get; set; }
+    public TimeOnly StartTime { get; set; }
+    public TimeOnly EndTime { get; set; }
+    public Guid? ProjectId { get; set; }
+    public Guid? CategoryId { get; set; }
+    public string? Detail { get; set; }
+    public string? Notes { get; set; }
+    public bool IncludesBreak { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
+    public static string Normalize(string name) => name.Trim().ToUpperInvariant();
 }
 
 public sealed class MonthLock : TenantRecord

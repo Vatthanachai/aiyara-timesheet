@@ -221,6 +221,56 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> DeleteEntry(Guid id, [FromQuery] string? reason, CancellationToken ct) =>
         Execute(actor => operations.DeleteEntry(actor, id, reason, ct));
 
+    /// <summary>Writes the same entry on each chosen date, all or none; closed days are named in <c>errors.dates</c>.</summary>
+    [HttpPost("entries/bulk", Name = "CreateBulkTimeEntriesV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> BulkEntries([FromBody] BulkEntryRequest body, CancellationToken ct) =>
+        Execute(actor => operations.BulkEntries(actor, body, ct));
+
+    /// <summary>Copies a day or a week of the member's entries onto other days, skipping days off,
+    /// holidays, whole-day leave, and days that already have entries.</summary>
+    [HttpPost("entries/copy", Name = "CopyTimeEntriesV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CopyEntries([FromBody] CopyEntriesRequest body, CancellationToken ct) =>
+        Execute(actor => operations.CopyEntries(actor, body, ct));
+
+    /// <summary>The signed-in member's own entry templates, by name.</summary>
+    [HttpGet("entry-templates", Name = "GetEntryTemplatesV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<IReadOnlyList<EntryTemplate>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    public Task<IActionResult> EntryTemplates(CancellationToken ct) =>
+        Execute(actor => operations.EntryTemplates(actor, ct));
+
+    [HttpPost("entry-templates", Name = "CreateEntryTemplateV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<EntryTemplate>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> CreateEntryTemplate([FromBody] EntryTemplateRequest body, CancellationToken ct) =>
+        Execute(actor => operations.SaveEntryTemplate(actor, null, body, ct));
+
+    [HttpPut("entry-templates/{id:guid}", Name = "UpdateEntryTemplateV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<EntryTemplate>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> UpdateEntryTemplate(Guid id, [FromBody] EntryTemplateRequest body, CancellationToken ct) =>
+        Execute(actor => operations.SaveEntryTemplate(actor, id, body, ct));
+
+    [HttpDelete("entry-templates/{id:guid}", Name = "DeleteEntryTemplateV1")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    public Task<IActionResult> DeleteEntryTemplate(Guid id, CancellationToken ct) =>
+        Execute(actor => operations.DeleteEntryTemplate(actor, id, ct));
+
     [HttpGet("leave", Name = "GetLeaveEntriesV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<IReadOnlyList<LeaveEntry>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
