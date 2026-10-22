@@ -4,8 +4,8 @@
 
 ## Suggested Order
 
-1. [[#1. Timesheet approval|Timesheet approval]] — `feature/timesheet-approval`
-2. [[#2. Leave types and balances|Leave types and balances]] — `feature/leave-types-balance`
+1. [[#1. Timesheet approval|Timesheet approval]] — `feature/timesheet-approval` (done)
+2. [[#2. Leave types and balances|Leave types and balances]] — `feature/leave-types-balance` (done)
 3. [[#3. Missing-entry reminders|Missing-entry reminders]] — `feature/missing-entry-reminders`
 4. [[#11. Continuous integration|Continuous integration]] — can run alongside any of the above
 
@@ -98,7 +98,7 @@ Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with
 
 ### 13. Broader end-to-end tests
 
-Playwright covers session restore and failed login only. Add flows for time entry, leave, reports and exports, Administration settings, and member invitations.
+Playwright now runs 64 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
 
 ### 14. Mobile and offline
 

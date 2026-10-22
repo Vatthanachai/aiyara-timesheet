@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 21 October 2026. Phases 0–5 are implemented and validated on `develop`. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
+> Updated 22 October 2026. Phases 0–5 are implemented and validated on `develop`, and items 1–2 of [[Product Backlog]] (timesheet approval, leave types and balances) are merged. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
 
 ## Recent Merges To `develop`
 
