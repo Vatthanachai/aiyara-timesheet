@@ -51,11 +51,11 @@ function onKeydown(event: KeyboardEvent) {
 
 <style scoped>
 .locale-switch {
-  background: #eef1f5; border: 1px solid var(--color-border); border-radius: 999px; display: inline-grid;
+  background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 999px; box-shadow: var(--inset-field); display: inline-grid;
   grid-template-columns: 1fr 1fr; padding: .2rem; position: relative;
 }
 .locale-thumb {
-  background: var(--color-surface); border-radius: 999px; box-shadow: 0 1px 2px rgb(23 32 51 / 18%);
+  background: var(--color-surface); border-radius: 999px; box-shadow: var(--elev-1);
   inset: .2rem auto .2rem .2rem; position: absolute; transition: transform 180ms ease; width: calc(50% - .2rem);
 }
 .locale-switch[data-locale="en"] .locale-thumb { transform: translateX(100%); }
@@ -66,7 +66,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 .locale-switch button[aria-checked="true"] { color: var(--color-ink); }
 .locale-switch button:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 1px; }
-.flag { border-radius: 2px; box-shadow: 0 0 0 1px rgb(23 32 51 / 12%); flex: 0 0 auto; height: .8rem; width: 1.2rem; }
+.flag { border-radius: 2px; box-shadow: 0 0 0 1px rgb(var(--shadow-rgb) / 12%); flex: 0 0 auto; height: .8rem; width: 1.2rem; }
 .locale-switch button[aria-checked="false"] .flag { opacity: .55; }
 @media (prefers-reduced-motion: reduce) { .locale-thumb { transition: none; } }
 /* On the narrowest phones the flags carry the switch; the names stay for assistive technology. */

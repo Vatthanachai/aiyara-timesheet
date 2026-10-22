@@ -155,7 +155,7 @@ function startOver() {
 </template>
 
 <style scoped>
-.setup-qr { background: white; border: 1px solid var(--color-border); border-radius: .5rem; height: auto; image-rendering: pixelated; max-width: 100%; padding: .5rem; width: 14rem; }
+.setup-qr { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .5rem; height: auto; image-rendering: pixelated; max-width: 100%; padding: .5rem; width: 14rem; }
 .setup-key code, .recovery-codes code { font-size: 1rem; letter-spacing: .08em; overflow-wrap: anywhere; }
 .recovery-codes { display: grid; gap: .35rem; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); margin: 0; padding-left: 1.4rem; }
 </style>

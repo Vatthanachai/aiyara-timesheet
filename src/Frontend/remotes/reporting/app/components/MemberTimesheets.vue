@@ -456,8 +456,8 @@ onMounted(async () => {
 .member-totals div + div{border-left:1px solid var(--color-border);padding-left:1rem}
 .member-totals dt{color:var(--color-muted);font-size:.82rem}
 .member-totals dd{margin:.15rem 0 0;font-family:var(--font-display);font-size:1.5rem;font-weight:600;font-variant-numeric:tabular-nums}
-tr.day-end td{border-bottom-color:#c9d3e1}
-.day-off{display:block;width:max-content;margin-top:.2rem;padding:.05rem .45rem;border-radius:999px;background:var(--color-day-off);color:#475569;font-size:.72rem}
+tr.day-end td{border-bottom-color:var(--color-border-strong)}
+.day-off{display:block;width:max-content;margin-top:.2rem;padding:.05rem .45rem;border-radius:999px;background:var(--color-day-off);color:var(--color-ink-soft);font-size:.72rem}
 /* A member's entries: the task takes the room, the rest keep steady widths. */
 .entries-table{table-layout:fixed;min-width:44rem}
 .entries-table .col-date{width:9.5rem}.entries-table .col-time{width:8.5rem}.entries-table .col-tag{width:8.5rem}.entries-table .col-hours{width:6.5rem}

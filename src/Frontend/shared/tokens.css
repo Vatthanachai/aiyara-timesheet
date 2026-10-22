@@ -1,21 +1,102 @@
+/*
+ * Paper on a desk. The canvas is the desk; surfaces are sheets of paper lifted off it by a
+ * contact shadow and a soft spread (--elev-1, and --elev-2 for what floats above the page).
+ * Fields sink below the paper (--color-field, --inset-field); buttons press. The dark theme is
+ * the same desk after hours: deep navy rather than black, slate paper, and a lamp-lit blue that
+ * carries dark text when it fills a control. The Shell sets data-theme on <html>, and passes it
+ * to every remote in its session message.
+ */
 :root {
-  --color-canvas: #f8fafc;
+  color-scheme: light;
+  --color-canvas: #eef2f7;
   --color-surface: #ffffff;
+  --color-surface-muted: #f3f6fa;
+  --color-field: #ffffff;
   --color-ink: #172033;
+  --color-ink-soft: #3d4a5f;
   --color-muted: #5d687a;
-  --color-brand: #155eef;
+  --color-faint: #94a3b8;
   --color-border: #d8dee9;
+  --color-border-strong: #c9d3e1;
+  --color-brand: #155eef;
+  --color-brand-strong: #0f4bd1;
+  --color-brand-ink: #1d3f9e;
+  --color-brand-soft: #eaf1ff;
+  --color-brand-line: #c9d8fb;
+  --color-on-brand: #ffffff;
+  --color-danger: #b42318;
+  --color-danger-soft: #fff1f0;
+  --color-danger-line: #f0c9c7;
+  --color-success: #17663b;
+  --color-success-strong: #22a05a;
+  --color-success-soft: #e8f6ef;
+  --color-success-line: #bee6d4;
+  --color-warn: #795400;
+  --color-warn-strong: #d29b25;
+  --color-warn-soft: #fff4dc;
+  --color-warn-line: #f1dfb4;
   /* A working day drawn as time: the display face (Bai Jamjuree, self-hosted by each app that
      uses it), the working-hours tint, the break, days off, hours outside the day, and overtime. */
   --font-display: "Bai Jamjuree", Inter, ui-sans-serif, system-ui, sans-serif;
-  --color-brand-strong: #0f4bd1;
   --color-work-track: #dce6fd;
   --color-break: #94a3b8;
   --color-day-off: #eef1f5;
   --color-hour-off: #a3adbd;
   --color-overtime: #b45309;
+  --color-leave: #0f766e;
+  /* Depth. --shadow-rgb is the colour shadows are cast in; --shadow-k scales how dark they fall. */
+  --shadow-rgb: 23 32 51;
+  --shadow-k: 1;
+  --edge-light: rgb(255 255 255 / 0%);
+  --elev-1: 0 1px 0 rgb(var(--shadow-rgb) / calc(5% * var(--shadow-k))), 0 1px 3px rgb(var(--shadow-rgb) / calc(7% * var(--shadow-k))),
+    0 12px 28px -18px rgb(var(--shadow-rgb) / calc(30% * var(--shadow-k))), inset 0 1px 0 var(--edge-light);
+  --elev-2: 0 2px 4px rgb(var(--shadow-rgb) / calc(6% * var(--shadow-k))), 0 22px 44px -18px rgb(var(--shadow-rgb) / calc(34% * var(--shadow-k))),
+    inset 0 1px 0 var(--edge-light);
+  --inset-field: inset 0 1px 2px rgb(var(--shadow-rgb) / calc(7% * var(--shadow-k)));
+  --press: inset 0 1px 0 rgb(255 255 255 / 22%), 0 1px 0 var(--color-brand-strong), 0 8px 16px -10px var(--color-brand);
   --radius-card: 0.75rem;
   --space-4: 1rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #0d1524;
+  --color-surface: #162133;
+  --color-surface-muted: #1d2a40;
+  --color-field: #0f1828;
+  --color-ink: #e4eaf4;
+  --color-ink-soft: #c2ccdb;
+  --color-muted: #9aa8bd;
+  --color-faint: #6b7a93;
+  --color-border: #2a3850;
+  --color-border-strong: #3a4a66;
+  --color-brand: #7aa5ff;
+  --color-brand-strong: #9dbdff;
+  --color-brand-ink: #b3c9ff;
+  --color-brand-soft: #1b2b4d;
+  --color-brand-line: #2f4677;
+  --color-on-brand: #0b1630;
+  --color-danger: #ff8f85;
+  --color-danger-soft: #3a1d22;
+  --color-danger-line: #6b2f33;
+  --color-success: #6fd6a0;
+  --color-success-strong: #3fbf7a;
+  --color-success-soft: #13332a;
+  --color-success-line: #24553f;
+  --color-warn: #f2c66d;
+  --color-warn-strong: #e3b04a;
+  --color-warn-soft: #362b12;
+  --color-warn-line: #5c4a1d;
+  --color-work-track: #20345a;
+  --color-break: #5b6b85;
+  --color-day-off: #121c2d;
+  --color-hour-off: #55647c;
+  --color-overtime: #f0a14a;
+  --color-leave: #5fd3c4;
+  --shadow-rgb: 2 6 14;
+  --shadow-k: 2.4;
+  --edge-light: rgb(255 255 255 / 5%);
+  --press: inset 0 1px 0 rgb(255 255 255 / 35%), 0 1px 0 #4f7fe0, 0 8px 18px -10px rgb(122 165 255 / 70%);
 }

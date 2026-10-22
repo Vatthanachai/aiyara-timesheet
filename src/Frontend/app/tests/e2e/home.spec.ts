@@ -169,3 +169,28 @@ test('the language switch shows both languages with flags and switches by click 
   await expect(english).toHaveAttribute('tabindex', '0')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your working day, hour by hour.')
 })
+
+test('the theme switch offers light, dark, and the system theme, and remembers the choice', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  await page.waitForFunction(() => Boolean((document.querySelector('button') as HTMLElement & { __vnode?: unknown } | null)?.__vnode))
+  const html = page.locator('html')
+  const themes = page.getByRole('radiogroup', { name: 'Theme' })
+  // With no choice made the page follows the system, and follows it when it changes.
+  await expect(themes.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true')
+  await expect(html).toHaveAttribute('data-theme', 'dark')
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(html).toHaveAttribute('data-theme', 'light')
+
+  await themes.getByRole('radio', { name: 'Dark' }).click()
+  await expect(html).toHaveAttribute('data-theme', 'dark')
+  await page.reload()
+  await expect(html).toHaveAttribute('data-theme', 'dark')
+  await expect(themes.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
+
+  // Arrow keys move the choice and the focus together.
+  await themes.getByRole('radio', { name: 'Dark' }).focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(themes.getByRole('radio', { name: 'Light' })).toBeFocused()
+  await expect(html).toHaveAttribute('data-theme', 'light')
+})

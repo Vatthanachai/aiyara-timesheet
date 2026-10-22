@@ -2,6 +2,7 @@
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale } from '../../../shared/i18n'
+import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
 import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
@@ -82,6 +83,7 @@ function onSessionMessage(event: MessageEvent) {
   token.value = event.data.token || ''
   gateway.value = event.data.gatewayUrl || gateway.value
   locale.value = readSessionLocale(event.data)
+  applyTheme(readSessionTheme(event.data))
   formats.value = readFormats(event.data)
   if (token.value) load()
 }

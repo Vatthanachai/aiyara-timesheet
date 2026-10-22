@@ -47,7 +47,7 @@ const days = computed(() => monthDates(props.month).map(date => {
 .strip-bar span { background: var(--color-work-track); border-top: 2px solid var(--color-brand); display: block; width: 100%; }
 .over .strip-bar span { border-top-color: var(--color-overtime); }
 .off .strip-bar { background: var(--color-day-off); border-color: var(--color-day-off); }
-.leave .strip-bar { background: repeating-linear-gradient(135deg, var(--color-day-off) 0 3px, #d7f0ec 3px 6px); border-color: #b9e1db; }
+.leave .strip-bar { background: repeating-linear-gradient(135deg, var(--color-day-off) 0 3px, var(--color-success-soft) 3px 6px); border-color: var(--color-success-line); }
 .strip-date { color: var(--color-muted); font-family: var(--font-display); font-size: .7rem; font-variant-numeric: tabular-nums; }
-.off .strip-date { color: #a3adbd; }
+.off .strip-date { color: var(--color-faint); }
 </style>

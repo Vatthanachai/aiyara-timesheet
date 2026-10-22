@@ -76,10 +76,10 @@ watch(() => props.busy, busy => { if (busy) hide() })
 .export-toggle svg { fill: none; height: 1rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; transition: transform 150ms ease; width: 1rem; }
 .export-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
 .export-items {
-  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .5rem; box-shadow: 0 .75rem 2rem rgb(23 32 51 / 14%);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .5rem; box-shadow: 0 .75rem 2rem rgb(var(--shadow-rgb) / calc(14% * var(--shadow-k)));
   list-style: none; margin: 0; min-width: 100%; padding: .3rem; position: absolute; right: 0; top: calc(100% + .35rem); z-index: 10;
 }
 .export-items button { background: none; border: 0; border-radius: .35rem; display: block; font-weight: 500; padding: .55rem .7rem; text-align: left; white-space: nowrap; width: 100%; }
-.export-items button:hover, .export-items button:focus-visible { background: #f3f6fa; outline: none; }
+.export-items button:hover, .export-items button:focus-visible { background: var(--color-surface-muted); outline: none; }
 @media (prefers-reduced-motion: reduce) { .export-toggle svg { transition: none; } }
 </style>

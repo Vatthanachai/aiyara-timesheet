@@ -2,6 +2,7 @@
 import { unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
+import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { nameInitials } from '../../../shared/initials'
 
 type Profile = {
@@ -130,6 +131,7 @@ function onMessage(event: MessageEvent) {
   token.value = nextToken
   gateway.value = event.data.gatewayUrl || gateway.value
   locale.value = readSessionLocale(event.data)
+  applyTheme(readSessionTheme(event.data))
   if (sessionChanged && token.value) void load()
   if (!token.value) {
     email.value = ''
@@ -367,7 +369,7 @@ h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); 
 .your-card.is-preview { border-color: var(--color-brand); border-style: dashed; }
 .photo-preview { align-items: center; background: var(--color-work-track); border-radius: 50%; color: var(--color-brand); display: flex; font-family: var(--font-display); font-size: 2.6rem; font-weight: 600; height: 8.5rem; justify-content: center; overflow: hidden; width: 8.5rem; }
 .photo-preview img { height: 100%; object-fit: cover; width: 100%; }
-.preview-mark { background: var(--color-work-track); border-radius: 999px; color: #1d3f9e; font-size: .75rem; font-weight: 600; margin: .75rem 0 0; padding: .2rem .6rem; }
+.preview-mark { background: var(--color-work-track); border-radius: 999px; color: var(--color-brand-ink); font-size: .75rem; font-weight: 600; margin: .75rem 0 0; padding: .2rem .6rem; }
 .card-name { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; line-height: 1.25; margin: 1rem 0 0; max-width: 100%; overflow-wrap: anywhere; }
 .card-title { color: var(--color-muted); margin: .25rem 0 0; max-width: 100%; overflow-wrap: anywhere; }
 .photo-buttons { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-top: 1.25rem; }
@@ -376,7 +378,7 @@ h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); 
 .header-preview { align-items: center; border-top: 1px solid var(--color-border); display: grid; gap: .5rem; justify-items: center; margin-top: 1.25rem; padding-top: 1rem; width: 100%; }
 .header-preview-label { color: var(--color-muted); font-size: .78rem; }
 .header-chip { align-items: center; border: 1px solid var(--color-border); border-radius: 999px; display: inline-flex; gap: .5rem; max-width: 100%; padding: .2rem .7rem .2rem .25rem; }
-.chip-avatar { align-items: center; background: #eaf1ff; border-radius: 50%; color: var(--color-brand); display: inline-flex; flex: 0 0 1.9rem; font-size: .78rem; font-weight: 700; height: 1.9rem; justify-content: center; overflow: hidden; width: 1.9rem; }
+.chip-avatar { align-items: center; background: var(--color-brand-soft); border-radius: 50%; color: var(--color-brand); display: inline-flex; flex: 0 0 1.9rem; font-size: .78rem; font-weight: 700; height: 1.9rem; justify-content: center; overflow: hidden; width: 1.9rem; }
 .chip-avatar img { height: 100%; object-fit: cover; width: 100%; }
 .chip-name { font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .header-chip svg { fill: none; flex: 0 0 .9rem; height: .9rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: .9rem; }
@@ -386,16 +388,16 @@ h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); 
 .fields-grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .field { display: grid; gap: .4rem; min-width: 0; }
 .field > span { font-size: .86rem; font-weight: 600; }
-.field input { background: #fff; border: 1px solid #cbd4e1; border-radius: .5rem; color: var(--color-ink); font: inherit; min-height: 2.75rem; padding: .65rem .8rem; width: 100%; }
-.field input::placeholder { color: #929dad; }
+.field input { background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: .5rem; color: var(--color-ink); font: inherit; min-height: 2.75rem; padding: .65rem .8rem; width: 100%; }
+.field input::placeholder { color: var(--color-faint); }
 .field-full { grid-column: 1 / -1; }
 .email-value { font-weight: 500; margin: 0; overflow-wrap: anywhere; }
 .field small { color: var(--color-muted); font-size: .8rem; }
 .form-footer { align-items: center; border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: .75rem 1rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1.1rem; }
 .feedback p { font-size: .88rem; margin: 0; }
-.feedback-error { color: #b42318; }
-.feedback-success { color: #067647; }
-.unsaved { color: #7a5412; }
+.feedback-error { color: var(--color-danger); }
+.feedback-success { color: var(--color-success); }
+.unsaved { color: var(--color-warn); }
 .form-actions { display: flex; gap: .5rem; margin-left: auto; }
 /* Buttons: no hover lift; colour changes only. */
 .button { align-items: center; border: 1px solid transparent; border-radius: .5rem; cursor: pointer; display: inline-flex; font: inherit; font-size: .88rem; font-weight: 600; justify-content: center; min-height: 2.6rem; padding: .55rem .9rem; }
@@ -404,13 +406,13 @@ h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); 
 /* (it follows the buttons, so :has finds the label before it) */
 .photo-buttons:has(+ #profile-photo-input:focus-visible) .button-secondary { outline: 2px solid var(--color-brand); outline-offset: 2px; }
 .button:disabled { cursor: not-allowed; opacity: .55; }
-.button-primary { background: var(--color-brand); color: white; }
+.button-primary { background: var(--color-brand); color: var(--color-on-brand); }
 .button-primary:hover:not(:disabled) { background: var(--color-brand-strong); }
-.button-secondary { background: #fff; border-color: var(--color-border); color: var(--color-ink); }
-.button-secondary:hover { background: #f6f8fb; }
+.button-secondary { background: var(--color-surface); border-color: var(--color-border); color: var(--color-ink); }
+.button-secondary:hover { background: var(--color-surface-muted); }
 .button-quiet { background: transparent; color: var(--color-muted); }
-.button-quiet:hover:not(:disabled) { background: #f3f6fa; }
-.button-quiet.danger { color: #b42318; }
+.button-quiet:hover:not(:disabled) { background: var(--color-surface-muted); }
+.button-quiet.danger { color: var(--color-danger); }
 .visually-hidden { height: 1px; margin: -1px; overflow: hidden; position: absolute; clip: rect(0, 0, 0, 0); white-space: nowrap; width: 1px; }
 .sign-in-message { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .75rem; color: var(--color-muted); padding: 1.25rem; }
 @media (max-width: 44rem) {
