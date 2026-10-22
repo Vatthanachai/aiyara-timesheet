@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { safeError } from '../../../../shared/api-response'
+import AutoComplete from '../../../../shared/components/AutoComplete.vue'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 import { zonedToday } from '../utils/reportPeriods'
 import { csvBlob, saveBlob, xlsxBlob, type Cell } from '../utils/spreadsheet'
@@ -73,6 +74,8 @@ const selectedId = ref('')
 /** '' is every member; NO_GROUP is directory members in no group. */
 const NO_GROUP = '-'
 const groupFilter = ref('')
+const groupChoices = computed(() => [{ value: '', label: copy.value.allGroups },
+  ...groups.value.map(group => ({ value: group.id, label: group.name })), { value: NO_GROUP, label: copy.value.noGroup }])
 const detail = ref<Detail | null>(null)
 const busy = ref(false)
 const error = ref('')
@@ -293,11 +296,7 @@ onMounted(async () => {
         <p class="muted">{{ self ? copy.myHint : copy.hint }}</p>
       </div>
       <div class="member-filters">
-        <label v-if="groups.length && !self">{{ copy.group }}<select v-model="groupFilter" :aria-label="copy.group">
-          <option value="">{{ copy.allGroups }}</option>
-          <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
-          <option :value="NO_GROUP">{{ copy.noGroup }}</option>
-        </select></label>
+        <label v-if="groups.length && !self">{{ copy.group }}<AutoComplete v-model="groupFilter" :label="copy.group" :options="groupChoices" /></label>
         <label>{{ copy.month }}<input v-model="month" type="month" required /></label>
       </div>
     </div>

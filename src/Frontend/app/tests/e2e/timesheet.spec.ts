@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { options, shownDate } from './fields'
 
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
 const cors = {
@@ -35,7 +36,7 @@ async function openTimesheet(page: Page, requests: string[] = []) {
       ])
     }
     if (url.pathname.endsWith('/timesheets/tasks') || url.pathname.endsWith('/timesheets/leave')) return ok([])
-    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [], categories: [], holidays: [],
+    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [{ id: 'p1', name: 'Website redesign' }, { id: 'p2', name: 'Mobile app' }, { id: 'p3', name: 'Internal tools' }], categories: [], holidays: [],
       workingDays: [0, 1, 2, 3, 4, 5, 6], workHours: { startTime: '09:00', endTime: '17:00', breakStart: '12:00', breakEnd: '13:00' } })
     if (url.pathname.endsWith('/timesheets/context')) return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
@@ -91,7 +92,7 @@ test('the selected day lists its entries, and Edit opens one in the form until a
   await timesheet.getByRole('button', { name: `Date ${day(7)}` }).click()
   await expect(form.getByRole('heading', { name: 'Add entry' })).toBeVisible()
   await expect(form.getByLabel('Task', { exact: true })).toHaveValue('')
-  await expect(form.getByLabel('Date')).toHaveValue(day(7))
+  await expect(form.getByLabel('Date')).toHaveValue(shownDate(day(7)))
 
   // Edit from the month list selects the entry's day and saves with PUT.
   await timesheet.locator('tbody tr').filter({ hasText: 'Full day' }).getByRole('button', { name: 'Edit' }).click()
@@ -107,4 +108,60 @@ test('Timesheet takes the theme chosen in the Shell', async ({ page }) => {
   await page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Dark' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(timesheet.locator('html')).toHaveAttribute('data-theme', 'dark')
+})
+
+test('pickers filter as you type, times are 24-hour, and dates are dd/MM/yyyy', async ({ page }) => {
+  const timesheet = await openTimesheet(page)
+  const form = timesheet.locator('.entry-panel')
+
+  // Typing narrows the list and marks the match; Enter picks the highlighted choice.
+  const project = form.getByLabel('Project')
+  await expect(project).toHaveAttribute('role', 'combobox')
+  await project.click()
+  await expect(options(project)).toHaveText(['—', 'Website redesign', 'Mobile app', 'Internal tools'])
+  await project.fill('app')
+  await expect(options(project)).toHaveText(['Mobile app'])
+  await expect(form.locator('[role="option"] mark')).toHaveText('app')
+  await project.press('Enter')
+  await expect(project).toHaveValue('Mobile app')
+  await expect(project).toHaveAttribute('aria-expanded', 'false')
+
+  // Escape puts back the last choice; text that names nothing is not kept.
+  await project.fill('nothing like this')
+  await expect(form.getByText('No matches')).toBeVisible()
+  await project.press('Escape')
+  await expect(project).toHaveValue('Mobile app')
+  await project.fill('zzz')
+  await project.blur()
+  await expect(project).toHaveValue('Mobile app')
+
+  // Arrow keys move through the list.
+  await project.focus()
+  await project.press('ArrowDown')
+  await project.press('ArrowDown')
+  await project.press('Enter')
+  await expect(project).toHaveValue('Internal tools')
+
+  // Times are always 24-hour, suggested every half hour, and typed loosely.
+  const start = form.getByLabel('Start', { exact: true })
+  await start.click()
+  await expect(options(start)).toHaveCount(48)
+  await expect(options(start).nth(27)).toHaveText('13:30')
+  await start.fill('13')
+  await expect(options(start)).toHaveText(['13:00', '13:30'])
+  await start.fill('930')
+  await start.blur()
+  await expect(start).toHaveValue('09:30')
+  const end = form.getByLabel('End', { exact: true })
+  await end.fill('17.15')
+  await end.blur()
+  await expect(end).toHaveValue('17:15')
+  await expect(form.locator('.duration-pill')).toContainText('6.75')
+
+  // Dates are always dd/MM/yyyy, and a date outside the month is refused.
+  const date = form.getByLabel('Date')
+  await expect(date).toHaveAttribute('placeholder', 'dd/MM/yyyy')
+  await expect(date).toHaveValue(/^\d{2}\/\d{2}\/\d{4}$/)
+  await date.fill('1-1-1999')
+  await expect.poll(() => date.evaluate(element => (element as HTMLInputElement).validationMessage)).toMatch(/^Choose a date from /)
 })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
-import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
+import { readSessionLocale, useLocaleText, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { nameInitials } from '../../../shared/initials'
 
@@ -19,6 +19,7 @@ const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
+provide(fieldLocaleKey, locale)
 const profile = reactive({ firstName: '', lastName: '', photoUrl: '' as string | null, jobTitle: '' })
 const email = ref('')
 const photoSource = ref('')

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useLocaleText } from '../../../../shared/i18n'
+import AutoComplete from '../../../../shared/components/AutoComplete.vue'
+import DateField from '../../../../shared/components/DateField.vue'
 import type { PlatformAuditPage } from '../../composables/usePlatformApi'
 import { platformAuditActionLabels, platformAuditActions as actions } from '../../composables/platformAuditActions'
 
@@ -32,6 +34,8 @@ const organizationId = typeof route.query.tenantId === 'string' ? route.query.te
 const onlyThisOrganization = ref(Boolean(organizationId))
 const actor = ref('')
 const action = ref('')
+const actionChoices = computed(() => [{ value: '', label: text.value.anyAction },
+  ...actions.map(item => ({ value: item, label: text.value[item] }))])
 const from = ref('')
 const to = ref('')
 const page = ref(1)
@@ -88,13 +92,10 @@ onMounted(async () => { if (await ready()) await load() })
     <form class="sysadmin-card sysadmin-filters" :aria-label="text.filters" @submit.prevent="applyFilters">
       <label>{{ text.actor }}<input v-model="actor" type="search" maxlength="320" /></label>
       <label>{{ text.action }}
-        <select v-model="action">
-          <option value="">{{ text.anyAction }}</option>
-          <option v-for="item in actions" :key="item" :value="item">{{ text[item] }}</option>
-        </select>
+        <AutoComplete v-model="action" :label="text.action" :options="actionChoices" />
       </label>
-      <label>{{ text.from }}<input v-model="from" type="date" /></label>
-      <label>{{ text.to }}<input v-model="to" type="date" :min="from || undefined" /></label>
+      <label>{{ text.from }}<DateField v-model="from" :label="text.from" /></label>
+      <label>{{ text.to }}<DateField v-model="to" :label="text.to" :min="from || undefined" /></label>
       <label v-if="organizationId" class="sysadmin-check"><input v-model="onlyThisOrganization" type="checkbox" />{{ text.organizationFilter }}</label>
       <div class="sysadmin-filter-actions">
         <button class="button" type="submit" :disabled="loading">{{ text.apply }}</button>

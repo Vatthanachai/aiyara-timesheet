@@ -85,3 +85,15 @@ export function parseDate(text: string, formats: Formats): string | null {
   if (year < 1900 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
   return `${year}-${pad(month)}-${pad(day)}`
 }
+
+/** Date and time fields are always typed and shown as dd/MM/yyyy and 24-hour HH:mm, whatever
+ * the organization shows elsewhere. */
+export const FIELD_FORMATS: Formats = { dateFormat: 'dd/MM/yyyy', timeFormat: 'HH:mm' }
+
+/** Reads a typed 24-hour time (9, 930, 9:30, 9.30, 09:30) as `HH:mm`, or null when it is not one. */
+export function parseTime(text: string): string | null {
+  const match = /^(\d{1,2})(?:[:.h ]?(\d{2}))?$/.exec(text.trim())
+  if (!match) return null
+  const hours = Number(match[1]), minutes = Number(match[2] ?? 0)
+  return hours < 24 && minutes < 60 ? `${pad(hours)}:${pad(minutes)}` : null
+}

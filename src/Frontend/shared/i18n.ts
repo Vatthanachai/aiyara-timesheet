@@ -1,4 +1,4 @@
-import { computed, type ComputedRef } from 'vue'
+import { computed, inject, type ComputedRef, type InjectionKey } from 'vue'
 import type { Locale } from './api-response'
 
 /**
@@ -13,6 +13,16 @@ import type { Locale } from './api-response'
  * callers need only one import for both.
  */
 export type { Locale }
+
+/** Each app provides its locale once (`provide(fieldLocaleKey, locale)`), so the shared form fields
+ * speak the same language without every caller passing it. */
+export const fieldLocaleKey: InjectionKey<{ readonly value: Locale }> = Symbol('field-locale')
+
+/** The locale a shared field speaks: its own `locale` prop, else the app's, else English. */
+export function useFieldLocale(own: () => Locale | undefined) {
+  const app = inject(fieldLocaleKey, null)
+  return computed<Locale>(() => own() ?? app?.value ?? 'en')
+}
 
 /** Reads the locale carried by the Shell's `aiyara.session` message, defaulting to English. */
 export function readSessionLocale(data: unknown): Locale {

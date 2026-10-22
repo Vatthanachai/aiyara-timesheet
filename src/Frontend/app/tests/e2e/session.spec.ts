@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { renderSVG } from 'uqr'
 import { readFileSync } from 'node:fs'
+import { choose, options, shownDate } from './fields'
 
 const organizationCode = 'ACME123'
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
@@ -397,21 +398,21 @@ test('timesheet task tray keeps a rejected task name, prefills the entry form, a
   await expect(newTask).toHaveValue('Weekly planning')
   await tray.getByRole('button', { name: 'Add entry' }).click()
   await expect(newTask).toHaveValue('')
-  await expect(tray.locator('.task-list li input')).toHaveValue('Weekly planning')
+  await expect(tray.locator('.task-list li > input')).toHaveValue('Weekly planning')
 
   const entryTask = timesheet.locator('.entry-panel').getByLabel('Task', { exact: true })
   await tray.locator('.task-list').getByRole('button', { name: 'Use' }).click()
   await expect(entryTask).toHaveValue('Weekly planning')
   await tray.locator('.quick-picks').getByRole('button', { name: 'Website' }).click()
   await expect(entryTask).toHaveValue('Website')
-  await expect(timesheet.locator('.entry-panel').getByLabel('Project')).toHaveValue('project-1')
+  await expect(timesheet.locator('.entry-panel').getByLabel('Project')).toHaveValue('Website')
 
   const leaveForm = timesheet.locator('.inline-form')
-  await leaveForm.getByLabel('Date').fill(`${currentMonth}-10`)
-  await leaveForm.getByLabel('Kind').selectOption('sick')
+  await leaveForm.getByLabel('Date').fill(shownDate(`${currentMonth}-10`))
+  await choose(leaveForm.getByLabel('Kind'), 'Sick')
   await leaveForm.getByRole('button', { name: 'Add entry' }).click()
   await expect.poll(() => leaveRequest).toEqual({ date: `${currentMonth}-10`, kind: 'sick' })
-  await expect(timesheet.locator('.simple-list li input[type="date"]')).toHaveValue(`${currentMonth}-10`)
+  await expect(timesheet.locator('.simple-list li .date-field-text')).toHaveValue(shownDate(`${currentMonth}-10`))
 })
 
 test('timesheet task board moves cards by button and drag, reverts a rejected move, and logs time', async ({ page }) => {
@@ -521,7 +522,7 @@ test('timesheet task board moves cards by button and drag, reverts a rejected mo
 
   await card('Write release notes').getByRole('button', { name: 'Log time' }).click()
   await expect(timesheet.locator('.entry-panel').getByLabel('Task', { exact: true })).toHaveValue('Write release notes')
-  await expect(timesheet.locator('.entry-panel').getByLabel('Project')).toHaveValue('project-1')
+  await expect(timesheet.locator('.entry-panel').getByLabel('Project')).toHaveValue('Website')
 })
 
 test('failed sign in displays an error and does not persist credentials', async ({ page }) => {
@@ -1315,7 +1316,7 @@ test('tenant admin manages members and invitations from the Members panel', asyn
 
   // Invite: the new invitation appears under pending invitations; its code is never shown.
   await frame.getByLabel('Invitee email').fill(' colleague@example.test ')
-  await frame.getByLabel('Role').selectOption('TenantAdmin')
+  await choose(frame.getByLabel('Role'), 'Organization admin')
   await frame.getByRole('button', { name: 'Send invitation' }).click()
   await expect(frame.getByText('Invitation sent to colleague@example.test.')).toBeVisible()
   expect(calls.at(-1)).toBe(`POST /auth/tenants/${tenantId}/invitations {"email":"colleague@example.test","role":"TenantAdmin"}`)
@@ -1385,10 +1386,10 @@ test('tenant admin manages members and invitations from the Members panel', asyn
   await frame.getByRole('button', { name: 'Add group' }).click()
   await expect(frame.getByRole('alert')).toContainText('A group with this name already exists.')
   await expect(frame.getByPlaceholder('Group name')).toHaveValue('outsource')
-  await frame.getByLabel('Group: zoe@example.test').selectOption({ label: 'Outsource' })
+  await choose(frame.getByLabel('Group: zoe@example.test'), 'Outsource')
   await expect(frame.getByText('Moved zoe@example.test to a new group.')).toBeVisible()
-  await expect(frame.getByLabel('Group: zoe@example.test')).toHaveValue('g1')
-  await frame.getByLabel('Group: admin@example.test').selectOption({ label: 'Outsource' })
+  await expect(frame.getByLabel('Group: zoe@example.test')).toHaveValue('Outsource')
+  await choose(frame.getByLabel('Group: admin@example.test'), 'Outsource')
   await expect(frame.getByText('Moved admin@example.test to a new group.')).toBeVisible()
   await expect(groupList.getByRole('listitem')).toContainText('Members: 2')
   await frame.getByRole('button', { name: 'Delete: Outsource' }).click()
@@ -1396,16 +1397,16 @@ test('tenant admin manages members and invitations from the Members panel', asyn
   await groupList.getByLabel('Group name').fill('Outsourced')
   await groupList.getByRole('button', { name: 'Save' }).click()
   await expect(frame.getByText('Renamed the group to Outsourced.')).toBeVisible()
-  await frame.getByLabel('Group: zoe@example.test').selectOption({ label: 'No group' })
-  await expect(frame.getByLabel('Group: zoe@example.test')).toHaveValue('')
+  await choose(frame.getByLabel('Group: zoe@example.test'), 'No group')
+  await expect(frame.getByLabel('Group: zoe@example.test')).toHaveValue('No group')
 
   // Once groups exist the invite form offers them, and the pending invitation shows its group.
   await frame.getByLabel('Invitee email').fill('contractor@example.test')
-  await frame.locator('.invite-form').getByLabel('Group', { exact: true }).selectOption({ label: 'Outsourced' })
+  await choose(frame.locator('.invite-form').getByLabel('Group', { exact: true }), 'Outsourced')
   await frame.getByRole('button', { name: 'Send invitation' }).click()
   await expect(frame.getByText('Invitation sent to contractor@example.test.')).toBeVisible()
   await expect(pending.getByRole('listitem').filter({ hasText: 'contractor@example.test' })).toContainText('Outsourced')
-  await expect(frame.locator('.invite-form').getByLabel('Group', { exact: true })).toHaveValue('')
+  await expect(frame.locator('.invite-form').getByLabel('Group', { exact: true })).toHaveValue('No group')
   expect(calls).toEqual(expect.arrayContaining([
     'POST /identity/members/groups {"name":"Outsource"}',
     'PUT /identity/members/a2/group {"groupId":"g1"}',
@@ -1644,8 +1645,8 @@ test('platform audit log sends its filters and pages through results', async ({ 
   await expect(page.getByText('30 entries')).toBeVisible()
   expect(requests[0].searchParams.get('tenantId')).toBe('c99358d1-e01f-4dfd-9693-38da8883562d')
   await page.getByLabel('Actor email').fill('operator@')
-  await page.getByLabel('Action').selectOption('organization.suspended')
-  await page.getByLabel('From').fill('2026-10-01')
+  await choose(page.getByLabel('Action'), 'Organization suspended')
+  await page.getByLabel('From', { exact: true }).fill('01/10/2026')
   await page.getByLabel('This organization only').uncheck()
   await page.getByRole('button', { name: 'Filter', exact: true }).click()
   await expect.poll(() => requests.length).toBe(2)
@@ -2002,11 +2003,11 @@ test('reporting shows names and reasons, requests a member report by calendar pe
 
   // Monthly report: month + year pickers, a member subject, and an exact period preview.
   const year = new Date().getFullYear()
-  await frame.locator('.request-form').getByLabel(/^Month/).selectOption('1')
-  await frame.locator('.request-form').getByLabel(/^Year/).selectOption(String(year))
-  await expect(frame.getByLabel('Report on', { exact: true }).locator('option'))
+  await choose(frame.locator('.request-form').getByLabel('Month', { exact: true }), 'January')
+  await choose(frame.locator('.request-form').getByLabel('Year', { exact: true }), String(year))
+  await expect(options(frame.getByLabel('Report on', { exact: true })))
     .toHaveText(['Whole organization', 'Outsource', 'Permanent staff', 'Anong Admin', 'Somchai Staff'])
-  await frame.getByLabel('Report on', { exact: true }).selectOption({ label: 'Somchai Staff' })
+  await choose(frame.getByLabel('Report on', { exact: true }), 'Somchai Staff')
   await expect(frame.locator('.preview')).toHaveText(`Period: 01/01/${year} – 31/01/${year} (Asia/Bangkok)`)
   await frame.getByRole('button', { name: 'Generate report' }).click()
   await expect.poll(() => state.created).toEqual([{
@@ -2015,36 +2016,36 @@ test('reporting shows names and reasons, requests a member report by calendar pe
   }])
 
   // A member group report sends the group's name and its current members.
-  await frame.getByLabel('Report on', { exact: true }).selectOption({ label: 'Outsource' })
+  await choose(frame.getByLabel('Report on', { exact: true }), 'Outsource')
   await frame.getByRole('button', { name: 'Generate report' }).click()
   await expect.poll(() => state.created.at(-1)).toEqual({
     definitionId: 'def-month', subjectUserId: null, groupName: 'Outsource', groupMemberIds: ['member-somchai'],
     periodStartUtc: `${year - 1}-12-31T17:00:00.000Z`, periodEndUtc: `${year}-01-31T17:00:00.000Z`
   })
-  await frame.getByLabel('Report on', { exact: true }).selectOption({ label: 'Whole organization' })
+  await choose(frame.getByLabel('Report on', { exact: true }), 'Whole organization')
 
   // Weekly report: any day picks its Monday-to-Sunday week.
-  await frame.locator('.request-form select').first().selectOption('def-week')
-  await frame.getByLabel('Week containing').fill('2026-10-14')
+  await choose(frame.locator('.request-form').getByLabel('Report', { exact: true }), 'Weekly hours (Excel)')
+  await frame.getByLabel('Week containing').fill('14/10/2026')
   await expect(frame.locator('.preview')).toHaveText('Period: 12/10/2026 – 18/10/2026 (Asia/Bangkok)')
 
   // Filters are sent to the API.
-  await frame.locator('.filters').getByLabel('Status').selectOption('Failed')
+  await choose(frame.locator('.filters').getByLabel('Status'), 'Failed')
   await expect.poll(() => state.runQueries.at(-1)?.get('status')).toBe('Failed')
   await expect(history.locator('tbody tr')).toHaveCount(1)
-  await frame.locator('.filters').getByLabel('Status').selectOption('')
+  await choose(frame.locator('.filters').getByLabel('Status'), 'All statuses')
 
   // A group filter asks for its members' reports; whole-organization reports drop out.
   const groupFilter = frame.locator('.filters').getByLabel('Group', { exact: true })
-  await expect(groupFilter.locator('option')).toHaveText(['All groups', 'Outsource', 'Permanent staff', 'No group'])
-  await groupFilter.selectOption({ label: 'Outsource' })
+  await expect(options(groupFilter)).toHaveText(['All groups', 'Outsource', 'Permanent staff', 'No group'])
+  await choose(groupFilter, 'Outsource')
   await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual(['member-somchai'])
   await expect(history.locator('tbody tr')).toHaveCount(1)
   await expect(history.locator('tbody tr')).toContainText('Somchai Staff')
-  await groupFilter.selectOption({ label: 'No group' })
+  await choose(groupFilter, 'No group')
   await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual(['member-new'])
   await expect(frame.getByText('No reports match these filters.')).toBeVisible()
-  await groupFilter.selectOption({ label: 'All groups' })
+  await choose(groupFilter, 'All groups')
   await expect.poll(() => state.runQueries.at(-1)?.getAll('subjectUserId')).toEqual([])
   await expect(history.locator('tbody tr')).toHaveCount(5)
 
@@ -2069,13 +2070,13 @@ test('reporting shows names and reasons, requests a member report by calendar pe
 
   // Automatic reports can be scheduled for a member group, once per report and group.
   const scheduleSubject = frame.getByLabel('Automatic reports: Report on')
-  await expect(scheduleSubject.locator('option')).toHaveText(['Whole organization', 'Group: Outsource', 'Group: Permanent staff'])
-  await scheduleSubject.selectOption({ label: 'Group: Outsource' })
+  await expect(options(scheduleSubject)).toHaveText(['Whole organization', 'Group: Outsource', 'Group: Permanent staff'])
+  await choose(scheduleSubject, 'Group: Outsource')
   await expect(frame.getByText('Automatic group reports cover whoever is in the group when each report is made.')).toBeVisible()
   await frame.getByRole('button', { name: 'Add schedule' }).click()
   await expect.poll(() => state.scheduleRequests.at(-1)).toMatchObject({ reportDefinitionId: 'def-month', groupId: 'g-out' })
   await expect(frame.locator('.setting-list').filter({ hasText: 'Group: Outsource' })).toBeVisible()
-  await scheduleSubject.selectOption({ label: 'Group: Outsource' })
+  await choose(scheduleSubject, 'Group: Outsource')
   await frame.getByRole('button', { name: 'Add schedule' }).click()
   await expect(frame.getByRole('alert')).toContainText('already scheduled for this group or the whole organization')
 })
@@ -2120,18 +2121,18 @@ test('tenant admin reviews each member\'s monthly timesheet from Reports', async
   await expect(groupCells(2)).toHaveText(['No group', '', '0:00', '0', '0', '1'])
   await expect(table.locator('tbody tr').filter({ hasText: 'Somchai Staff' })).toContainText('Outsource')
   // Filtering by a group shows only its members and hides the group totals.
-  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'Outsource' })
+  await choose(section.getByLabel('Group', { exact: true }), 'Outsource')
   await expect(table.locator('tbody tr')).toHaveCount(1)
   await expect(table.locator('tbody tr')).toContainText('Somchai Staff')
   await expect(byGroup).toHaveCount(0)
-  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'No group' })
+  await choose(section.getByLabel('Group', { exact: true }), 'No group')
   await expect(table.locator('tbody tr')).toHaveCount(1)
   await expect(table.locator('tbody tr')).toContainText('new@acme.test')
-  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'All groups' })
+  await choose(section.getByLabel('Group', { exact: true }), 'All groups')
   await byGroup.getByRole('button', { name: 'Permanent staff' }).click()
   await expect(table.locator('tbody tr')).toHaveCount(1)
   await expect(table.locator('tbody tr')).toContainText('Anong Admin')
-  await section.getByLabel('Group', { exact: true }).selectOption({ label: 'All groups' })
+  await choose(section.getByLabel('Group', { exact: true }), 'All groups')
   await expect(table.locator('tbody tr')).toHaveCount(4)
 
   await section.getByRole('button', { name: 'View timesheet: Somchai Staff' }).click()
@@ -2337,12 +2338,12 @@ test('tenant admin sets the working days and hours from Administration and canno
   const end = panel.getByLabel('End of work')
   await expect(start).toHaveValue('09:00')
   await expect(end).toHaveValue('17:00')
-  await expect(start.locator('option')).toHaveCount(96)
-  await end.selectOption('08:00')
+  await expect(options(start)).toHaveCount(96)
+  await choose(end, '08:00')
   await expect(panel.getByRole('alert')).toHaveText('The working day must end after it starts.')
   await expect(panel.getByRole('button', { name: 'Save working days and hours' })).toBeDisabled()
-  await start.selectOption('08:30')
-  await end.selectOption('17:30')
+  await choose(start, '08:30')
+  await choose(end, '17:30')
   await expect(panel.getByRole('alert')).toHaveCount(0)
   await expect(panel.getByText('A normal working day is 9 hours; reports count a longer day as overtime.')).toBeVisible()
 
@@ -2350,12 +2351,12 @@ test('tenant admin sets the working days and hours from Administration and canno
   await panel.getByLabel('Break (not counted as work)').check()
   const breakStart = panel.getByLabel('Break starts')
   const breakEnd = panel.getByLabel('Break ends')
-  await breakStart.selectOption('17:00')
-  await breakEnd.selectOption('18:00')
+  await choose(breakStart, '17:00')
+  await choose(breakEnd, '18:00')
   await expect(panel.getByRole('alert')).toHaveText('The break must be within the working hours and end after it starts.')
   await expect(panel.getByRole('button', { name: 'Save working days and hours' })).toBeDisabled()
-  await breakStart.selectOption('11:30')
-  await breakEnd.selectOption('12:30')
+  await choose(breakStart, '11:30')
+  await choose(breakEnd, '12:30')
   await expect(bar('Monday').locator('.week-break')).toHaveCount(1)
   await expect(panel.getByText('A normal working day is 8 hours; reports count a longer day as overtime.')).toBeVisible()
   await panel.getByRole('button', { name: 'Save working days and hours' }).click()
@@ -2479,17 +2480,17 @@ test('tenant admin chooses the date and time format and every remote follows it'
   const frame = page.frameLocator('iframe')
   const panel = frame.getByRole('region', { name: 'Date and time format' })
   const year = new Date().getFullYear()
-  await expect(panel.getByLabel('Date format')).toHaveValue('dd/MM/yyyy')
-  await expect(panel.getByLabel('Date format').locator('option')).toHaveText([
+  await expect(panel.getByLabel('Date format')).toHaveValue(`31/12/${year}`)
+  await expect(options(panel.getByLabel('Date format'))).toHaveText([
     `31/12/${year}`, `31/12/${year + 543} · Buddhist year`, `31 Dec ${year} · month name`, `${year}-12-31`, `12/31/${year}`])
-  await expect(panel.getByLabel('Time format').locator('option')).toHaveText(['13:30 · 24-hour', '1:30 PM · 12-hour (AM/PM)'])
+  await expect(options(panel.getByLabel('Time format'))).toHaveText(['13:30 · 24-hour', '1:30 PM · 12-hour (AM/PM)'])
   // Pending invitations use the organization's format too.
   await frame.getByRole('tab', { name: /^People/ }).click()
   await expect(frame.getByText('27/10/2026')).toBeVisible()
   await frame.getByRole('tab', { name: 'Organization' }).click()
 
-  await panel.getByLabel('Date format').selectOption('dd/MM/bbbb')
-  await panel.getByLabel('Time format').selectOption('h:mm a')
+  await choose(panel.getByLabel('Date format'), `31/12/${year + 543} · Buddhist year`)
+  await choose(panel.getByLabel('Time format'), '1:30 PM · 12-hour (AM/PM)')
   await expect(panel.locator('.format-preview strong')).toHaveText(/^\d{2}\/\d{2}\/25\d\d \d{1,2}:\d{2} (AM|PM)$/)
   await panel.getByRole('button', { name: 'Save format' }).click()
   await expect(frame.getByText('Date and time format saved.')).toBeVisible()
@@ -2598,7 +2599,7 @@ test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s 
   await frame.getByRole('tab', { name: 'Working time' }).click()
   const form = frame.locator('.holiday-form')
   const date = form.getByRole('textbox', { name: 'Date' })
-  await expect(date).toHaveAttribute('placeholder', 'DD/MM/YYYY')
+  await expect(date).toHaveAttribute('placeholder', 'dd/MM/yyyy')
   // The calendar icon is the browser's own date input, so a click there opens its picker
   // (showPicker() is refused in a cross-origin iframe).
   const picker = form.getByLabel('Choose from the calendar')
@@ -2616,7 +2617,7 @@ test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s 
   await date.fill('31/02/2026')
   await form.getByPlaceholder('Holiday name').fill('Bad day')
   await form.getByRole('button', { name: 'Add item' }).click()
-  await expect.poll(() => date.evaluate(element => (element as HTMLInputElement).validationMessage)).toBe('Enter a real date, for example 31/12/2026.')
+  await expect.poll(() => date.evaluate(element => (element as HTMLInputElement).validationMessage)).toBe('Enter a real date as dd/MM/yyyy, for example 31/12/2026.')
   expect(calls).toEqual([])
 
   // Dashes and one-digit days work too, and the field tidies them up.

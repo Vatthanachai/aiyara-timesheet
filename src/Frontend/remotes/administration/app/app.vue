@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
-import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
+import { readSessionLocale, useLocaleText, type Locale, fieldLocaleKey } from '../../../shared/i18n'
+import AutoComplete from '../../../shared/components/AutoComplete.vue'
+import DateField from '../../../shared/components/DateField.vue'
+import TimeField from '../../../shared/components/TimeField.vue'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { DATE_FORMATS, TIME_FORMATS, formatDate as formatCalendarDate, formatTime, readFormats, type Formats } from '../../../shared/date-format'
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; isCurrentUser: boolean; groupId: string | null; groupName: string | null }
@@ -14,6 +17,7 @@ const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
+provide(fieldLocaleKey, locale)
 const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
 const projectName = ref('')
 const categoryName = ref('')
@@ -26,9 +30,6 @@ const workHours = reactive<WorkHours>({ startTime: '09:00', endTime: '17:00' })
 // The break being edited; it is saved only while hasBreak is on.
 const hasBreak = ref(false)
 const breakTime = reactive({ start: '12:00', end: '13:00' })
-/** Every quarter hour of the day, as HH:mm. */
-const quarterHours = Array.from({ length: 96 }, (_, index) =>
-  `${String(Math.floor(index / 4)).padStart(2, '0')}:${String(index % 4 * 15).padStart(2, '0')}`)
 // HH:mm strings compare in clock order.
 const hoursValid = computed(() => workHours.startTime < workHours.endTime)
 const breakValid = computed(() => !hasBreak.value || workHours.startTime <= breakTime.start &&
@@ -122,7 +123,7 @@ const copy = useLocaleText(locale, { th: {
   groupMembers: 'สมาชิก {count} คน', groupCreated: 'เพิ่มกลุ่ม {name} แล้ว', groupRenamed: 'เปลี่ยนชื่อกลุ่มเป็น {name} แล้ว', groupDeleted: 'ลบกลุ่ม {name} แล้ว',
   groupChanged: 'ย้าย {email} ไปกลุ่มใหม่แล้ว', groupNameTaken: 'มีกลุ่มชื่อนี้อยู่แล้ว', groupInUse: 'ยังมีสมาชิกในกลุ่มนี้ กรุณาย้ายสมาชิกออกก่อนลบ',
   groupNameInvalid: 'ชื่อกลุ่มต้องมี 1–100 ตัวอักษร',
-  invalidDate: 'กรุณากรอกวันที่ให้ถูกต้อง เช่น 31/12/2026', pickDate: 'เลือกจากปฏิทิน',
+  pickDate: 'เลือกจากปฏิทิน',
   formatsTitle: 'รูปแบบวันที่และเวลา', formatsHint: 'วันที่และเวลาทุกหน้าและในรายงานของทุกคนในองค์กรจะแสดงตามรูปแบบนี้',
   dateFormat: 'รูปแบบวันที่', timeFormat: 'รูปแบบเวลา', formatPreview: 'ตัวอย่าง', saveFormats: 'บันทึกรูปแบบ', formatsSaved: 'บันทึกรูปแบบวันที่และเวลาแล้ว',
   buddhistYear: 'ปี พ.ศ.', monthName: 'ชื่อเดือน', hours24: '24 ชั่วโมง', hours12: '12 ชั่วโมง (AM/PM)',
@@ -176,7 +177,7 @@ const copy = useLocaleText(locale, { th: {
   groupMembers: 'Members: {count}', groupCreated: 'Added the group {name}.', groupRenamed: 'Renamed the group to {name}.', groupDeleted: 'Deleted the group {name}.',
   groupChanged: 'Moved {email} to a new group.', groupNameTaken: 'A group with this name already exists.', groupInUse: 'This group still has members. Move them out before deleting it.',
   groupNameInvalid: 'A group name must be 1–100 characters.',
-  invalidDate: 'Enter a real date, for example 31/12/2026.', pickDate: 'Choose from the calendar',
+  pickDate: 'Choose from the calendar',
   formatsTitle: 'Date and time format', formatsHint: 'Every page and report shows dates and times this way for everyone in the organization.',
   dateFormat: 'Date format', timeFormat: 'Time format', formatPreview: 'Preview', saveFormats: 'Save format', formatsSaved: 'Date and time format saved.',
   buddhistYear: 'Buddhist year', monthName: 'month name', hours24: '24-hour', hours12: '12-hour (AM/PM)',
@@ -466,6 +467,12 @@ async function lock() {
   } catch (cause) { error.value = safeError(cause, locale.value) }
   finally { isLocking.value = false }
 }
+
+// The choices each picker offers, as the shared autocomplete takes them.
+const dateFormatChoices = computed(() => DATE_FORMATS.map(format => ({ value: format, label: dateOptionLabel(format) })))
+const timeFormatChoices = computed(() => TIME_FORMATS.map(format => ({ value: format, label: timeOptionLabel(format) })))
+const roleChoices = computed(() => [{ value: 'Employee', label: copy.value.roleEmployee }, { value: 'TenantAdmin', label: copy.value.roleTenantAdmin }])
+const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, ...groups.value.map(group => ({ value: group.id, label: group.name }))])
 </script>
 <template>
   <main class="admin-page">
@@ -515,8 +522,8 @@ async function lock() {
         <section class="panel formats-panel" aria-labelledby="formats-heading">
           <div class="panel-heading"><h2 id="formats-heading">{{ copy.formatsTitle }}</h2><p>{{ copy.formatsHint }}</p></div>
           <form class="add-form formats-form" @submit.prevent="saveFormats">
-            <label><span>{{ copy.dateFormat }}</span><select v-model="formatForm.dateFormat"><option v-for="format in DATE_FORMATS" :key="format" :value="format">{{ dateOptionLabel(format) }}</option></select></label>
-            <label><span>{{ copy.timeFormat }}</span><select v-model="formatForm.timeFormat"><option v-for="format in TIME_FORMATS" :key="format" :value="format">{{ timeOptionLabel(format) }}</option></select></label>
+            <label><span>{{ copy.dateFormat }}</span><AutoComplete v-model="formatForm.dateFormat" :label="copy.dateFormat" :options="dateFormatChoices" required /></label>
+            <label><span>{{ copy.timeFormat }}</span><AutoComplete v-model="formatForm.timeFormat" :label="copy.timeFormat" :options="timeFormatChoices" required /></label>
             <p class="format-preview" aria-live="polite"><span>{{ copy.formatPreview }}</span><strong>{{ formatPreview }}</strong></p>
             <button class="button button-primary" :disabled="isSavingBrand">{{ isSavingBrand ? copy.loading : copy.saveFormats }}</button>
           </form>
@@ -529,8 +536,8 @@ async function lock() {
           <div class="panel-heading"><h2 id="members-heading">{{ copy.members }}</h2><p>{{ copy.memberHint }}</p></div>
           <form class="add-form invite-form" @submit.prevent="invite">
             <label class="grow"><span>{{ copy.inviteEmail }}</span><input v-model="inviteEmail" required type="email" maxlength="320" autocomplete="off" /></label>
-            <label><span>{{ copy.role }}</span><select v-model="inviteRole"><option value="Employee">{{ copy.roleEmployee }}</option><option value="TenantAdmin">{{ copy.roleTenantAdmin }}</option></select></label>
-            <label v-if="groups.length"><span>{{ copy.group }}</span><select v-model="inviteGroup" :aria-label="copy.group"><option value="">{{ copy.noGroup }}</option><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label>
+            <label><span>{{ copy.role }}</span><AutoComplete v-model="inviteRole" :label="copy.role" :options="roleChoices" required /></label>
+            <label v-if="groups.length"><span>{{ copy.group }}</span><AutoComplete v-model="inviteGroup" :label="copy.group" :options="groupChoices" /></label>
             <button class="button button-primary" :disabled="isInviting">{{ isInviting ? copy.inviting : copy.invite }}</button>
           </form>
           <div v-if="members.length" class="table-wrap">
@@ -542,7 +549,7 @@ async function lock() {
                   <td><div class="member-identity"><strong>{{ memberName(member) || member.email }}<span v-if="member.isCurrentUser" class="badge badge-self">{{ copy.you }}</span></strong><span v-if="memberName(member)">{{ member.email }}</span></div></td>
                   <td>{{ roleLabel(member.role) }}</td>
                   <td><span class="status" :class="`status-${member.status}`">{{ statusLabel(member.status) }}</span></td>
-                  <td><label class="group-select"><span class="sr-only">{{ copy.group }}: {{ member.email }}</span><select :value="member.groupId ?? ''" :disabled="busyId === member.id" :aria-label="`${copy.group}: ${member.email}`" @change="setGroup(member, ($event.target as HTMLSelectElement).value)"><option value="">{{ copy.noGroup }}</option><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label></td>
+                  <td><label class="group-select"><span class="sr-only">{{ copy.group }}: {{ member.email }}</span><AutoComplete :model-value="member.groupId ?? ''" :disabled="busyId === member.id" :label="`${copy.group}: ${member.email}`" :options="groupChoices" @change="group => setGroup(member, String(group))" /></label></td>
                   <td>
                     <div v-if="!member.isCurrentUser" class="row-actions member-actions">
                       <template v-if="member.status === 'Deactivated'"><button class="button button-subtle" type="button" :disabled="busyId === member.id" :aria-label="`${copy.reactivate}: ${member.email}`" @click="setActive(member, true)">{{ copy.reactivate }}</button></template>
@@ -598,8 +605,8 @@ async function lock() {
                 </span>
               </label>
             </fieldset>
-            <div class="work-hours"><label><span>{{ copy.workStart }}</span><select v-model="workHours.startTime" :aria-invalid="!hoursValid"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.workEnd }}</span><select v-model="workHours.endTime" :aria-invalid="!hoursValid" :aria-describedby="hoursValid ? undefined : 'work-hours-error'"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><p v-if="!hoursValid" id="work-hours-error" class="field-error" role="alert">{{ copy.hoursOrder }}</p></div>
-            <div class="work-hours break-hours"><label class="check-card break-toggle"><input v-model="hasBreak" type="checkbox" /><span class="check-mark"></span><span>{{ copy.hasBreak }}</span></label><template v-if="hasBreak"><label><span>{{ copy.breakStart }}</span><select v-model="breakTime.start" :aria-invalid="!breakValid"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.breakEnd }}</span><select v-model="breakTime.end" :aria-invalid="!breakValid" :aria-describedby="breakValid ? undefined : 'break-error'"><option v-for="time in quarterHours" :key="time" :value="time">{{ formatTime(time, formats) }}</option></select></label></template><p v-if="!breakValid" id="break-error" class="field-error" role="alert">{{ copy.breakOrder }}</p></div>
+            <div class="work-hours"><label><span>{{ copy.workStart }}</span><TimeField v-model="workHours.startTime" :label="copy.workStart" :step="15" required /></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.workEnd }}</span><TimeField v-model="workHours.endTime" :label="copy.workEnd" :step="15" required /></label><p v-if="!hoursValid" id="work-hours-error" class="field-error" role="alert">{{ copy.hoursOrder }}</p></div>
+            <div class="work-hours break-hours"><label class="check-card break-toggle"><input v-model="hasBreak" type="checkbox" /><span class="check-mark"></span><span>{{ copy.hasBreak }}</span></label><template v-if="hasBreak"><label><span>{{ copy.breakStart }}</span><TimeField v-model="breakTime.start" :label="copy.breakStart" :step="15" required /></label><span class="work-hours-dash" aria-hidden="true">–</span><label><span>{{ copy.breakEnd }}</span><TimeField v-model="breakTime.end" :label="copy.breakEnd" :step="15" required /></label></template><p v-if="!breakValid" id="break-error" class="field-error" role="alert">{{ copy.breakOrder }}</p></div>
             <div class="work-week-footer">
               <p v-if="hoursValid && breakValid" class="workday-summary">{{ copy.workdayLength.replace('{hours}', (workdayMinutes / 60).toFixed(2).replace(/\.?0+$/, '')) }}</p>
               <button class="button button-primary" :disabled="isSavingWorkWeek || !hoursValid || !breakValid">{{ isSavingWorkWeek ? copy.loading : copy.saveWorkWeek }}</button>
@@ -608,8 +615,8 @@ async function lock() {
         </section>
         <section class="panel" aria-labelledby="holidays-heading">
           <div class="panel-heading"><h2 id="holidays-heading">{{ copy.holidays }}</h2><p>{{ copy.holidayHint }}</p></div>
-          <form class="add-form holiday-form" @submit.prevent="add('holidays')"><label><span>{{ copy.date }}</span><DateField v-model="holidayDate" required :formats="formats" :locale="locale" :label="copy.date" :invalid-message="copy.invalidDate" :pick-label="copy.pickDate" /></label><label class="holiday-name"><span>{{ copy.holidayName }}</span><input v-model="holidayName" required maxlength="200" :placeholder="copy.holidayName" /></label><button class="button button-primary">{{ copy.add }}</button></form>
-          <ul v-if="catalog.holidays.length" class="item-list"><li v-for="item in catalog.holidays" :key="item.id"><form class="item-row holiday-row" @submit.prevent="update('holidays', item)"><DateField v-model="item.date" required :formats="formats" :locale="locale" :label="`${copy.date}: ${item.name}`" :invalid-message="copy.invalidDate" :pick-label="`${copy.pickDate}: ${item.name}`" /><input v-model="item.name" required maxlength="200" :aria-label="copy.holidayName" /><div class="row-actions"><button class="button button-subtle">{{ copy.save }}</button><button type="button" class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('holidays', item.id)">×</button></div></form></li></ul>
+          <form class="add-form holiday-form" @submit.prevent="add('holidays')"><label><span>{{ copy.date }}</span><DateField v-model="holidayDate" required :label="copy.date" :pick-label="copy.pickDate" /></label><label class="holiday-name"><span>{{ copy.holidayName }}</span><input v-model="holidayName" required maxlength="200" :placeholder="copy.holidayName" /></label><button class="button button-primary">{{ copy.add }}</button></form>
+          <ul v-if="catalog.holidays.length" class="item-list"><li v-for="item in catalog.holidays" :key="item.id"><form class="item-row holiday-row" @submit.prevent="update('holidays', item)"><DateField v-model="item.date" required :label="`${copy.date}: ${item.name}`" :pick-label="`${copy.pickDate}: ${item.name}`" /><input v-model="item.name" required maxlength="200" :aria-label="copy.holidayName" /><div class="row-actions"><button class="button button-subtle">{{ copy.save }}</button><button type="button" class="button button-danger" :aria-label="`${copy.delete}: ${item.name}`" @click="remove('holidays', item.id)">×</button></div></form></li></ul>
           <p v-else-if="!isLoading" class="empty-list">{{ copy.empty }}</p>
         </section>
         <section class="panel close-panel" aria-labelledby="close-heading">
