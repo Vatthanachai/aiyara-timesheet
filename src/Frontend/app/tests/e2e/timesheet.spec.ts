@@ -237,7 +237,7 @@ test('an approved month cannot be changed or submitted', async ({ page }) => {
   await expect(bar.getByRole('button')).toHaveCount(0)
   await expect(timesheet.locator('.entry-panel')).toHaveCount(0)
   // Nothing in a closed month offers to copy, enter several days, or use templates.
-  await expect(timesheet.getByRole('button', { name: 'Copy previous day' })).toHaveCount(0)
+  await expect(timesheet.getByRole('button', { name: 'Copy previous working day' })).toHaveCount(0)
   await expect(timesheet.getByRole('button', { name: 'Copy previous week' })).toHaveCount(0)
   await expect(timesheet.getByRole('region', { name: 'Entry templates' })).toHaveCount(0)
 })
@@ -276,22 +276,25 @@ const bodyOf = (line: string | undefined) => JSON.parse(line!.slice(line!.indexO
 /** The Monday of the week of the 15th, which is in the month along with the whole of its week. */
 const mondayOf15 = () => 15 - (new Date(`${day(15)}T00:00:00Z`).getUTCDay() + 6) % 7
 
-test('copying the previous day or week reports the days it skipped, and a closed day is named', async ({ page }) => {
+test('copying the previous working day or week reports the days it skipped, and a closed day is named', async ({ page }) => {
   const requests: string[] = []
   const monday = mondayOf15()
   let closed = false
-  const timesheet = await openTimesheet(page, requests, {}, undefined, { respond: (method, path, body) => {
+  const timesheet = await openTimesheet(page, requests, {}, undefined, { workingDays: [1, 2, 3, 4, 5], respond: (method, path, body) => {
     if (path !== '/entries/copy') return undefined
     if (closed) return { status: 409, error: { errorCode: 'MONTH_CLOSED', errors: { dates: [day(15)] } } }
     return JSON.parse(body!).days === 1
-      ? { result: { created: [entry('c1', day(8), '08:00:00', '17:30:00', 510, 'Long day')], skipped: [] } }
+      ? { result: { created: [entry('c1', day(monday), '08:00:00', '17:30:00', 510, 'Long day')], skipped: [] } }
       : { result: { created: [], skipped: [{ date: day(monday), reason: 'holiday' }, { date: day(monday + 1), reason: 'has-entries' }] } }
   } })
   const notice = timesheet.getByRole('status').filter({ hasText: /copied/i })
 
-  await timesheet.getByRole('button', { name: `Date ${day(8)}` }).click()
-  await timesheet.getByRole('button', { name: 'Copy previous day' }).click()
-  await expect.poll(() => requests.at(-1)).toBe(`POST /entries/copy {"from":"${day(7)}","to":"${day(8)}","days":1}`)
+  // On a Monday the previous working day is the Friday before; the weekend is passed over.
+  await timesheet.getByRole('button', { name: `Date ${day(monday)}` }).click()
+  const previousDay = timesheet.getByRole('button', { name: 'Copy previous working day' })
+  await expect(previousDay).toHaveAttribute('title', `Copy the entries of ${shownDate(day(monday - 3))} onto ${shownDate(day(monday))}`)
+  await previousDay.click()
+  await expect.poll(() => requests.at(-1)).toBe(`POST /entries/copy {"from":"${day(monday - 3)}","to":"${day(monday)}","days":1}`)
   await expect(notice).toHaveText(/^Copied 1 entry\.$/)
 
   // The week is the selected day's Monday to Sunday, copied from the week before.
@@ -302,7 +305,7 @@ test('copying the previous day or week reports the days it skipped, and a closed
   await expect(notice.locator('li')).toHaveText([`${shownDate(day(monday))}: Holiday`, `${shownDate(day(monday + 1))}: Already has entries`])
 
   closed = true
-  await timesheet.getByRole('button', { name: 'Copy previous day' }).click()
+  await timesheet.getByRole('button', { name: 'Copy previous working day' }).click()
   await expect(timesheet.getByRole('alert')).toHaveText(`These days cannot be changed: ${shownDate(day(15))}.`)
 })
 

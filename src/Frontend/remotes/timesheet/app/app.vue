@@ -400,7 +400,8 @@ async function updateLeave(leave: Leave) {
             <div class="day-sheet">
               <DayPanel :day="form.date" :heading="dayHeading" :entries="dayEntries" :catalog="catalog" :can-edit="canEdit"
                 :editing-id="editingId" :note="dayNote" @edit="edit" @remove="removeEntry" />
-              <CopyDays v-if="canEdit" :day="form.date" :month-start="monthStart" :month-end="monthEnd" :busy="copying" @copy="copyEntries" />
+              <CopyDays v-if="canEdit" :day="form.date" :month-start="monthStart" :month-end="monthEnd" :busy="copying"
+                :working-days="catalog.workingDays" :holidays="catalog.holidays.map(holiday => holiday.date)" @copy="copyEntries" />
               <EntryComposer v-if="canEdit" v-model:several="several" v-model:bulk-dates="bulkDates" v-model:template-name="templateName"
                 :form="form" :catalog="catalog" :month-start="monthStart" :month-end="monthEnd" :templates="templates" :bulk-days="bulkDays"
                 :editing="Boolean(editingId)" @save="saveEntry" @cancel="cancelEntry" @drop="dropTask"
