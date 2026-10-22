@@ -37,7 +37,7 @@
 
 ## Known Limits
 
-- `deploy-main.ps1` was dry-run only from a worktree (where it correctly refuses); it was not run in the main checkout, by design.
+- `deploy-main.ps1` was first dry-run from a worktree (where it correctly refuses). It has since run for real in the main checkout on 22 October 2026 (`reports-api` and `reporting-remote`), after two fixes: untracked exports in `docs` made the tree unclean (`docs/*.pdf` is now ignored), and `-Services a,b` arrived as one string through `pwsh -File` (the script now splits on commas). It also refused when run from a branch other than `develop`.
 - The main stack's `db-provisioner` leaves an anonymous Postgres volume after each `down`; the test file keeps it off disk with `tmpfs`. The main file was not changed.
 - The first `up` builds every image, which is slow; later builds use the Docker cache.
 - Playwright still uses its own dev servers and mocks; pointing it at the test gateway (and `-Frontend`) is future work.

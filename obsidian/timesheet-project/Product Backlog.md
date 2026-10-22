@@ -10,7 +10,8 @@
 4. [[#4. Copy and bulk entry|Copy and bulk entry]] — `feature/copy-and-bulk-entry` (done)
 5. [[#5. Running timer|Running timer]] — `feature/running-timer` (done)
 - Tooling, outside the numbered order: a separate test stack and a deploy step for the main stack, on `feature/test-compose` (see [[Test Stack Plan]]).
-6. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+6. [[#6. Billable work and budgets|Billable work and budgets]] — next, not started
+7. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -107,7 +108,7 @@ Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with
 
 ### 13. Broader end-to-end tests
 
-Playwright now runs 68 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
+Playwright now runs 78 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
 
 ### 14. Mobile and offline
 
