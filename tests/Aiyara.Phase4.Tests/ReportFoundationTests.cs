@@ -289,6 +289,60 @@ public sealed class ReportFoundationTests
     }
 
     [Fact]
+    public void Pdf_renderer_wraps_long_unspaced_text_over_several_pages()
+    {
+        var lines = Enumerable.Range(1, 60).Select(day => new ReportLine(new DateOnly(2026, 10, 1 + day % 28), "08:30", "12:00", 210,
+            string.Concat(Enumerable.Repeat("ศึกษาโครงสร้างและรูปแบบการเขียนโค้ด", 6)), new string('x', 400), string.Concat(Enumerable.Repeat("หมายเหตุยาวมาก", 20)),
+            "โครงการ", "หมวดหมู่", "work")).ToArray();
+        var pdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("พนักงาน", "ทีม", "ตุลาคม", lines, 0));
+        Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
+    }
+
+    [Theory]
+    [InlineData("Sarabun-Regular.ttf")]
+    [InlineData("Sarabun-Bold.ttf")]
+    public void Pdf_fonts_cover_the_thai_and_latin_text_a_report_draws(string file)
+    {
+        // The PDF library draws a character the font lacks as a blank, so the shipped faces must hold every one.
+        var covered = CmapCodePoints(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fonts", file)));
+        var needed = Enumerable.Range('A', 26).Concat(Enumerable.Range('a', 26)).Concat(Enumerable.Range('0', 10))
+            .Concat(" .,:;-/()&'\"·%+".Select(x => (int)x))
+            .Concat(Enumerable.Range(0x0E01, 0x0E3A - 0x0E01 + 1)).Concat(Enumerable.Range(0x0E3F, 0x0E5B - 0x0E3F + 1));
+        Assert.Empty(needed.Where(x => !covered.Contains(x)).Select(x => $"U+{x:X4}"));
+    }
+
+    private static HashSet<int> CmapCodePoints(byte[] font)
+    {
+        ushort U16(int at) => (ushort)(font[at] << 8 | font[at + 1]);
+        uint U32(int at) => (uint)(U16(at) << 16 | U16(at + 2));
+        var table = Enumerable.Range(0, U16(4)).Select(i => 12 + 16 * i)
+            .Single(at => System.Text.Encoding.ASCII.GetString(font, at, 4) == "cmap");
+        var cmap = (int)U32(table + 8);
+        var points = new HashSet<int>();
+        for (var i = 0; i < U16(cmap + 2); i++)
+        {
+            var sub = cmap + (int)U32(cmap + 4 + 8 * i + 4);
+            switch (U16(sub))
+            {
+                case 4:
+                    var segments = U16(sub + 6) / 2;
+                    for (var s = 0; s < segments; s++)
+                    {
+                        var end = U16(sub + 14 + 2 * s);
+                        var start = U16(sub + 16 + 2 * segments + 2 * s);
+                        for (var c = start; c <= end && c < 0xFFFF; c++) points.Add(c);
+                    }
+                    break;
+                case 12:
+                    for (var g = 0; g < U32(sub + 12); g++)
+                        for (var c = U32(sub + 16 + 12 * g); c <= U32(sub + 20 + 12 * g); c++) points.Add((int)c);
+                    break;
+            }
+        }
+        return points;
+    }
+
+    [Fact]
     public async Task Tenant_filter_fails_closed_and_composite_foreign_key_blocks_cross_tenant_run()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=True");

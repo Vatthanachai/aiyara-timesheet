@@ -105,7 +105,7 @@ public sealed class ReportController(ReportOperations operations) : BaseControll
         WithActorAsync(actor => operations.UploadSignedDocument(actor, id, file, ct), adminOnly: true);
 
     /// <summary>A member's month as the caller sends it, rendered as the same PDF as a generated monthly
-    /// report (Noto Sans Thai, signature lines). Open to every member; Report reads and stores nothing.
+    /// report (Sarabun, signature lines). Open to every member; Report reads and stores nothing.
     /// 400 VALIDATION_FAILED for more than 1,000 lines, an unknown kind, times that are not HH:mm, or
     /// text over its limit.</summary>
     [HttpPost("exports/timesheet-pdf")]
