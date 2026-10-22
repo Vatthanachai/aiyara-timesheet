@@ -27,6 +27,7 @@
 - [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (phases A–D, complete).
 - [[Reporting Workspace Plan]] — reporting remote gaps and the R1–R3 delivery plan.
 - [[Tenant Member Management Plan]] — how a Tenant Admin invites and manages members (phases A–C).
+- [[Member MFA Plan]] — Tenant Admins require an authenticator of their members: enroll at the next sign-in, recovery codes, and an audited admin reset (phases A–B).
 - [[Working Days Plan]] — how a Tenant Admin sets the organization's working weekdays (phases A–B).
 - [[Date And Time Format Plan]] — how a Tenant Admin chooses how dates and times appear everywhere (phases A–C).
 - [[Home Page Plan]] — the Shell's signed-out welcome and the signed-in Today page (phases A–C).

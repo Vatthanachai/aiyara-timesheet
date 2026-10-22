@@ -15,7 +15,9 @@ public sealed class Account
     public long SessionVersion { get; set; }
     public int FailedLoginCount { get; set; }
     public DateTime? LockedUntilUtc { get; set; }
-    /// <summary>Encrypted TOTP secret; null until enrollment completes. Required for Platform Admins.</summary>
+    /// <summary>Encrypted TOTP secret; null until enrollment completes. Required for Platform Admins,
+    /// and for members of an organization that requires MFA. The account is global, so once enrolled the
+    /// second factor is asked at every sign-in, in every organization the account belongs to.</summary>
     public string? MfaSecretProtected { get; set; }
     public DateTime? MfaEnabledAtUtc { get; set; }
     /// <summary>Encrypted secret offered during enrollment, before the first code confirms it.</summary>

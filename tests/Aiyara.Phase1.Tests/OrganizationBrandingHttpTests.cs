@@ -50,6 +50,7 @@ public sealed class OrganizationBrandingHttpTests : IAsyncLifetime
         Assert.Equal("Acme", organization.GetProperty("name").GetString());
         Assert.Equal("ACME123", organization.GetProperty("organizationCode").GetString());
         Assert.Equal(JsonValueKind.Null, organization.GetProperty("logoUrl").ValueKind);
+        Assert.False(organization.GetProperty("requireMfa").GetBoolean());
 
         using var byEmployee = await Send(HttpMethod.Put, "/api/v1/organization", Token(employeeId, acme, "Employee"),
             JsonContent.Create(new { name = "Taken over" }));
