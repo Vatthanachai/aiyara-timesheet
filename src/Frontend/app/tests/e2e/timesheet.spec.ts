@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { options, shownDate } from './fields'
+import { monthState, options, shownDate } from './fields'
 
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
 const cors = {
@@ -14,7 +14,7 @@ const entry = (id: string, date: string, startTime: string, endTime: string, dur
   ({ id, date, startTime, endTime, durationMinutes, taskName, detail: null, notes: null, projectId: null, categoryId: null, personalTaskId: null, includesBreak: false })
 
 /** Signs in through the Shell and opens Timesheet with a normal working day of 7 hours (09:00–17:00 less a 1-hour break). */
-async function openTimesheet(page: Page, requests: string[] = []) {
+async function openTimesheet(page: Page, requests: string[] = [], state: Record<string, unknown> = {}) {
   await page.route('**/api/v1/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
@@ -38,6 +38,12 @@ async function openTimesheet(page: Page, requests: string[] = []) {
     if (url.pathname.endsWith('/timesheets/tasks') || url.pathname.endsWith('/timesheets/leave')) return ok([])
     if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [{ id: 'p1', name: 'Website redesign' }, { id: 'p2', name: 'Mobile app' }, { id: 'p3', name: 'Internal tools' }], categories: [], holidays: [],
       workingDays: [0, 1, 2, 3, 4, 5, 6], workHours: { startTime: '09:00', endTime: '17:00', breakStart: '12:00', breakEnd: '13:00' } })
+    if (url.pathname.endsWith('/submit')) {
+      requests.push(`${request.method()} ${url.pathname.replace(/.*\/timesheets/, '')}`)
+      Object.assign(state, { status: 'submitted', returnReason: null, editable: false })
+      return ok({ status: 'submitted' })
+    }
+    if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) return ok(monthState(url.pathname, currentMonth, state))
     if (url.pathname.endsWith('/timesheets/context')) return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
   })
@@ -164,4 +170,40 @@ test('pickers filter as you type, times are 24-hour, and dates are dd/MM/yyyy', 
   await expect(date).toHaveValue(/^\d{2}\/\d{2}\/\d{4}$/)
   await date.fill('1-1-1999')
   await expect.poll(() => date.evaluate(element => (element as HTMLInputElement).validationMessage)).toMatch(/^Choose a date from /)
+})
+
+test('a returned month shows the reason, stays editable, and is submitted again', async ({ page }) => {
+  const requests: string[] = []
+  const timesheet = await openTimesheet(page, requests, { status: 'returned', returnReason: 'Add the client meeting on the 6th.' })
+  const bar = timesheet.locator('.approval-bar')
+
+  await expect(bar).toHaveAttribute('data-status', 'returned')
+  await expect(bar.locator('.approval-pill')).toHaveText('Returned')
+  await expect(bar.locator('.return-reason')).toHaveText('Reason: Add the client meeting on the 6th.')
+  await expect(timesheet.locator('.entry-panel')).toBeVisible()
+
+  let question = ''
+  page.on('dialog', dialog => { question = dialog.message(); void dialog.accept() })
+  await bar.getByRole('button', { name: 'Submit again' }).click()
+  await expect.poll(() => requests.at(-1)).toBe(`POST /me/months/${now.getFullYear()}/${now.getMonth() + 1}/submit`)
+  expect(question).toMatch(/^Submit .+ for approval\?/)
+  await expect(bar).toHaveAttribute('data-status', 'submitted')
+  await expect(bar.locator('.approval-pill')).toHaveText('Submitted')
+  await expect(bar.getByRole('button')).toHaveCount(0)
+  await expect(timesheet.getByRole('status').filter({ hasText: 'Submitted for approval' })).toBeVisible()
+  // Waiting for approval, the month is read only.
+  await expect(timesheet.locator('.entry-panel')).toHaveCount(0)
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+})
+
+test('an approved month cannot be changed or submitted', async ({ page }) => {
+  const timesheet = await openTimesheet(page, [], { status: 'approved', editable: false })
+  const bar = timesheet.locator('.approval-bar')
+  await expect(bar.locator('.approval-pill')).toHaveText('Approved')
+  await expect(bar.getByRole('button')).toHaveCount(0)
+  await expect(timesheet.locator('.entry-panel')).toHaveCount(0)
 })

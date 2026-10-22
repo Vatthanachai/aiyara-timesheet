@@ -4,7 +4,7 @@ import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
-import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
+import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type MonthState, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
 const config = useRuntimeConfig()
@@ -32,8 +32,13 @@ const view = ref<'entries' | 'board'>('entries')
 const leaveDate = ref(today)
 const leaveKind = ref('annual')
 const currentMonth = ref('')
-const locked = ref(false)
-const canEdit = computed(() => month.value === currentMonth.value && !locked.value)
+/** The viewed month's approval state; the API decides whether it can be edited. */
+const monthState = ref<MonthState>({ locked: false, status: 'open', returnReason: null, editable: false })
+const canEdit = computed(() => monthState.value.editable)
+// Months are YYYY-MM, so they compare as text. A future month cannot be submitted.
+const canSubmit = computed(() => Boolean(currentMonth.value) && month.value <= currentMonth.value && !monthState.value.locked &&
+  (monthState.value.status === 'open' || monthState.value.status === 'returned'))
+const submitting = ref(false)
 const formats = ref(readFormats(null))
 const monthLabel = computed(() => formatMonth(month.value, formats.value, locale.value))
 const monthStart = computed(() => `${month.value}-01`)
@@ -102,19 +107,20 @@ async function api<T>(path: string, options: { method?: string; body?: object } 
 async function load() {
   if (!token.value) return
   try {
-    const [e, t, l, c, context] = await Promise.all([
+    const [e, t, l, c, context, state] = await Promise.all([
       api<Entry[]>(`/entries?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
       api<Task[]>('/tasks'),
       api<Leave[]>(`/leave?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
       api<Catalog>('/catalog'),
-      api<{ currentMonth: string; locked: boolean }>('/context')
+      api<{ currentMonth: string }>('/context'),
+      api<MonthState>(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}`)
     ])
     entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
     // The first time the organization's hours are known, an untouched new entry starts with them.
     if (!workHoursApplied && !editingId.value && !form.taskName)
       Object.assign(form, { startTime: catalog.value.workHours.startTime, endTime: catalog.value.workHours.endTime })
     workHoursApplied = true
-    currentMonth.value = context.currentMonth; locked.value = context.locked
+    currentMonth.value = context.currentMonth; monthState.value = state
     if (!entries.value.length && month.value === new Date().toISOString().slice(0, 7) &&
         month.value !== context.currentMonth) month.value = context.currentMonth
     error.value = ''
@@ -187,6 +193,16 @@ async function removeEntry(id: string) {
   try { await api(`/entries/${id}`, { method: 'DELETE' }); await load() }
   catch (cause) { error.value = safeError(cause, locale.value) }
 }
+async function submitMonth() {
+  if (!canSubmit.value || !confirm(labels.value.confirmSubmit.replace('{month}', monthLabel.value))) return
+  submitting.value = true
+  try {
+    await api(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}/submit`, { method: 'POST' })
+    resetForm(); await load()
+    notice.value = labels.value.submittedNotice
+  } catch (cause) { error.value = safeError(cause, locale.value) }
+  finally { submitting.value = false }
+}
 async function addTask() {
   if (!taskName.value.trim()) return
   try { await api('/tasks', { method: 'POST', body: { name: taskName.value, status: 'todo' } }); taskName.value = ''; await load() }
@@ -241,7 +257,8 @@ async function updateLeave(leave: Leave) {
         </div>
       </header>
 
-      <p v-if="!canEdit" class="notice" role="status">{{ text.readOnly }}</p>
+      <ApprovalBar v-if="currentMonth && month <= currentMonth" :state="monthState" :can-submit="canSubmit" :busy="submitting" @submit="submitMonth" />
+      <p v-if="!canEdit && monthState.status === 'open' && !monthState.locked" class="notice" role="status">{{ text.readOnly }}</p>
       <p v-if="error" role="alert" class="feedback error">{{ error }}</p>
       <p v-if="notice" role="status" class="feedback success">{{ notice }}</p>
 

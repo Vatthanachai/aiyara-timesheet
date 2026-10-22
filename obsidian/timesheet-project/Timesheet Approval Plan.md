@@ -1,6 +1,6 @@
 # Timesheet Approval Plan
 
-> Drafted 22 October 2026 from item 1 of [[Product Backlog]] and a code audit of `develop` at `5cbcf21`. Branch `feature/timesheet-approval`. Covers how a member submits a month and how a Tenant Admin approves it or returns it.
+> Drafted 22 October 2026 from item 1 of [[Product Backlog]] and a code audit of `develop` at `5cbcf21`. Implemented the same day on `feature/timesheet-approval` (phases A and B). Covers how a member submits a month and how a Tenant Admin approves it or returns it.
 
 ## Audit: What Exists On `develop`
 
@@ -29,17 +29,17 @@ There is no per-member state for a month: a month is open for everyone until the
 ## Phase A — API
 
 - [x] A1. `MonthApproval` entity, mapping, unique index, migration `AddMonthApprovals`.
-- [x] A2. `TimesheetOperations`: `MonthStatus`, `SubmitMonth`, `ApproveMonth`, `ReturnMonth`; `CanMutate` follows decision 3; `LockMonth` skips existing member snapshots; status in the member views and summary.
+- [x] A2. `TimesheetOperations`: `MyMonth`, `SubmitMonth`, `ApproveMonth`, `ReturnMonth`; `CanMutate` follows decision 3; `LockMonth` skips existing member snapshots; status in the member views and summary.
 - [x] A3. Controller routes with OpenAPI response types: `GET me/months/{year}/{month}`, `POST me/months/{year}/{month}/submit`, `POST members/{ownerId}/months/{year}/{month}/approve`, `POST members/{ownerId}/months/{year}/{month}/return`.
 - [x] A4. Return email: Notification template and endpoint; Timesheet sender with `Notifications:BaseUrl` / `Notifications:InternalKey` in Compose and AppHost.
 - [x] A5. Tests (`MonthApprovalTests`): each transition and its refusals, editing rules for submitted, approved, and returned months, the approval snapshot and the lock keeping it, employees cannot approve, another tenant sees nothing, the return notifier is called once. No test project covers Notification, so the email is checked against the Compose stack.
 
 ## Phase B — UI
 
-- [ ] B1. Timesheet: the month's status under the heading, **Submit for approval** for an open or returned month, the return reason, and editing as the API says.
-- [ ] B2. Reporting → Member timesheets: a status in each member row and on a member's month; **Approve** and **Return** (with a reason) for a submitted month. My timesheet shows the member's own status.
-- [ ] B3. Playwright: a member submits, the admin returns with a reason, the member sees it, resubmits, and the admin approves.
-- [ ] B4. Docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+- [x] B1. Timesheet (`ApprovalBar.vue`): the month's status under the heading, **Submit for approval** for an open or returned month, the return reason, and editing as the API says.
+- [x] B2. Reporting → Member timesheets: a status in each member row and on a member's month; **Approve** and **Return** (with a reason) for a submitted month. My timesheet shows the member's own status.
+- [x] B3. Playwright: a returned month shows its reason, stays editable, and is submitted again; an approved month has no Submit and no entry form; the admin returns a submitted month with a reason and approves it once it is submitted again, at 375 and 320 px. The Phase 3 smoke runs the same round trip through Gateway and checks the email in MailDev.
+- [x] B4. Docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
 
 ## Out Of Scope
 

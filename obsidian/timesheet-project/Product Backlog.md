@@ -13,6 +13,8 @@
 
 ### 1. Timesheet approval
 
+> Done 22 October 2026 on `feature/timesheet-approval`: see [[Timesheet Approval Plan]]. Group leads as approvers are still open.
+
 Today a month can only be locked (`POST months/{year}/{month}/lock`); there is no submit, approve, or return step, and the code has no approval concept.
 
 - Month states: Open → Submitted → Approved, or Returned with a reason back to Open.

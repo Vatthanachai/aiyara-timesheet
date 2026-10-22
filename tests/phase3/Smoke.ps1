@@ -134,10 +134,35 @@ if ($myMonth.locked -or @($myMonth.entries).Count -ne 1 -or @($myMonth.leaves).C
 $adminMonth = Expect (Request Get "/api/v1/timesheets/me/timesheet?year=$year&month=$month" $null $admin) 200 'admin own month'
 if (@($adminMonth.entries).Count -ne 0) { throw 'Own month shows another member''s entries.' }
 
+# Approval: the employee submits, the admin returns it with a reason (emailed), the employee fixes
+# it and submits again, and the admin approves it.
+$employeeId = $myMonth.ownerId
+$approvalPath = "/api/v1/timesheets/members/$employeeId/months/$year/$month"
+Expect (Request Post "/api/v1/timesheets/me/months/$year/$month/submit" $null $employee) 200 'month submission' | Out-Null
+Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $employee) 409 'submitted entry' | Out-Null
+Expect (Request Post "$approvalPath/approve" $null $employee) 403 'approval permission' | Out-Null
+Expect (Request Post "$approvalPath/return" @{ reason = 'Add the client call on the 7th.' } $admin) 200 'month return' | Out-Null
+$returned = Expect (Request Get "/api/v1/timesheets/me/months/$year/$month" $null $employee) 200 'returned month'
+if ($returned.status -ne 'returned' -or -not $returned.editable -or $returned.returnReason -ne 'Add the client call on the 7th.') {
+    throw 'The returned month is not open to its member with the reason.'
+}
+$returnEmail = $null
+for ($attempt = 0; $attempt -lt 30 -and -not $returnEmail; $attempt++) {
+    $returnEmail = Find-MailMessage $MailDevUrl $MailDevToken $employeeEmail 'Your timesheet for * was returned'
+    if (-not $returnEmail) { Start-Sleep -Milliseconds 500 }
+}
+if (-not $returnEmail -or $returnEmail.Text -notmatch 'Add the client call on the 7th\.') { throw 'The month-returned email was not delivered.' }
+Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $employee) 200 'returned entry update' | Out-Null
+Expect (Request Post "/api/v1/timesheets/me/months/$year/$month/submit" $null $employee) 200 'month resubmission' | Out-Null
+Expect (Request Post "$approvalPath/approve" $null $admin) 200 'month approval' | Out-Null
+$summary = Expect (Request Get "/api/v1/timesheets/members/summary?year=$year&month=$month" $null $admin) 200 'approved summary'
+if ((@($summary.members) | Where-Object ownerId -eq $employeeId).status -ne 'approved') { throw 'The summary does not show the approval.' }
+Expect (Request Get "/api/v1/timesheets/months/$year/$month/snapshot" $null $employee) 200 'approval snapshot' | Out-Null
+
 Expect (Request Post "/api/v1/timesheets/months/$year/$month/lock" $null $employee) 403 'month lock permission' | Out-Null
 Expect (Request Post "/api/v1/timesheets/months/$year/$month/lock" $null $admin) 200 'month lock' | Out-Null
 Expect (Request Get "/api/v1/timesheets/months/$year/$month/snapshot" $null $employee) 200 'immutable snapshot' | Out-Null
 Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $employee) 409 'locked entry' | Out-Null
 Expect (Request Delete "/api/v1/timesheets/leave/$($leave.id)" $null $employee) 409 'locked leave' | Out-Null
 
-Write-Output 'Phase 3 profile, catalog, task, overnight time entry, leave, isolation, month lock and snapshot smoke test passed.'
+Write-Output 'Phase 3 profile, catalog, task, overnight time entry, leave, isolation, approval, month lock and snapshot smoke test passed.'

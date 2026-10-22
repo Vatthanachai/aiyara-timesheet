@@ -34,6 +34,20 @@ button { cursor: pointer; }
 .error { background: var(--color-danger-soft); border: 1px solid var(--color-danger-line); color: var(--color-danger); }
 .success { background: var(--color-success-soft); border: 1px solid var(--color-success-line); color: var(--color-success); }
 
+/* The month's approval status: a quiet strip, coloured by where the month stands. */
+.approval-bar { align-items: center; background: var(--color-surface); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: .5rem; display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; justify-content: space-between; margin: 0 0 1rem; padding: .75rem 1rem; }
+.approval-text { flex: 1 1 18rem; min-width: 0; }
+.approval-text p { margin: 0; }
+.approval-text p + p { margin-top: .4rem; }
+.approval-pill { background: var(--soft); border-radius: 999px; color: var(--color-ink-soft); display: inline-block; font-size: .78rem; font-weight: 700; margin-right: .4rem; padding: .15rem .6rem; }
+.return-reason { overflow-wrap: anywhere; white-space: pre-line; }
+.approval-bar[data-status="submitted"] { border-left-color: var(--color-brand); }
+.approval-bar[data-status="submitted"] .approval-pill { background: var(--color-brand-soft); color: var(--color-brand); }
+.approval-bar[data-status="approved"] { border-left-color: var(--color-success); }
+.approval-bar[data-status="approved"] .approval-pill { background: var(--color-success-soft); color: var(--color-success); }
+.approval-bar[data-status="returned"] { background: var(--color-warn-soft); border-color: var(--color-warn-line); border-left-color: var(--color-warn); }
+.approval-bar[data-status="returned"] .approval-pill { background: var(--color-surface); color: var(--color-warn); }
+
 .view-switch { border-bottom: 1px solid var(--line); display: flex; gap: .25rem; margin: 0 0 1.25rem; }
 .view-switch button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; margin-bottom: -1px; padding: .6rem .85rem; }
 .view-switch button[aria-pressed="true"] { border-bottom-color: var(--color-brand); color: var(--color-brand); }

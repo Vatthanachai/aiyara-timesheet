@@ -8,7 +8,9 @@ import { expectedMinutes, standardMinutes, type WorkHours, type WorkSchedule } f
 import { formatDate as formatCalendarDate, formatMonth, formatTime, type Formats } from '../../../../shared/date-format'
 
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; groupId?: string | null; groupName?: string | null }
-type MemberSummary = { ownerId: string; entryCount: number; totalMinutes: number; leaveDays: number }
+/** A member's month in the approval flow; older API responses omit it (open). */
+type ApprovalStatus = 'open' | 'submitted' | 'approved' | 'returned'
+type MemberSummary = { ownerId: string; entryCount: number; totalMinutes: number; leaveDays: number; status?: ApprovalStatus }
 type Summary = { year: number; month: number; locked: boolean; members: MemberSummary[] }
 type Entry = {
   id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string
@@ -16,6 +18,7 @@ type Entry = {
 }
 type Detail = {
   ownerId: string; locked: boolean; entries: Entry[]
+  status?: ApprovalStatus; returnReason?: string | null
   leaves: { id: string; date: string; kind: string; notes: string | null }[]
   holidays: { date: string; name: string }[]
   /** Date.getDay() numbers the organization works; older API responses omit it (Monday to Friday). */
@@ -36,6 +39,8 @@ const props = defineProps<{
   self?: { name: string }
   /** Renders a month as a timesheet PDF through Report, returning the file. */
   exportPdf: (body: unknown) => Promise<Blob>
+  /** POST a Timesheet API path through Gateway; set for admins, who approve and return months. */
+  post?: (path: string, body?: unknown) => Promise<unknown>
 }>()
 
 const copy = useLocaleText(toRef(props, 'locale'), { th: {
@@ -51,7 +56,12 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   detail: 'รายละเอียด', notes: 'บันทึก', remark: 'หมายเหตุ', status: 'สถานะ',
   expectedOpen: 'ถึงวันนี้ควรมี {toDate} จาก {total} ชั่วโมงต่อคน', expectedClosed: '{month} ต้องการ {total} ชั่วโมงต่อคน',
   ofHours: 'จาก {expected}', hoursLabel: '{name}: บันทึก {logged} จาก {expected} ชั่วโมง', strip: 'ชั่วโมงรายวันของ {name}',
-  myTitle: 'Timesheet ของฉัน', myHint: 'เวลาทำงาน วันลา และวันหยุดของคุณรายเดือน รวมเดือนปัจจุบันที่ยังไม่ปิดรอบ อัปเดตทันทีที่บันทึกเวลา', me: 'ฉัน'
+  myTitle: 'Timesheet ของฉัน', myHint: 'เวลาทำงาน วันลา และวันหยุดของคุณรายเดือน รวมเดือนปัจจุบันที่ยังไม่ปิดรอบ อัปเดตทันทีที่บันทึกเวลา', me: 'ฉัน',
+  statusSubmitted: 'รออนุมัติ', statusApproved: 'อนุมัติแล้ว', statusReturned: 'ส่งกลับแล้ว',
+  submittedHint: '{name} ส่ง{month}ให้อนุมัติแล้ว', approve: 'อนุมัติ', returnMonth: 'ส่งกลับให้แก้ไข',
+  returnReason: 'เหตุผลที่ส่งกลับ', returnHint: 'สมาชิกจะเห็นเหตุผลนี้และได้รับอีเมล', sendReturn: 'ส่งกลับ', cancel: 'ยกเลิก',
+  confirmApprove: 'อนุมัติ{month}ของ {name}? เมื่ออนุมัติแล้วจะแก้ไขไม่ได้อีก', approvedNotice: 'อนุมัติแล้ว', returnedNotice: 'ส่งกลับให้สมาชิกแก้ไขแล้ว',
+  returnedBecause: 'ส่งกลับเพราะ: {reason}'
 }, en: {
   title: 'Member timesheets', hint: "Review each member's hours and leave by month, including the current open month.",
   month: 'Month', member: 'Member', entries: 'Entries', hours: 'Hours', leaveDays: 'Leave days', view: 'View timesheet', viewShort: 'View',
@@ -65,7 +75,12 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   detail: 'Detail', notes: 'Notes', remark: 'Remark', status: 'Status',
   expectedOpen: 'Expected so far: {toDate} of {total} hours per member.', expectedClosed: '{month} expects {total} hours per member.',
   ofHours: 'of {expected}', hoursLabel: '{name}: {logged} of {expected} hours logged', strip: 'Hours per day for {name}',
-  myTitle: 'My timesheet', myHint: 'Your hours, leave, and days off by month, including the current open month. It updates as soon as you record time.', me: 'Me'
+  myTitle: 'My timesheet', myHint: 'Your hours, leave, and days off by month, including the current open month. It updates as soon as you record time.', me: 'Me',
+  statusSubmitted: 'Awaiting approval', statusApproved: 'Approved', statusReturned: 'Returned',
+  submittedHint: '{name} submitted {month} for approval.', approve: 'Approve', returnMonth: 'Return for changes',
+  returnReason: 'Why are you returning it?', returnHint: 'The member sees this reason and gets an email.', sendReturn: 'Return', cancel: 'Cancel',
+  confirmApprove: "Approve {name}'s {month}? It can no longer be changed once approved.", approvedNotice: 'Approved', returnedNotice: 'Returned to the member for changes',
+  returnedBecause: 'Returned: {reason}'
 } })
 
 const month = ref(zonedToday(props.timeZoneId).slice(0, 7))
@@ -79,6 +94,11 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.allGroups },
 const detail = ref<Detail | null>(null)
 const busy = ref(false)
 const error = ref('')
+const notice = ref('')
+/** The approval status as a dot colour: approved reads as done, submitted as waiting, returned as blocked. */
+const approvalDot = { open: '', submitted: 'Queued', approved: 'Succeeded', returned: 'Blocked' } as const
+const approvalLabel = (status: ApprovalStatus | undefined) => status === 'submitted' ? copy.value.statusSubmitted
+  : status === 'approved' ? copy.value.statusApproved : status === 'returned' ? copy.value.statusReturned : ''
 const period = computed(() => ({ year: Number(month.value.slice(0, 4)), month: Number(month.value.slice(5, 7)) }))
 /** The organization's work week, hours, and holidays; without them the page shows figures only. */
 const catalog = ref<Catalog | null>(null)
@@ -279,9 +299,28 @@ const open = (id: string) => run(async () => {
 function close() {
   selectedId.value = ''
   detail.value = null
+  returning.value = false
 }
 
-watch(month, () => { if (/^\d{4}-\d{2}$/.test(month.value)) loadSummary() })
+const returning = ref(false)
+const returnReason = ref('')
+const monthPath = () => `/members/${selectedId.value}/months/${period.value.year}/${period.value.month}`
+/** Approve or return the open member's submitted month, then reload the month and the list. */
+const decide = (action: 'approve' | 'return', done: string) => run(async () => {
+  notice.value = ''
+  await props.post!(`${monthPath()}/${action}`, action === 'return' ? { reason: returnReason.value } : undefined)
+  returning.value = false
+  returnReason.value = ''
+  summary.value = await props.load<Summary>('/members/summary', period.value)
+  detail.value = await props.load<Detail>(`/members/${selectedId.value}/timesheet`, period.value)
+  notice.value = done
+})
+function approve() {
+  if (confirm(fill(copy.value.confirmApprove, { name: selectedName.value, month: monthLabel.value })))
+    void decide('approve', copy.value.approvedNotice)
+}
+
+watch(month, () => { notice.value = ''; returning.value = false; if (/^\d{4}-\d{2}$/.test(month.value)) loadSummary() })
 onMounted(async () => {
   try { catalog.value = await props.load<Catalog>('/catalog', {}) } catch { catalog.value = null }
   await loadSummary()
@@ -301,6 +340,7 @@ onMounted(async () => {
       </div>
     </div>
     <p v-if="error" class="feedback feedback-error" role="alert">{{ error }}</p>
+    <p v-if="notice" class="feedback feedback-ok" role="status">{{ notice }}</p>
     <p v-if="busy && !summary && !detail" class="muted" role="status">{{ copy.loading }}</p>
 
     <template v-if="selectedId && detail">
@@ -308,12 +348,30 @@ onMounted(async () => {
         <button v-if="!self" type="button" class="secondary back-button" @click="close">{{ copy.back }}</button>
         <h3>{{ selectedName }} <span class="detail-month">{{ monthLabel }}</span></h3>
         <span class="status" :data-status="detail.locked ? 'Succeeded' : 'Blocked'">{{ detail.locked ? copy.monthClosed : copy.monthOpen }}</span>
+        <span v-if="approvalLabel(detail.status)" class="status" :data-status="approvalDot[detail.status!]">{{ approvalLabel(detail.status) }}</span>
         <div class="export-actions" role="group" :aria-label="copy.exportLabel.replace('{name}', selectedName)">
           <ExportMenu :label="copy.exportExcel" :more-label="copy.moreFormats" :busy="preparingPdf"
             :items="[{ key: 'csv', label: copy.asCsv }, { key: 'pdf', label: copy.asPdf }]" @run="exportTimesheet('xlsx')" @select="exportAs" />
           <span v-if="preparingPdf" class="muted" role="status">{{ copy.preparingPdf }}</span>
         </div>
       </div>
+      <div v-if="post && !self && detail.status === 'submitted' && !detail.locked" class="approval-panel">
+        <p>{{ fill(copy.submittedHint, { name: selectedName, month: monthLabel }) }}</p>
+        <div v-if="!returning" class="approval-actions">
+          <button type="button" class="primary" :disabled="busy" @click="approve">{{ copy.approve }}</button>
+          <button type="button" :disabled="busy" @click="returning = true">{{ copy.returnMonth }}</button>
+        </div>
+        <form v-else class="return-form" @submit.prevent="decide('return', copy.returnedNotice)">
+          <label>{{ copy.returnReason }}<textarea v-model="returnReason" rows="3" maxlength="1000" required /></label>
+          <p class="muted">{{ copy.returnHint }}</p>
+          <div class="approval-actions">
+            <button type="submit" class="primary" :disabled="busy || !returnReason.trim()">{{ copy.sendReturn }}</button>
+            <button type="button" class="secondary" :disabled="busy" @click="returning = false">{{ copy.cancel }}</button>
+          </div>
+        </form>
+      </div>
+      <p v-else-if="detail.status === 'returned' && detail.returnReason && !detail.locked" class="approval-panel return-note">
+        {{ fill(copy.returnedBecause, { reason: detail.returnReason }) }}</p>
       <MonthStrip v-if="detailSchedule" :month="month" :minutes-by-day="dayTotals" :leave-days="leaveDates" :schedule="detailSchedule"
         :label="copy.strip.replace('{name}', selectedName)" :describe="describeDay" />
       <dl class="member-totals">
@@ -401,7 +459,7 @@ onMounted(async () => {
           </tr></thead>
           <tbody>
             <tr v-for="row in visibleRows" :key="row.id">
-              <td><strong>{{ memberName(row.member) }}</strong><small v-if="row.member && memberName(row.member) !== row.member.email">{{ row.member.email }}</small><small v-if="groups.length && !groupFilter && row.member">{{ row.member.groupName ?? copy.noGroup }}</small>
+              <td><strong>{{ memberName(row.member) }}</strong><span v-if="approvalLabel(row.totals.status)" class="status approval-status" :data-status="approvalDot[row.totals.status!]">{{ approvalLabel(row.totals.status) }}</span><small v-if="row.member && memberName(row.member) !== row.member.email">{{ row.member.email }}</small><small v-if="groups.length && !groupFilter && row.member">{{ row.member.groupName ?? copy.noGroup }}</small>
                 <!-- On a phone the bar sits under the name instead of in its own column. -->
                 <HoursBar v-if="schedule && row.member" class="inline-bar" :logged="row.totals.totalMinutes" :expected="memberExpected(row.totals.leaveDays)"
                   :to-date="memberToDate(row.totals.leaveDays)" :label="hoursLabel(memberName(row.member), row.totals.totalMinutes, memberExpected(row.totals.leaveDays))" /></td>
@@ -449,6 +507,15 @@ onMounted(async () => {
 .detail-heading h3{margin:0;font-family:var(--font-display);font-size:1.35rem;font-weight:600;flex:1 1 14rem}
 .detail-month{color:var(--color-muted);font-weight:500;margin-left:.35rem}
 .export-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+/* A submitted month waits on the admin: the decision sits above the figures. */
+.approval-panel{margin:0 0 1.25rem;padding:.85rem 1rem;border:1px solid var(--color-border);border-left:4px solid var(--color-brand);border-radius:.5rem;background:var(--color-surface-muted)}
+.approval-panel p{margin:0 0 .75rem}
+.approval-panel.return-note{border-left-color:var(--color-warn-strong);white-space:pre-line;overflow-wrap:anywhere}
+.approval-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+.return-form{display:grid;gap:.6rem;max-width:36rem}
+.return-form p{margin:0}
+.return-form textarea{font:inherit;color:var(--color-ink);border:1px solid var(--color-border-strong);border-radius:.5rem;padding:.5rem .65rem;background:var(--color-surface);resize:vertical}
+.approval-status{margin-left:.6rem;font-size:.78rem;white-space:nowrap}
 /* A member's month in figures: one row, divided, no cards. */
 .member-totals{display:flex;flex-wrap:wrap;margin:0 0 1.25rem;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
 .member-totals div{flex:1 1 7rem;padding:.7rem 1rem .7rem 0;margin-right:1rem}

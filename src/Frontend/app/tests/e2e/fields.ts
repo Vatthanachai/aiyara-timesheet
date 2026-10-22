@@ -15,3 +15,9 @@ export async function choose(field: Locator, label: string) {
 
 /** A `YYYY-MM-DD` date as the date fields show it, dd/MM/yyyy. */
 export const shownDate = (iso: string) => iso.split('-').reverse().join('/')
+
+/** `GET /timesheets/me/months/{year}/{month}` for a month nobody has submitted: only the current month can be edited. */
+export const monthState = (path: string, currentMonth: string, overrides: Record<string, unknown> = {}) => ({
+  locked: false, status: 'open', returnReason: null,
+  editable: path.endsWith(`/${Number(currentMonth.slice(0, 4))}/${Number(currentMonth.slice(5))}`), ...overrides
+})

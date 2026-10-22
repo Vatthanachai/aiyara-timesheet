@@ -370,6 +370,13 @@ async function timesheetGet<T>(path: string, query: Record<string, unknown>) {
     }), token, config.public.shellOrigin))
 }
 
+async function timesheetPost(path: string, body?: unknown) {
+  return unwrapResponse(await withRemoteRefresh(accessToken =>
+    $fetch<ApiEnvelope<unknown>>(`${gateway.value}/api/v1/timesheets${path}`, {
+      method: 'POST', body, headers: { Authorization: `Bearer ${accessToken}` }
+    }), token, config.public.shellOrigin))
+}
+
 /** A member's own display name for the My timesheet heading and export; empty falls back to "Me". */
 async function loadMyName() {
   try {
@@ -469,7 +476,7 @@ const timeZoneChoices = computed(() => timeZones.value.map(zone => ({ value: zon
       <p v-if="error" class="feedback feedback-error" role="alert">{{ error }}</p>
       <p v-if="notice" class="feedback feedback-ok" role="status">{{ notice }}</p>
 
-      <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :export-pdf="exportTimesheetPdf" />
+      <MemberTimesheets v-if="isAdmin" :members="members" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :export-pdf="exportTimesheetPdf" :post="timesheetPost" />
       <MemberTimesheets v-else-if="loaded" :members="[]" :locale="locale" :formats="formats" :time-zone-id="timeZoneId" :load="timesheetGet" :export-pdf="exportTimesheetPdf" :self="{ name: myName }" />
 
       <section class="card documents" aria-labelledby="documents-heading">

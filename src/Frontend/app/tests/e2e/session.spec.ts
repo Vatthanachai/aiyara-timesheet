@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { renderSVG } from 'uqr'
 import { readFileSync } from 'node:fs'
-import { choose, options, shownDate } from './fields'
+import { choose, monthState, options, shownDate } from './fields'
 
 const organizationCode = 'ACME123'
 const tenantId = 'ae15beba-50e1-4ca3-8495-b4a8af1fca08'
@@ -255,6 +255,10 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
       })) })
       return
     }
+    if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk(monthState(url.pathname, currentMonth))) })
+      return
+    }
     if (url.pathname.endsWith('/api/v1/timesheets/context')) {
       await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk({ currentMonth, locked: false })) })
       return
@@ -375,6 +379,10 @@ test('timesheet task tray keeps a rejected task name, prefills the entry form, a
       await route.fulfill(json({ projects: [{ id: 'project-1', name: 'Website' }], categories: [], holidays: [] }))
       return
     }
+    if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) {
+      await route.fulfill(json(monthState(url.pathname, currentMonth)))
+      return
+    }
     if (url.pathname.endsWith('/api/v1/timesheets/context')) {
       await route.fulfill(json({ currentMonth, locked: false }))
       return
@@ -471,6 +479,10 @@ test('timesheet task board moves cards by button and drag, reverts a rejected mo
     }
     if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
       await route.fulfill(json({ projects: [{ id: 'project-1', name: 'Website' }], categories: [], holidays: [] }))
+      return
+    }
+    if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(url.pathname)) {
+      await route.fulfill(json(monthState(url.pathname, currentMonth)))
       return
     }
     if (url.pathname.endsWith('/api/v1/timesheets/context')) {
@@ -1849,7 +1861,10 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     regenerated: [] as string[],
     pdfRequests: [] as Record<string, unknown>[],
     scheduleRequests: [] as Record<string, unknown>[],
-    schedules: [] as Record<string, unknown>[]
+    schedules: [] as Record<string, unknown>[],
+    /** Somchai's month in the approval flow, and the approve or return requests made. */
+    approval: { status: 'open', returnReason: null as string | null },
+    decisions: [] as string[]
   }
   const definitions = [
     { id: 'def-month', kind: 'Monthly', format: 'Pdf', name: 'Monthly timesheet' },
@@ -1909,11 +1924,19 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
     if (url.pathname.includes('/timesheets/members/')) {
       state.timesheetQueries.push(`${url.pathname.replace(/^.*\/timesheets/, '')}?${url.searchParams}`)
       if (role !== 'TenantAdmin') return route.fulfill({ status: 403, headers: cors })
+      const decision = url.pathname.match(/\/members\/member-somchai\/months\/\d+\/\d+\/(approve|return)$/)
+      if (decision && request.method() === 'POST') {
+        state.decisions.push(`${decision[1]} ${request.postData() ?? ''}`.trim())
+        state.approval = decision[1] === 'approve' ? { status: 'approved', returnReason: null }
+          : { status: 'returned', returnReason: request.postDataJSON().reason }
+        return ok(state.approval)
+      }
       if (url.pathname.endsWith('/members/summary')) return ok({ year: 2026, month: 10, locked: false, members: [
-        { ownerId: 'member-somchai', entryCount: 3, totalMinutes: 450, leaveDays: 1 },
+        { ownerId: 'member-somchai', entryCount: 3, totalMinutes: 450, leaveDays: 1, status: state.approval.status },
         { ownerId: 'member-gone', entryCount: 1, totalMinutes: 60, leaveDays: 0 }
       ] })
       if (url.pathname.endsWith('/members/member-somchai/timesheet')) return ok({ ownerId: 'member-somchai', year: 2026, month: 10, locked: false,
+        ...state.approval,
         entries: [
           { id: 'e1', date: '2026-10-05', startTime: '09:00:00', endTime: '12:00:00', durationMinutes: 180, taskName: 'Design review',
             detail: 'Checkout flow', notes: null, projectName: 'Apollo', categoryName: 'Design' },
@@ -2400,6 +2423,7 @@ test('timesheet calendar shades the days the organization does not work and new 
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [0, 1, 2, 3, 4],
       workHours: { startTime: '08:30', endTime: '17:30' } })
     if (path === '/timesheets/entries' || path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(path)) return ok(monthState(path, currentMonth))
     if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
   })
@@ -2531,6 +2555,7 @@ test('timesheet shows dates and times in the organization\'s format', async ({ p
     if (path === '/timesheets/entries') return ok([{ id: 'e1', date: `${currentMonth}-05`, startTime: '13:00:00', endTime: '14:30:00', durationMinutes: 90,
       taskName: 'Afternoon review', detail: null, notes: null, projectId: null, categoryId: null, personalTaskId: null }])
     if (path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(path)) return ok(monthState(path, currentMonth))
     if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
   })
@@ -2683,6 +2708,7 @@ test('timesheet leaves the break out of an entry unless the member worked throug
       return ok({ id: `e${posted.length}` }, 201)
     }
     if (path === '/timesheets/entries' || path === '/timesheets/tasks' || path === '/timesheets/leave') return ok([])
+    if (/\/timesheets\/me\/months\/\d+\/\d+$/.test(path)) return ok(monthState(path, currentMonth))
     if (path === '/timesheets/context') return ok({ currentMonth, locked: false })
     return route.fulfill({ status: 404, headers: cors })
   })
@@ -2733,4 +2759,47 @@ test('timesheet leaves the break out of an entry unless the member worked throug
     await composer.getByLabel('End', { exact: true }).fill('12:30')
     await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
+})
+
+test('an admin returns a submitted month with a reason, then approves it once it is submitted again', async ({ page }) => {
+  const { frame, state } = await openReporting(page, 'TenantAdmin')
+  const section = frame.getByRole('region', { name: 'Member timesheets' })
+  const somchai = section.getByRole('table', { name: 'Member timesheets' }).locator('tbody tr').filter({ hasText: 'Somchai Staff' })
+  // An open month shows no approval status in the list.
+  await expect(somchai.locator('.approval-status')).toHaveCount(0)
+
+  state.approval = { status: 'submitted', returnReason: null }
+  await section.getByRole('button', { name: 'View timesheet: Somchai Staff' }).click()
+  const panel = section.locator('.approval-panel')
+  await expect(section.locator('.detail-heading')).toContainText('Awaiting approval')
+  await expect(panel).toContainText(/^Somchai Staff submitted .+ for approval\./)
+  await panel.getByRole('button', { name: 'Return for changes' }).click()
+  const send = panel.getByRole('button', { name: 'Return', exact: true })
+  await expect(send).toBeDisabled()
+  await panel.getByLabel('Why are you returning it?').fill('The 6th is missing.')
+  await send.click()
+  await expect.poll(() => state.decisions).toEqual(['return {"reason":"The 6th is missing."}'])
+  await expect(section.getByRole('status').filter({ hasText: 'Returned to the member for changes' })).toBeVisible()
+  await expect(section.locator('.return-note')).toHaveText('Returned: The 6th is missing.')
+  await expect(section.locator('.detail-heading')).toContainText('Returned')
+  await expect(section.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+
+  // The member submits it again; the admin approves it.
+  state.approval = { status: 'submitted', returnReason: null }
+  await section.getByRole('button', { name: 'All members' }).click()
+  await expect(somchai.locator('.approval-status')).toHaveText('Returned')
+  await section.getByRole('button', { name: 'View timesheet: Somchai Staff' }).click()
+  page.once('dialog', dialog => void dialog.accept())
+  await section.locator('.approval-panel').getByRole('button', { name: 'Approve' }).click()
+  await expect.poll(() => state.decisions.at(-1)).toBe('approve')
+  await expect(section.locator('.detail-heading')).toContainText('Approved')
+  await expect(section.locator('.approval-panel')).toHaveCount(0)
+  await section.getByRole('button', { name: 'All members' }).click()
+  await expect(somchai.locator('.approval-status')).toHaveText('Approved')
 })
