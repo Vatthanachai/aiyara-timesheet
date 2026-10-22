@@ -144,6 +144,13 @@ $balance = Expect (Request Get "/api/v1/timesheets/me/leave-balance?year=$year" 
 $annualBalance = @($balance.balances) | Where-Object leaveTypeId -eq $annual.id
 if ($annualBalance.usedDays -ne 0.5 -or $annualBalance.remainingDays -ne 9.5) { throw 'The leave balance does not count the half day.' }
 
+# Reminders: off until a Tenant Admin turns them on; only a Tenant Admin may change them.
+$reminders = Expect (Request Get '/api/v1/timesheets/reminders' $null $admin) 200 'reminder settings'
+if ($reminders.dailyEnabled -or $reminders.monthEndEnabled -or $reminders.sendAt -ne '09:00') { throw 'Reminders are not off by default.' }
+$reminders = Expect (Request Put '/api/v1/timesheets/reminders' @{ dailyEnabled = $true; monthEndEnabled = $true; sendAt = '07:30:00' } $admin) 200 'save reminders'
+if (-not $reminders.dailyEnabled -or $reminders.sendAt -ne '07:30') { throw 'Reminder settings were not saved.' }
+Expect (Request Put '/api/v1/timesheets/reminders' @{ dailyEnabled = $false; monthEndEnabled = $false; sendAt = '07:30:00' } $employee) 403 'employee reminder permission' | Out-Null
+
 # Approval: the employee submits, the admin returns it with a reason (emailed), the employee fixes
 # it and submits again, and the admin approves it.
 $employeeId = $myMonth.ownerId

@@ -102,6 +102,21 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> UpdateWorkWeek([FromBody] WorkWeekRequest body, CancellationToken ct) =>
         Execute(actor => operations.SaveWorkWeek(actor, body, ct));
 
+    /// <summary>Tenant Admin only: whether members are emailed about time they have not logged, and when.</summary>
+    [HttpGet("reminders", Name = "GetReminderSettingsV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> Reminders(CancellationToken ct) => Execute(actor => operations.Reminders(actor, ct));
+
+    [HttpPut("reminders", Name = "UpdateReminderSettingsV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> UpdateReminders([FromBody] ReminderSettingsRequest body, CancellationToken ct) =>
+        Execute(actor => operations.SaveReminders(actor, body, ct));
+
     /// <summary>Tenant Admin only: adds a leave type with its yearly days (null for no limit).</summary>
     [HttpPost("leave-types", Name = "CreateLeaveTypeV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<LeaveType>), StatusCodes.Status201Created)]

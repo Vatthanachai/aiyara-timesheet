@@ -1158,6 +1158,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
       catalogCalls++
       return ok({ projects: [{ id: 'p1', name: 'Apollo' }], categories: [], holidays: [] })
     }
+    if (url.pathname.endsWith('/timesheets/reminders')) return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (url.pathname.endsWith(`/identity/tenants/${tenantId}/password-policy`)) {
       policyCalls++
       return ok({ minimumLength: 14, expiryDays: 90, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: false })
@@ -1260,6 +1261,7 @@ test('tenant admin manages members and invitations from the Members panel', asyn
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [] })
+    if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/profile/me') return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
@@ -1469,6 +1471,7 @@ test('tenant admin renames the organization and sets its logo, and the Shell hea
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [] })
+    if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/profile/me') return ok({ email: 'admin@example.test', firstName: 'Ada', lastName: 'Admin', photoUrl: null })
@@ -2335,6 +2338,7 @@ test('tenant admin sets the working days and hours from Administration and canno
       saved.push(body)
       return ok({ workingDays, workHours })
     }
+    if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/members' || path === '/identity/members/invitations' || path === '/identity/members/groups') return ok([])
@@ -2494,6 +2498,7 @@ test('tenant admin chooses the date and time format and every remote follows it'
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
+    if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/members' || path === '/identity/members/groups') return ok([])
@@ -2621,6 +2626,7 @@ test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s 
       Object.assign(holidays.find(x => path.endsWith(x.id))!, request.postDataJSON())
       return ok(holidays[0])
     }
+    if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/members' || path === '/identity/members/groups' || path === '/identity/members/invitations') return ok([])
@@ -2854,6 +2860,7 @@ test('tenant admin adds, changes, and retires leave types from Administration', 
       if (request.method() === 'DELETE') leaveTypes = leaveTypes.filter(type => type.id !== id)
       return ok(null)
     }
+    if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
       return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
     if (path === '/identity/members' || path === '/identity/members/invitations' || path === '/identity/members/groups') return ok([])
@@ -2890,6 +2897,68 @@ test('tenant admin adds, changes, and retires leave types from Administration', 
   await panel.getByRole('button', { name: 'Delete: Sick' }).click()
   await expect.poll(() => requests.at(-1)).toBe('DELETE /leave-types/t2')
   await expect(panel.locator('.leave-type-row')).toHaveCount(1)
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => frame.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+})
+
+test('tenant admin turns on missing-entry reminders and chooses when they are sent', async ({ page }) => {
+  const cors = {
+    'access-control-allow-origin': 'http://127.0.0.1:3104',
+    'access-control-allow-headers': 'authorization,content-type',
+    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS'
+  }
+  let reminders = { dailyEnabled: false, monthEndEnabled: true, sendAt: '09:00' }
+  const saved: unknown[] = []
+  await page.route('**/api/v1/**', route => {
+    const request = route.request()
+    const ok = (result: unknown) => route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(apiOk(result)) })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const path = new URL(request.url()).pathname.replace('/api/v1', '')
+    if (path === '/auth/sign-in') return ok({ session: {
+      accessToken: 'admin-token', refreshToken: 'admin-refresh', mustChangePassword: false, tenantId, role: 'TenantAdmin',
+      accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    }, organizations: [] })
+    if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
+    if (path === '/timesheets/reminders') {
+      if (request.method() === 'PUT') {
+        const body = request.postDataJSON()
+        saved.push(body)
+        reminders = { ...body, sendAt: body.sendAt.slice(0, 5) }
+      }
+      return ok(reminders)
+    }
+    if (path === `/identity/tenants/${tenantId}/password-policy`)
+      return ok({ minimumLength: 12, expiryDays: 180, requireUppercase: true, requireLowercase: true, requireDigit: true, requireSymbol: true })
+    if (path === '/identity/members' || path === '/identity/members/invitations' || path === '/identity/members/groups') return ok([])
+    if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null })
+    return route.fulfill({ status: 404, headers: cors })
+  })
+
+  await page.goto('/')
+  await waitForHydration(page)
+  await page.getByLabel('Email').fill('admin@example.test')
+  await page.getByLabel('Password').fill('test-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Administration' }).click()
+  const frame = page.frameLocator('iframe')
+  await frame.getByRole('tab', { name: 'Working time' }).click()
+  const panel = frame.getByRole('region', { name: 'Reminders' })
+  const daily = panel.getByRole('checkbox', { name: /Daily reminder/ })
+  const monthEnd = panel.getByRole('checkbox', { name: /Month-end reminder/ })
+  await expect(daily).not.toBeChecked()
+  await expect(monthEnd).toBeChecked()
+  await expect(panel.getByLabel('Send at')).toHaveValue('09:00')
+
+  await daily.check()
+  await monthEnd.uncheck()
+  await choose(panel.getByLabel('Send at'), '08:30')
+  await panel.getByRole('button', { name: 'Save reminders' }).click()
+  await expect(frame.getByRole('status')).toContainText('Reminders saved.')
+  expect(saved).toEqual([{ dailyEnabled: true, monthEndEnabled: false, sendAt: '08:30:00' }])
 
   for (const width of [375, 320]) {
     await page.setViewportSize({ width, height: 850 })

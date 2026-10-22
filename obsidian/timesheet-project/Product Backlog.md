@@ -6,7 +6,7 @@
 
 1. [[#1. Timesheet approval|Timesheet approval]] — `feature/timesheet-approval` (done)
 2. [[#2. Leave types and balances|Leave types and balances]] — `feature/leave-types-balance` (done)
-3. [[#3. Missing-entry reminders|Missing-entry reminders]] — `feature/missing-entry-reminders`
+3. [[#3. Missing-entry reminders|Missing-entry reminders]] — `feature/missing-entry-reminders` (done)
 4. [[#11. Continuous integration|Continuous integration]] — can run alongside any of the above
 
 ## Workflow Gaps
@@ -34,6 +34,8 @@ Today a month can only be locked (`POST months/{year}/{month}/lock`); there is n
 - Optional leave requests approved by a Tenant Admin, reusing the approval flow above.
 
 ### 3. Missing-entry reminders
+
+> Done 22 October 2026 on `feature/missing-entry-reminders`: see [[Missing Entry Reminders Plan]]. Reminders to submit or approve a month are still open.
 
 Quartz, the Notification service, and the hours-expected ledger already exist.
 

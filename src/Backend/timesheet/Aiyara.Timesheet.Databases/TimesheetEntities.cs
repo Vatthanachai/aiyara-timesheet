@@ -117,6 +117,32 @@ public sealed class MonthApproval : TenantRecord
     public string? ReturnReason { get; set; }
 }
 
+/// <summary>Whether the organization emails members about time they have not logged, and when (local
+/// time in the organization's time zone). An organization without a row sends no reminders.</summary>
+public sealed class ReminderSettings : TenantRecord
+{
+    public static readonly TimeOnly DefaultSendAt = new(9, 0);
+    public bool DailyEnabled { get; set; }
+    public bool MonthEndEnabled { get; set; }
+    public TimeOnly SendAt { get; set; } = DefaultSendAt;
+    /// <summary>The local day each reminder last ran, so it runs once a day.</summary>
+    public DateOnly? DailyRanOn { get; set; }
+    public DateOnly? MonthEndRanOn { get; set; }
+}
+
+/// <summary>A reminder emailed to a member about a day (<see cref="Daily"/>) or a month, recorded
+/// before it is sent so it is sent once.</summary>
+public sealed class ReminderDelivery : TenantRecord
+{
+    public const string Daily = "daily";
+    public const string MonthEnd = "month-end";
+    public Guid OwnerId { get; set; }
+    public required string Kind { get; set; }
+    /// <summary>The day the reminder is about; for month-end, the day it was sent.</summary>
+    public DateOnly Date { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+}
+
 public sealed class TimesheetAudit : TenantRecord
 {
     public Guid ActorId { get; set; }

@@ -18,6 +18,7 @@
 - [[Product Backlog]] — candidate work after Phase 5, in suggested order (not yet approved).
 - [[Timesheet Approval Plan]] — members submit a month; Tenant Admins approve it or return it with a reason (phases A–B).
 - [[Leave Types Plan]] — organization leave types, part-day leave, and yearly balances (phases A–B).
+- [[Missing Entry Reminders Plan]] — daily and month-end emails about time not logged (phases A–B).
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
 - [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (phases A–D, complete).

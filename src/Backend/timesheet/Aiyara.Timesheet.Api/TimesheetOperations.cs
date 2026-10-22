@@ -218,6 +218,37 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         return Ok(new { workingDays = WorkWeek.Days(workWeek.WorkingDaysMask), workHours = Hours(workWeek) });
     }
 
+    /// <summary>Tenant Admin only: the organization's reminder settings; off without a row.</summary>
+    public async Task<ServiceResponse> Reminders(Actor actor, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        return Ok(Reminder(await db.ReminderSettings.AsNoTracking().SingleOrDefaultAsync(ct) ?? new ReminderSettings()));
+    }
+
+    public async Task<ServiceResponse> SaveReminders(Actor actor, ReminderSettingsRequest body, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        if (!WholeMinutes(body.SendAt)) return Error(400, "VALIDATION_FAILED");
+        var settings = await db.ReminderSettings.SingleOrDefaultAsync(ct);
+        var before = settings is null ? null : JsonSerializer.Serialize(settings);
+        if (settings is null)
+        {
+            settings = new ReminderSettings { TenantId = actor.TenantId };
+            db.ReminderSettings.Add(settings);
+        }
+        settings.DailyEnabled = body.DailyEnabled; settings.MonthEndEnabled = body.MonthEndEnabled;
+        settings.SendAt = body.SendAt;
+        Audit(actor, "reminder_settings", settings.Id, before is null ? "created" : "updated", before, settings);
+        await db.SaveChangesAsync(ct);
+        return Ok(Reminder(settings));
+    }
+
+    private static object Reminder(ReminderSettings settings) => new
+    {
+        dailyEnabled = settings.DailyEnabled, monthEndEnabled = settings.MonthEndEnabled,
+        sendAt = settings.SendAt.ToString("HH:mm", CultureInfo.InvariantCulture)
+    };
+
     public async Task<ServiceResponse> Tasks(Actor actor, CancellationToken ct) =>
         Ok(await db.PersonalTasks.Where(x => x.OwnerId == actor.UserId && !x.IsDeleted)
             .OrderBy(x => x.Name).ToListAsync(ct));

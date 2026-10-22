@@ -13,6 +13,8 @@ public sealed record HolidayRequest(DateOnly Date, string Name);
 /// times, or neither for none); leaving the hours out keeps the hours and the break.</summary>
 public sealed record WorkWeekRequest(int[] WorkingDays, TimeOnly? StartTime = null, TimeOnly? EndTime = null,
     TimeOnly? BreakStart = null, TimeOnly? BreakEnd = null);
+/// <summary>Whether the daily and month-end reminders are sent, and at what local time (HH:mm).</summary>
+public sealed record ReminderSettingsRequest(bool DailyEnabled, bool MonthEndEnabled, TimeOnly SendAt);
 public sealed record TaskRequest(string Name, string Status, Guid? ProjectId, Guid? CategoryId);
 public sealed record EntryRequest(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,

@@ -112,6 +112,57 @@ internal static class EmailTemplates
         return Create(subject, text, body);
     }
 
+    public static EmailContent DailyReminder(string memberName, string day, Uri timesheetUri)
+    {
+        var greeting = memberName.Length > 0 ? $"Hello {memberName}," : "Hello,";
+        var safeDay = WebUtility.HtmlEncode(day);
+        var subject = $"No time logged for {day}";
+        var text = $"{greeting}\n\nYou have not logged any time or leave for {day}.\n\n" +
+            $"Add it to your timesheet: {timesheetUri.AbsoluteUri}\n\n{Brand}";
+        var body = $"""
+            <p style="margin:0 0 18px;color:{Muted};font-size:16px;line-height:1.7">{WebUtility.HtmlEncode(greeting)}</p>
+            <p style="margin:0 0 22px;color:{Muted};font-size:16px;line-height:1.7">You have not logged any time or leave for <strong style="color:{Ink}">{safeDay}</strong>.</p>
+            {Button(timesheetUri, "Open my timesheet")}
+            """;
+        return Create(subject, text, body);
+    }
+
+    public static EmailContent MonthEndReminder(string memberName, string month, decimal loggedHours,
+        decimal expectedHours, IReadOnlyList<string> missingDays, Uri timesheetUri)
+    {
+        var greeting = memberName.Length > 0 ? $"Hello {memberName}," : "Hello,";
+        var safeMonth = WebUtility.HtmlEncode(month);
+        var hours = FormattableString.Invariant($"{loggedHours:0.##} of {expectedHours:0.##} hours");
+        var subject = $"Your timesheet for {month} is short";
+        var missingText = missingDays.Count > 0 ? $"\nDays with nothing logged: {string.Join(", ", missingDays)}\n" : "";
+        var text = $"{greeting}\n\nToday is the last working day of {month}. So far you have logged {hours} " +
+            $"expected up to yesterday, leave included.\n{missingText}\n" +
+            $"Complete your timesheet: {timesheetUri.AbsoluteUri}\n\n{Brand}";
+        var missingHtml = missingDays.Count > 0
+            ? $"""
+              <tr><td style="padding:0 16px 4px;color:{Muted};font-size:13px">Days with nothing logged</td></tr>
+              <tr><td style="padding:0 16px 16px;color:{Ink};font-size:15px;line-height:1.6">{WebUtility.HtmlEncode(string.Join(", ", missingDays))}</td></tr>
+              """
+            : string.Empty;
+        var body = $"""
+            <p style="margin:0 0 18px;color:{Muted};font-size:16px;line-height:1.7">{WebUtility.HtmlEncode(greeting)}</p>
+            <p style="margin:0 0 18px;color:{Muted};font-size:16px;line-height:1.7">Today is the last working day of <strong style="color:{Ink}">{safeMonth}</strong>. Your timesheet is short of the hours expected up to yesterday, leave included.</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6fb;border:1px solid #dce5f1;border-radius:10px">
+              <tr><td style="padding:14px 16px 4px;color:{Muted};font-size:13px">Logged</td></tr>
+              <tr><td style="padding:0 16px 14px;color:{Ink};font-size:18px;font-weight:700">{WebUtility.HtmlEncode(hours)}</td></tr>
+              {missingHtml}
+            </table>
+            <div style="margin-top:22px">{Button(timesheetUri, "Complete my timesheet")}</div>
+            """;
+        return Create(subject, text, body);
+    }
+
+    private static string Button(Uri uri, string label) => $"""
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:{BrandColor};border-radius:8px">
+          <a href="{WebUtility.HtmlEncode(uri.AbsoluteUri)}" style="display:inline-block;padding:12px 20px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none">{label}</a>
+        </td></tr></table>
+        """;
+
     private static EmailContent Create(string title, string text, string body)
     {
         var safeTitle = WebUtility.HtmlEncode(title);

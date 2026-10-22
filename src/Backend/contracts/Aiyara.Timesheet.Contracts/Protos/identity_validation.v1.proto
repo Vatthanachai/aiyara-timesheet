@@ -14,6 +14,8 @@ service IdentityValidationService {
   rpc ListGroupMembers (ListGroupMembersRequest) returns (ListGroupMembersResponse);
   // How a tenant shows dates and times, for documents rendered outside a browser.
   rpc GetOrganizationSettings (GetOrganizationSettingsRequest) returns (GetOrganizationSettingsResponse);
+  // A tenant's active Tenant Admins and Employees, for reminders sent without a signed-in user.
+  rpc ListMembers (ListMembersRequest) returns (ListMembersResponse);
 }
 
 message ValidateAccessTokenRequest {
@@ -76,4 +78,23 @@ message GetOrganizationSettingsResponse {
   string date_format = 2;
   string time_format = 3;
   string time_zone_id = 4;
+}
+
+message ListMembersRequest {
+  string tenant_id = 1;
+  string correlation_id = 2;
+}
+
+// joined_at_utc is when the membership was created.
+message TenantMember {
+  string subject_id = 1;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string role = 5;
+  google.protobuf.Timestamp joined_at_utc = 6;
+}
+
+message ListMembersResponse {
+  repeated TenantMember members = 1;
 }

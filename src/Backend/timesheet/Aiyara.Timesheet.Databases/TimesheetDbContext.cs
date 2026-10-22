@@ -15,6 +15,8 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
     public DbSet<MonthLock> MonthLocks => Set<MonthLock>();
     public DbSet<MonthApproval> MonthApprovals => Set<MonthApproval>();
+    public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
+    public DbSet<ReminderDelivery> ReminderDeliveries => Set<ReminderDelivery>();
     public DbSet<TimesheetAudit> Audits => Set<TimesheetAudit>();
     public DbSet<TimesheetOutboxEvent> OutboxEvents => Set<TimesheetOutboxEvent>();
     public DbSet<MonthSnapshot> MonthSnapshots => Set<MonthSnapshot>();
@@ -64,6 +66,11 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
         modelBuilder.Entity<MonthApproval>().HasIndex(x => new { x.TenantId, x.OwnerId, x.Year, x.Month }).IsUnique();
         modelBuilder.Entity<MonthApproval>().Property(x => x.Status).HasMaxLength(20);
         modelBuilder.Entity<MonthApproval>().Property(x => x.ReturnReason).HasMaxLength(1000);
+        Configure<ReminderSettings>(modelBuilder, "reminder_settings");
+        modelBuilder.Entity<ReminderSettings>().HasIndex(x => x.TenantId).IsUnique();
+        Configure<ReminderDelivery>(modelBuilder, "reminder_deliveries");
+        modelBuilder.Entity<ReminderDelivery>().HasIndex(x => new { x.TenantId, x.OwnerId, x.Kind, x.Date }).IsUnique();
+        modelBuilder.Entity<ReminderDelivery>().Property(x => x.Kind).HasMaxLength(20);
         modelBuilder.Entity<TimeEntry>().HasIndex(x => new { x.TenantId, x.OwnerId, x.Date });
         modelBuilder.Entity<LeaveEntry>().HasIndex(x => new { x.TenantId, x.OwnerId, x.Date });
         modelBuilder.Entity<PersonalTask>().HasIndex(x => new { x.TenantId, x.OwnerId });
