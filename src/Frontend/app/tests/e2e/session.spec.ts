@@ -1982,6 +1982,9 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
         holidays: [{ date: '2026-10-06', name: 'Memorial day' }], workingDays: [1, 2, 3, 4, 5, 6] })
       return ok({ ownerId: 'x', year: 2026, month: 10, locked: true, entries: [], leaves: [], holidays: [] })
     }
+    // The admin's usage view (covered in billing.spec.ts) reads these; answer them empty here.
+    if (url.pathname.endsWith('/timesheets/projects/usage')) return ok({ from: null, to: null, unassignedMinutes: 0, projects: [], totals: { periodMinutes: 0, billableMinutes: 0, amounts: [] } })
+    if (url.pathname.endsWith('/timesheets/clients/usage')) return ok({ from: null, to: null, unassignedMinutes: 0, clients: [], totals: { periodMinutes: 0, billableMinutes: 0, amounts: [] } })
     if (url.pathname.endsWith('/reports/context')) return ok({ isAdmin: role === 'TenantAdmin', timeZoneId: 'Asia/Bangkok' })
     if (url.pathname.endsWith('/reports/definitions')) return ok(definitions)
     if (url.pathname.match(/\/reports\/definitions\/[^/]+$/) && request.method() === 'PUT') {

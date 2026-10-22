@@ -44,9 +44,9 @@ All under `/api/v1/timesheets` through Gateway; Tenant Admin unless noted. Error
 
 ## Phase B — UI
 
-- [ ] B1. Administration → Projects: client, billable toggle, rate with currency, and hours budget in the project form.
-- [ ] B2. A usage view for Tenant Admins (Reporting or Administration): by project with used against budget and an over-budget warning, and by client, with a period picker.
-- [ ] B3. Playwright and docs.
+- [x] B1. Administration → Projects: client, billable toggle, rate with currency, and hours budget in the project form.
+- [x] B2. A usage view for Tenant Admins (Reporting or Administration): by project with used against budget and an over-budget warning, and by client, with a period picker.
+- [x] B3. Playwright and docs.
 
 ## Out Of Scope
 
