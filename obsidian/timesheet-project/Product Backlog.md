@@ -1,0 +1,107 @@
+# Product Backlog
+
+> Drafted 22 October 2026 from a review of [[Development Roadmap]], [[Project Status]], each plan's "Out Of Scope" list, and the code on `develop`. Phases 0–5 are complete; nothing below is approved or scheduled yet. Each item becomes its own plan note and Git Flow branch when it is picked up.
+
+## Suggested Order
+
+1. [[#1. Timesheet approval|Timesheet approval]] — `feature/timesheet-approval`
+2. [[#2. Leave types and balances|Leave types and balances]] — `feature/leave-types-balance`
+3. [[#3. Missing-entry reminders|Missing-entry reminders]] — `feature/missing-entry-reminders`
+4. [[#11. Continuous integration|Continuous integration]] — can run alongside any of the above
+
+## Workflow Gaps
+
+### 1. Timesheet approval
+
+Today a month can only be locked (`POST months/{year}/{month}/lock`); there is no submit, approve, or return step, and the code has no approval concept.
+
+- Month states: Open → Submitted → Approved, or Returned with a reason back to Open.
+- Tenant Admins (and later group leads) approve or return a member's month from Reporting's member timesheets.
+- Approval locks the month and takes the snapshot that reports and signed PDFs read; a returned month notifies the member.
+- Audit every transition; the existing lock becomes the approval's last step.
+
+### 2. Leave types and balances
+
+`LeaveEntry` holds a date and a free-text `Kind` only.
+
+- Organization-defined leave types (sick, personal, annual, …) managed in Administration.
+- Yearly entitlement per type, the balance used and remaining, shown in Timesheet and Reporting.
+- Half-day and hourly leave counted against the normal working day from [[Working Days Plan]].
+- Optional leave requests approved by a Tenant Admin, reusing the approval flow above.
+
+### 3. Missing-entry reminders
+
+Quartz, the Notification service, and the hours-expected ledger already exist.
+
+- Email members who logged nothing on a past working day, and members whose month is short of what it expects near month end.
+- Tenant Admins choose whether reminders run and when, in the organization's time zone.
+- Skip holidays, non-working days, and leave.
+
+## Faster Time Entry
+
+### 4. Copy and bulk entry
+
+Out of scope in [[Timesheet Page Plan]].
+
+- Copy a previous day or week into the current one.
+- Enter the same entry across several selected days.
+- Saved templates for recurring work.
+
+### 5. Running timer
+
+Out of scope in [[Timesheet Page Plan]] and [[Home Page Plan]].
+
+- Start and stop a timer from Today and from Timesheet; stopping creates the entry, with the organization's break left out.
+- One running timer per member, kept on the server so it survives a reload or another device.
+
+## Projects And Cost
+
+### 6. Billable work and budgets
+
+`Project` and `Category` carry only names today.
+
+- Billable / non-billable flag and an hourly rate per project.
+- An hours budget per project, with used against budget.
+- Reports by project and client, alongside the existing per-member and per-group reports.
+
+## Security And Administration
+
+### 7. MFA for organization members
+
+TOTP and recovery codes exist for Platform Admins only. Let Tenant Admins require MFA for their members, reusing the same enrollment and recovery flow. See [[Security And Tenant Model]].
+
+### 8. Tenant-facing audit log
+
+Out of scope in [[Tenant Member Management Plan]]. Member actions already land in `platform_organization_audit`; show the organization's own entries to its Tenant Admins.
+
+### 9. Session management
+
+A page listing the account's active sessions (device, last used) with a sign-out per session and "sign out everywhere", built on the existing refresh-session revocation.
+
+### 10. Bulk invitations
+
+Out of scope in [[Tenant Member Management Plan]]. Invite several members at once or import them from CSV, each with a group.
+
+## Engineering And Operations
+
+### 11. Continuous integration
+
+The repository has no CI pipeline; the `develop` validation gate in `AGENTS.md` is run by hand. Add a pipeline that runs `git diff --check`, the .NET build and tests, frontend builds, and Playwright on every branch.
+
+### 12. Backup and restore
+
+Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with a runbook section in `docs/developer-runbook.md`.
+
+### 13. Broader end-to-end tests
+
+Playwright covers session restore and failed login only. Add flows for time entry, leave, reports and exports, Administration settings, and member invitations.
+
+### 14. Mobile and offline
+
+An installable PWA that lets members record time without a connection and syncs when back online.
+
+## Related
+
+- [[Development Roadmap]]
+- [[Project Status]]
+- [[Timesheet Project Index]]

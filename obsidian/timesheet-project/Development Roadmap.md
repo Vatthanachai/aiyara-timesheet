@@ -120,6 +120,10 @@ tenant isolation and report retention also have focused database tests.
 
 **Exit outcome:** the Compose environment is repeatable, observable, security-tested, and documented for team development.
 
+## After Phase 5
+
+Candidate work beyond Phase 5 — timesheet approval, leave types and balances, reminders, faster entry, project budgets, member MFA, CI, and backups — is collected in [[Product Backlog]] in a suggested order. Each item gets its own plan note before implementation.
+
 ## Acceptance Rules That Apply To Every Phase
 
 - Development follows the repository's root `AGENTS.md`: every implementation starts on a Git Flow branch and the primary agent must validate passing checks before merge into `develop`.
@@ -136,3 +140,4 @@ tenant isolation and report retention also have focused database tests.
 - [[Target Architecture]]
 - [[Security And Tenant Model]]
 - [[Project Status]]
+- [[Product Backlog]]
