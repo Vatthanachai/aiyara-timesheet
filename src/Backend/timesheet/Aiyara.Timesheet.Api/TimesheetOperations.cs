@@ -310,22 +310,9 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         if (!await CanMutate(actor, body.Date, ct) ||
             entry is not null && !await CanMutate(actor, entry.Date, ct))
             return Error(409, "MONTH_CLOSED");
-        if (string.IsNullOrWhiteSpace(body.TaskName) || body.TaskName.Length > 200 ||
-            body.Detail?.Length > 4000 || body.Notes?.Length > 4000 ||
-            !await ValidReferences(body.ProjectId, body.CategoryId, ct) ||
-            body.PersonalTaskId is not null && !await db.PersonalTasks.AnyAsync(x =>
-                x.Id == body.PersonalTaskId && x.OwnerId == actor.UserId && !x.IsDeleted, ct))
-            return Error(400, "VALIDATION_FAILED");
-        int duration;
-        var week = await db.WorkWeeks.AsNoTracking().SingleOrDefaultAsync(ct);
-        try
-        {
-            duration = TimesheetRules.WorkedMinutes(body.StartTime, body.EndTime, week?.BreakStart, week?.BreakEnd,
-                body.IncludesBreak);
-        }
-        catch (ArgumentException) { return Error(400, "INVALID_TIME_RANGE"); }
-        // Wholly inside the break and not worked through it: the entry would count for nothing.
-        if (duration == 0) return Error(400, "ENTRY_IN_BREAK");
+        var (invalid, duration) = await CheckEntryAsync(actor, body.TaskName, body.Detail, body.Notes, body.ProjectId,
+            body.CategoryId, body.PersonalTaskId, body.StartTime, body.EndTime, body.IncludesBreak, ct);
+        if (invalid is not null) return invalid;
         var before = entry is null ? null : JsonSerializer.Serialize(entry);
         entry ??= new TimeEntry { TenantId = actor.TenantId, OwnerId = actor.UserId,
             TaskName = body.TaskName.Trim() };
@@ -357,6 +344,171 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         Changed(actor, entry.Date);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>Writes one entry on each of the dates the member chose, all or none. Days off and holidays
+    /// are written too, since the member picked them.</summary>
+    public async Task<ServiceResponse> BulkEntries(Actor actor, BulkEntryRequest body, CancellationToken ct)
+    {
+        var dates = body.Dates ?? [];
+        if (dates.Length is 0 or > 31 || dates.Distinct().Count() != dates.Length ||
+            dates.Any(x => !ValidMonth(x.Year, x.Month)))
+            return Error(400, "VALIDATION_FAILED");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var closed = await ClosedDatesAsync(actor, dates, ct);
+        if (closed.Length > 0) return MonthClosed(closed);
+        var (invalid, duration) = await CheckEntryAsync(actor, body.TaskName, body.Detail, body.Notes, body.ProjectId,
+            body.CategoryId, body.PersonalTaskId, body.StartTime, body.EndTime, body.IncludesBreak, ct);
+        if (invalid is not null) return invalid;
+        var created = dates.Order().Select(date => new TimeEntry
+        {
+            TenantId = actor.TenantId, OwnerId = actor.UserId, Date = date, StartTime = body.StartTime,
+            EndTime = body.EndTime, DurationMinutes = duration, TaskName = body.TaskName.Trim(), Detail = body.Detail,
+            Notes = body.Notes, ProjectId = body.ProjectId, CategoryId = body.CategoryId,
+            PersonalTaskId = body.PersonalTaskId, IncludesBreak = body.IncludesBreak, UpdatedAtUtc = DateTime.UtcNow
+        }).ToArray();
+        foreach (var entry in created)
+        {
+            db.TimeEntries.Add(entry);
+            Audit(actor, "entry", entry.Id, "created", null, entry, body.Reason);
+        }
+        ChangedMonths(actor, dates);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Ok(new { created });
+    }
+
+    /// <summary>Copies the member's entries day by day from <c>Days</c> days starting at <c>From</c> onto as
+    /// many days starting at <c>To</c>, all or none. A target day that is a holiday, a day off, whole-day
+    /// leave, or already has entries is skipped and reported; the source may be any month.</summary>
+    public async Task<ServiceResponse> CopyEntries(Actor actor, CopyEntriesRequest body, CancellationToken ct)
+    {
+        if (body.Days is < 1 or > 7 || Math.Abs(body.To.DayNumber - body.From.DayNumber) < body.Days ||
+            new[] { body.From, body.To, body.From.AddDays(body.Days - 1), body.To.AddDays(body.Days - 1) }
+                .Any(x => !ValidMonth(x.Year, x.Month)))
+            return Error(400, "VALIDATION_FAILED");
+        DateOnly sourceEnd = body.From.AddDays(body.Days), targetEnd = body.To.AddDays(body.Days);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var closed = await ClosedDatesAsync(actor, Enumerable.Range(0, body.Days).Select(body.To.AddDays), ct);
+        if (closed.Length > 0) return MonthClosed(closed);
+        var sources = await db.TimeEntries.AsNoTracking().Where(x => x.OwnerId == actor.UserId && !x.IsDeleted &&
+            x.Date >= body.From && x.Date < sourceEnd).OrderBy(x => x.Date).ThenBy(x => x.StartTime).ToListAsync(ct);
+        var busy = await db.TimeEntries.AsNoTracking().Where(x => x.OwnerId == actor.UserId && !x.IsDeleted &&
+            x.Date >= body.To && x.Date < targetEnd).Select(x => x.Date).Distinct().ToListAsync(ct);
+        var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
+            x.Date >= body.To && x.Date < targetEnd).Select(x => x.Date).ToListAsync(ct);
+        var leave = await db.LeaveEntries.AsNoTracking().Where(x => x.OwnerId == actor.UserId && !x.IsDeleted &&
+            x.Minutes == null && x.Date >= body.To && x.Date < targetEnd).Select(x => x.Date).ToListAsync(ct);
+        var week = await db.WorkWeeks.AsNoTracking().SingleOrDefaultAsync(ct) ?? new WorkWeek();
+        // References deleted since the source was written are left empty on the copy.
+        var projects = await db.Projects.AsNoTracking().Where(x => !x.IsDeleted).Select(x => x.Id).ToListAsync(ct);
+        var categories = await db.Categories.AsNoTracking().Where(x => !x.IsDeleted).Select(x => x.Id).ToListAsync(ct);
+        var tasks = await db.PersonalTasks.AsNoTracking().Where(x => x.OwnerId == actor.UserId && !x.IsDeleted)
+            .Select(x => x.Id).ToListAsync(ct);
+        var created = new List<TimeEntry>();
+        var skipped = new List<SkippedDay>();
+        for (var day = 0; day < body.Days; day++)
+        {
+            DateOnly from = body.From.AddDays(day), target = body.To.AddDays(day);
+            var entries = sources.Where(x => x.Date == from).ToList();
+            if (entries.Count == 0) continue;
+            var reason = holidays.Contains(target) ? "holiday"
+                : (week.WorkingDaysMask & 1 << (int)target.DayOfWeek) == 0 ? "day-off"
+                : leave.Contains(target) ? "leave"
+                : busy.Contains(target) ? "has-entries" : null;
+            if (reason is not null)
+            {
+                skipped.Add(new SkippedDay(target, reason));
+                continue;
+            }
+            foreach (var source in entries)
+            {
+                // Counted again with today's break; an entry now wholly inside it would count for nothing.
+                var minutes = TimesheetRules.WorkedMinutes(source.StartTime, source.EndTime, week.BreakStart,
+                    week.BreakEnd, source.IncludesBreak);
+                if (minutes == 0) continue;
+                var copy = new TimeEntry
+                {
+                    TenantId = actor.TenantId, OwnerId = actor.UserId, Date = target, StartTime = source.StartTime,
+                    EndTime = source.EndTime, DurationMinutes = minutes, TaskName = source.TaskName,
+                    Detail = source.Detail, Notes = source.Notes,
+                    ProjectId = source.ProjectId is { } project && projects.Contains(project) ? project : null,
+                    CategoryId = source.CategoryId is { } category && categories.Contains(category) ? category : null,
+                    PersonalTaskId = source.PersonalTaskId is { } task && tasks.Contains(task) ? task : null,
+                    IncludesBreak = source.IncludesBreak, UpdatedAtUtc = DateTime.UtcNow
+                };
+                db.TimeEntries.Add(copy);
+                Audit(actor, "entry", copy.Id, "created", null, copy,
+                    $"copied from {from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
+                created.Add(copy);
+            }
+        }
+        ChangedMonths(actor, created.Select(x => x.Date));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Ok(new { created, skipped });
+    }
+
+    /// <summary>The signed-in member's entry templates by name. A project or category deleted since is left out.</summary>
+    public async Task<ServiceResponse> EntryTemplates(Actor actor, CancellationToken ct)
+    {
+        var projects = await db.Projects.AsNoTracking().Where(x => !x.IsDeleted).Select(x => x.Id).ToListAsync(ct);
+        var categories = await db.Categories.AsNoTracking().Where(x => !x.IsDeleted).Select(x => x.Id).ToListAsync(ct);
+        var templates = await db.EntryTemplates.AsNoTracking().Where(x => x.OwnerId == actor.UserId && !x.IsDeleted)
+            .OrderBy(x => x.Name).ToListAsync(ct);
+        foreach (var template in templates)
+        {
+            if (template.ProjectId is { } project && !projects.Contains(project)) template.ProjectId = null;
+            if (template.CategoryId is { } category && !categories.Contains(category)) template.CategoryId = null;
+        }
+        return Ok(templates);
+    }
+
+    /// <summary>Adds a template for the signed-in member (<paramref name="id"/> null) or changes one of theirs.
+    /// The break is checked when the template is used, since it can change.</summary>
+    public async Task<ServiceResponse> SaveEntryTemplate(Actor actor, Guid? id, EntryTemplateRequest body,
+        CancellationToken ct)
+    {
+        var template = id is null ? null : await db.EntryTemplates.SingleOrDefaultAsync(x =>
+            x.Id == id && x.OwnerId == actor.UserId && !x.IsDeleted, ct);
+        if (id is not null && template is null) return Error(404, "NOT_FOUND");
+        var name = body.Name?.Trim();
+        var taskName = body.TaskName?.Trim();
+        if (string.IsNullOrEmpty(name) || name.Length > 100 || string.IsNullOrEmpty(taskName) || taskName.Length > 200 ||
+            body.Detail?.Length > 4000 || body.Notes?.Length > 4000 ||
+            !await ValidReferences(body.ProjectId, body.CategoryId, ct))
+            return Error(400, "VALIDATION_FAILED");
+        try { TimesheetRules.DurationMinutes(body.StartTime, body.EndTime); }
+        catch (ArgumentException) { return Error(400, "INVALID_TIME_RANGE"); }
+        if (await db.EntryTemplates.AnyAsync(x => x.OwnerId == actor.UserId && !x.IsDeleted && x.Id != id &&
+            x.Name.ToLower() == name.ToLower(), ct))
+            return Error(409, "TEMPLATE_EXISTS");
+        var before = template is null ? null : JsonSerializer.Serialize(template);
+        if (template is null)
+        {
+            template = new EntryTemplate { TenantId = actor.TenantId, OwnerId = actor.UserId, Name = name, TaskName = taskName };
+            db.EntryTemplates.Add(template);
+        }
+        template.Name = name; template.TaskName = taskName;
+        template.StartTime = body.StartTime; template.EndTime = body.EndTime;
+        template.ProjectId = body.ProjectId; template.CategoryId = body.CategoryId;
+        template.Detail = body.Detail; template.Notes = body.Notes; template.IncludesBreak = body.IncludesBreak;
+        template.UpdatedAtUtc = DateTime.UtcNow;
+        Audit(actor, "entry_template", template.Id, before is null ? "created" : "updated", before, template);
+        await db.SaveChangesAsync(ct);
+        return id is null ? Created(template, $"/api/v1/entry-templates/{template.Id}") : Ok(template);
+    }
+
+    public async Task<ServiceResponse> DeleteEntryTemplate(Actor actor, Guid id, CancellationToken ct)
+    {
+        var template = await db.EntryTemplates.SingleOrDefaultAsync(x => x.Id == id &&
+            x.OwnerId == actor.UserId && !x.IsDeleted, ct);
+        if (template is null) return Error(404, "NOT_FOUND");
+        var before = JsonSerializer.Serialize(template);
+        template.IsDeleted = true; template.UpdatedAtUtc = DateTime.UtcNow;
+        Audit(actor, "entry_template", id, "deleted", before, template);
+        await db.SaveChangesAsync(ct);
         return NoContent();
     }
 
@@ -696,6 +848,44 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         return payloads;
     }
 
+    /// <summary>The checks every entry passes: the task name and text lengths, a live project and category,
+    /// the member's own personal task, and a time range that still counts after the break. Returns the
+    /// refusal, or the minutes the entry counts as work.</summary>
+    private async Task<(ServiceResponse? Error, int Minutes)> CheckEntryAsync(Actor actor, string? taskName,
+        string? detail, string? notes, Guid? projectId, Guid? categoryId, Guid? personalTaskId, TimeOnly start,
+        TimeOnly end, bool includesBreak, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(taskName) || taskName.Length > 200 ||
+            detail?.Length > 4000 || notes?.Length > 4000 ||
+            !await ValidReferences(projectId, categoryId, ct) ||
+            personalTaskId is not null && !await db.PersonalTasks.AnyAsync(x =>
+                x.Id == personalTaskId && x.OwnerId == actor.UserId && !x.IsDeleted, ct))
+            return (Error(400, "VALIDATION_FAILED"), 0);
+        int duration;
+        var week = await db.WorkWeeks.AsNoTracking().SingleOrDefaultAsync(ct);
+        try
+        {
+            duration = TimesheetRules.WorkedMinutes(start, end, week?.BreakStart, week?.BreakEnd, includesBreak);
+        }
+        catch (ArgumentException) { return (Error(400, "INVALID_TIME_RANGE"), 0); }
+        // Wholly inside the break and not worked through it: the entry would count for nothing.
+        return duration == 0 ? (Error(400, "ENTRY_IN_BREAK"), 0) : (null, duration);
+    }
+
+    /// <summary>The dates, as yyyy-MM-dd, that fall in a month the member may not change.</summary>
+    private async Task<string[]> ClosedDatesAsync(Actor actor, IEnumerable<DateOnly> dates, CancellationToken ct)
+    {
+        var closed = new List<DateOnly>();
+        foreach (var month in dates.GroupBy(x => (x.Year, x.Month)))
+            if (!await CanMutate(actor, month.First(), ct)) closed.AddRange(month);
+        return closed.Order().Select(x => x.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).ToArray();
+    }
+
+    /// <summary><c>409 MONTH_CLOSED</c> naming the refused days in <c>errors.dates</c>.</summary>
+    private static ServiceResponse MonthClosed(string[] dates) =>
+        new ServiceErrorResponse(409, "MONTH_CLOSED", "The request could not be completed.",
+            new Dictionary<string, string[]> { ["dates"] = dates });
+
     private async Task<bool> ValidReferences(Guid? projectId, Guid? categoryId, CancellationToken ct) =>
         (projectId is null || await db.Projects.AnyAsync(x => x.Id == projectId && !x.IsDeleted, ct)) &&
         (categoryId is null || await db.Categories.AnyAsync(x => x.Id == categoryId && !x.IsDeleted, ct));
@@ -720,6 +910,12 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         db.OutboxEvents.Add(new TimesheetOutboxEvent { TenantId = actor.TenantId,
             EventType = MessageTypes.TimesheetMonthChanged, SubjectId = actor.UserId,
             Year = date.Year, Month = date.Month, OccurredAtUtc = DateTime.UtcNow });
+
+    /// <summary>One change event per month touched, however many entries changed in it.</summary>
+    private void ChangedMonths(Actor actor, IEnumerable<DateOnly> dates)
+    {
+        foreach (var month in dates.Select(x => new DateOnly(x.Year, x.Month, 1)).Distinct()) Changed(actor, month);
+    }
 
     private static ServiceResponse Ok<T>(T result) => new ServiceOkResponse<T>(result);
     private static ServiceResponse Created<T>(T result, string location) =>
