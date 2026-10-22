@@ -8,7 +8,7 @@
 2. [[#2. Leave types and balances|Leave types and balances]] — `feature/leave-types-balance` (done)
 3. [[#3. Missing-entry reminders|Missing-entry reminders]] — `feature/missing-entry-reminders` (done)
 4. [[#4. Copy and bulk entry|Copy and bulk entry]] — `feature/copy-and-bulk-entry` (done)
-5. [[#11. Continuous integration|Continuous integration]] — can run alongside any of the above
+5. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
