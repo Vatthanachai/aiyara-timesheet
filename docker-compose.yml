@@ -101,6 +101,9 @@ services:
       ConnectionStrings__TimesheetDb: Host=postgres;Database=timesheet_db;Username=timesheet_app;Password=${TIMESHEET_DB_PASSWORD:?Set TIMESHEET_DB_PASSWORD in .env}
       IdentityGrpc__Url: http://identities-api:8082
       Reporting__InternalKey: ${REPORTING_INTERNAL_KEY:?Set REPORTING_INTERNAL_KEY in .env}
+      Notifications__BaseUrl: http://notifications-api:8080
+      Notifications__InternalKey: ${NOTIFICATION_INTERNAL_KEY:?Set NOTIFICATION_INTERNAL_KEY in .env}
+      Notifications__TimesheetUrl: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}/remote/timesheet
       RabbitMQ__Host: rabbitmq
       RabbitMQ__User: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}

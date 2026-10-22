@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 public sealed class InternalNotificationController(
     CredentialEmailDispatcher credentials,
     ReportReadyEmailDispatcher reports,
+    MonthReturnedEmailDispatcher returns,
     IConfiguration configuration) : BaseController
 {
     [HttpPost("credential-email")]
@@ -33,6 +34,20 @@ public sealed class InternalNotificationController(
         if (!HasInternalKey()) return ReturnResponseWithHttpStatus(
             new ServiceErrorResponse(401, "UNAUTHORIZED", "Authentication is required."));
         return ReturnResponseWithHttpStatus(await reports.SendAsync(request, cancellationToken)
+            ? new ServiceOkResponse<object?>(null, 202)
+            : new ServiceErrorResponse(503, "DELIVERY_UNAVAILABLE", "Delivery is unavailable."));
+    }
+
+    [HttpPost("month-returned")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> MonthReturned([FromBody] MonthReturnedEmailRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!HasInternalKey()) return ReturnResponseWithHttpStatus(
+            new ServiceErrorResponse(401, "UNAUTHORIZED", "Authentication is required."));
+        return ReturnResponseWithHttpStatus(await returns.SendAsync(request, cancellationToken)
             ? new ServiceOkResponse<object?>(null, 202)
             : new ServiceErrorResponse(503, "DELIVERY_UNAVAILABLE", "Delivery is unavailable."));
     }
