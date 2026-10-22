@@ -1,9 +1,9 @@
 param(
-    [string]$GatewayUrl = 'http://127.0.0.1:8081',
-    [string]$MailDevUrl = 'http://127.0.0.1:8080',
+    [string]$GatewayUrl = $(if ($env:TIMESHEET_GATEWAY_URL) { $env:TIMESHEET_GATEWAY_URL } else { 'http://127.0.0.1:8081' }),
+    [string]$MailDevUrl = $(if ($env:TIMESHEET_MAILDEV_URL) { $env:TIMESHEET_MAILDEV_URL } else { 'http://127.0.0.1:8080' }),
     [string]$MailDevToken = '',
-    [string]$EnvFile = '.env',
-    [string]$ProjectName = ''
+    [string]$EnvFile = $(if ($env:TIMESHEET_ENV_FILE) { $env:TIMESHEET_ENV_FILE } else { '.env' }),
+    [string]$ProjectName = $(if ($env:TIMESHEET_PROJECT_NAME) { $env:TIMESHEET_PROJECT_NAME } else { '' })
 )
 
 $ErrorActionPreference = 'Stop'
@@ -185,6 +185,7 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 if (-not $readyEmail) { throw 'Report-ready email was not received by the test account.' }
 
 $compose = @('--env-file', $EnvFile)
+if ($env:TIMESHEET_COMPOSE_FILE) { $compose += @('-f', $env:TIMESHEET_COMPOSE_FILE) }
 if ($ProjectName) { $compose += @('-p', $ProjectName) }
 $postgresUser = (& docker compose @compose config --format json | ConvertFrom-Json).services.postgres.environment.POSTGRES_USER
 if ($LASTEXITCODE -ne 0 -or -not $postgresUser) { throw 'PostgreSQL user is not configured.' }

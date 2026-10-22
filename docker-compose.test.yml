@@ -1,0 +1,134 @@
+# Test-only stack. Never the user's running app: it has its own project name, network,
+# named volumes and database, and publishes only loopback host ports.
+#
+# Service definitions are reused from docker-compose.yml through `extends`, so a change to the
+# main stack is tested here too. Only what differs is overridden: ports, restart policy,
+# telemetry, and the volumes/network at the bottom.
+#
+# Use scripts/test-stack.ps1 (it writes .env.test with throwaway secrets and unique ports).
+# Run by hand with:
+#   docker compose -f docker-compose.test.yml --env-file .env.test -p <TEST_STACK_NAME> up -d --build
+#
+# Included: Gateway, Identity, Timesheet, Report (+worker), Notification, Postgres, Redis,
+# RabbitMQ, RustFS and MailDev, which tests/phase1-4 Smoke.ps1 call. Left out: Prometheus,
+# Jaeger and Grafana (only tests/phase5 uses them). The Nuxt shell and remotes run only with
+# `--profile frontend`; Playwright starts its own dev servers and does not need them.
+
+name: ${TEST_STACK_NAME:-aiyara-test}
+
+x-test-app: &test-app
+  restart: "no"
+
+services:
+  gateway-api:
+    extends: { file: docker-compose.yml, service: gateway-api }
+    <<: *test-app
+    environment: &no-telemetry
+      OTEL_SDK_DISABLED: "true"
+    ports: !override
+      - "127.0.0.1:${GATEWAY_API_PORT:-18101}:8080"
+
+  identities-api:
+    extends: { file: docker-compose.yml, service: identities-api }
+    <<: *test-app
+    environment: *no-telemetry
+
+  timesheet-api:
+    extends: { file: docker-compose.yml, service: timesheet-api }
+    <<: *test-app
+    environment: *no-telemetry
+
+  reports-api:
+    extends: { file: docker-compose.yml, service: reports-api }
+    <<: *test-app
+    environment: *no-telemetry
+
+  notifications-api:
+    extends: { file: docker-compose.yml, service: notifications-api }
+    <<: *test-app
+    environment: *no-telemetry
+
+  report-worker:
+    extends: { file: docker-compose.yml, service: report-worker }
+    <<: *test-app
+    environment: *no-telemetry
+
+  postgres:
+    extends: { file: docker-compose.yml, service: postgres }
+    <<: *test-app
+    ports: !override
+      - "127.0.0.1:${POSTGRES_PORT:-18104}:5432"
+
+  db-provisioner:
+    extends: { file: docker-compose.yml, service: db-provisioner }
+    # The postgres image declares an anonymous data volume the provisioner never uses; keep it off disk.
+    tmpfs: [/var/lib/postgresql/data]
+
+  redis:
+    extends: { file: docker-compose.yml, service: redis }
+    <<: *test-app
+    ports: !override []
+
+  rabbitmq:
+    extends: { file: docker-compose.yml, service: rabbitmq }
+    <<: *test-app
+    ports: !override []
+
+  rustfs:
+    extends: { file: docker-compose.yml, service: rustfs }
+    <<: *test-app
+    ports: !override []
+
+  maildev:
+    extends: { file: docker-compose.yml, service: maildev }
+    <<: *test-app
+    profiles: !reset []
+    ports: !override
+      - "127.0.0.1:${MAILDEV_WEB_PORT:-18102}:1080"
+
+  frontend:
+    extends: { file: docker-compose.yml, service: frontend }
+    <<: *test-app
+    profiles: [frontend]
+    ports: !override
+      - "127.0.0.1:${FRONTEND_PORT:-18110}:3000"
+
+  timesheet-remote:
+    extends: { file: docker-compose.yml, service: timesheet-remote }
+    <<: *test-app
+    profiles: [frontend]
+    ports: !override
+      - "127.0.0.1:${TIMESHEET_REMOTE_PORT:-18112}:3002"
+
+  reporting-remote:
+    extends: { file: docker-compose.yml, service: reporting-remote }
+    <<: *test-app
+    profiles: [frontend]
+    ports: !override
+      - "127.0.0.1:${REPORTING_REMOTE_PORT:-18113}:3003"
+
+  administration-remote:
+    extends: { file: docker-compose.yml, service: administration-remote }
+    <<: *test-app
+    profiles: [frontend]
+    ports: !override
+      - "127.0.0.1:${ADMINISTRATION_REMOTE_PORT:-18114}:3004"
+
+  identity-profile-remote:
+    extends: { file: docker-compose.yml, service: identity-profile-remote }
+    <<: *test-app
+    profiles: [frontend]
+    ports: !override
+      - "127.0.0.1:${IDENTITY_PROFILE_REMOTE_PORT:-18115}:3005"
+
+# `networks: [timesheet]` and the volume names are inherited from the main service
+# definitions; these top-level entries bind them to this project, so Compose prefixes them
+# with the project name (for example aiyara-test-1a2b3c_postgres-data).
+networks:
+  timesheet: {}
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  rustfs-data:

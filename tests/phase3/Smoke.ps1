@@ -1,6 +1,6 @@
 param(
-    [string]$GatewayUrl = 'http://127.0.0.1:8081',
-    [string]$MailDevUrl = 'http://127.0.0.1:8080',
+    [string]$GatewayUrl = $(if ($env:TIMESHEET_GATEWAY_URL) { $env:TIMESHEET_GATEWAY_URL } else { 'http://127.0.0.1:8081' }),
+    [string]$MailDevUrl = $(if ($env:TIMESHEET_MAILDEV_URL) { $env:TIMESHEET_MAILDEV_URL } else { 'http://127.0.0.1:8080' }),
     [string]$MailDevToken = ''
 )
 

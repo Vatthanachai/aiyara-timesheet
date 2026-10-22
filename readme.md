@@ -24,6 +24,27 @@ workflow, migrations, validation, observability, and troubleshooting steps.
    `-Start` to build and start the stack before checking it.
    Add `-CheckFailure` to verify that Identity remains alive but becomes
    unready when Redis is stopped; the test restarts Redis afterward.
+### Test stack and deploying to the main stack
+
+Validation runs on a separate, throwaway stack so the main stack (your running app and its data)
+is never touched:
+
+```powershell
+pwsh -NoProfile -File scripts/test-stack.ps1 up        # build this worktree, wait for health, print the gateway URL
+pwsh -NoProfile -File scripts/test-stack.ps1 smoke -Phase 3
+pwsh -NoProfile -File scripts/test-stack.ps1 down      # keep its volumes; use `reset` to delete them
+```
+
+`docker-compose.test.yml` has its own project name, network, volumes, and database, and publishes
+loopback ports from `TEST_PORT_BASE` (gateway +1, MailDev +2, Postgres +4; `-Frontend` adds the
+Nuxt shell at +10 and remotes at +12 to +15). Both `TEST_STACK_NAME` and `TEST_PORT_BASE` default
+from the worktree path, so several worktrees can each run a stack. Smoke scripts also accept
+`TIMESHEET_GATEWAY_URL` and `TIMESHEET_MAILDEV_URL`.
+
+After a change is validated and merged into `develop`, the primary agent rebuilds the main stack
+from the main checkout with `pwsh -NoProfile -File scripts/deploy-main.ps1` (`-DryRun` checks only;
+it refuses unless on a clean `develop`).
+
 The frontend and Gateway are reachable from the host through the ports set in `.env`.
 Containers use the service DNS names (`postgres`, `redis`, `rabbitmq`, and
 `rustfs`) on the `aiyara-timesheet` network. The current development MailDev

@@ -9,6 +9,7 @@
 3. [[#3. Missing-entry reminders|Missing-entry reminders]] — `feature/missing-entry-reminders` (done)
 4. [[#4. Copy and bulk entry|Copy and bulk entry]] — `feature/copy-and-bulk-entry` (done)
 5. [[#5. Running timer|Running timer]] — `feature/running-timer` (done)
+- Tooling, outside the numbered order: a separate test stack and a deploy step for the main stack, on `feature/test-compose` (see [[Test Stack Plan]]).
 6. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps

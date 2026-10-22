@@ -485,3 +485,9 @@ $RECYCLE.BIN/
 
 # obsidian-mind local project identity
 .om-project
+
+# Generated secrets for the test-only Compose stack
+.env.test
+
+# Agent worktrees
+.claude/worktrees/
