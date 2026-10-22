@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Aiyara.Timesheet.Databases.Migrations
 {
     [DbContext(typeof(TimesheetDbContext))]
-    [Migration("20261022072329_AddEntryTemplates")]
+    [Migration("20261022104333_AddEntryTemplates")]
     partial class AddEntryTemplates
     {
         /// <inheritdoc />
@@ -75,6 +75,11 @@ namespace Aiyara.Timesheet.Databases.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
@@ -103,6 +108,10 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     b.HasIndex("TenantId");
 
                     b.HasIndex("TenantId", "OwnerId");
+
+                    b.HasIndex("TenantId", "OwnerId", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
 
                     b.ToTable("entry_templates", (string)null);
                 });

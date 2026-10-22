@@ -18,6 +18,7 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     OwnerId = table.Column<Guid>(type: "uuid", nullable: false),
                     Name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    NormalizedName = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     TaskName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     StartTime = table.Column<TimeOnly>(type: "time without time zone", nullable: false),
                     EndTime = table.Column<TimeOnly>(type: "time without time zone", nullable: false),
@@ -44,6 +45,13 @@ namespace Aiyara.Timesheet.Databases.Migrations
                 name: "IX_entry_templates_TenantId_OwnerId",
                 table: "entry_templates",
                 columns: new[] { "TenantId", "OwnerId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_entry_templates_TenantId_OwnerId_NormalizedName",
+                table: "entry_templates",
+                columns: new[] { "TenantId", "OwnerId", "NormalizedName" },
+                unique: true,
+                filter: "\"IsDeleted\" = false");
         }
 
         /// <inheritdoc />

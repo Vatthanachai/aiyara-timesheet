@@ -474,31 +474,42 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
             x.Id == id && x.OwnerId == actor.UserId && !x.IsDeleted, ct);
         if (id is not null && template is null) return Error(404, "NOT_FOUND");
         var name = body.Name?.Trim();
-        var taskName = body.TaskName?.Trim();
-        if (string.IsNullOrEmpty(name) || name.Length > 100 || string.IsNullOrEmpty(taskName) || taskName.Length > 200 ||
+        // The task name is checked as sent, as for an entry, then stored trimmed.
+        if (string.IsNullOrEmpty(name) || name.Length > 100 || !ValidTaskName(body.TaskName) ||
             body.Detail?.Length > 4000 || body.Notes?.Length > 4000 ||
             !await ValidReferences(body.ProjectId, body.CategoryId, ct))
             return Error(400, "VALIDATION_FAILED");
         try { TimesheetRules.DurationMinutes(body.StartTime, body.EndTime); }
         catch (ArgumentException) { return Error(400, "INVALID_TIME_RANGE"); }
-        if (await db.EntryTemplates.AnyAsync(x => x.OwnerId == actor.UserId && !x.IsDeleted && x.Id != id &&
-            x.Name.ToLower() == name.ToLower(), ct))
-            return Error(409, "TEMPLATE_EXISTS");
+        var normalized = EntryTemplate.Normalize(name);
+        if (await NameTakenAsync(actor, id, normalized, ct)) return Error(409, "TEMPLATE_EXISTS");
+        var taskName = body.TaskName.Trim();
         var before = template is null ? null : JsonSerializer.Serialize(template);
         if (template is null)
         {
             template = new EntryTemplate { TenantId = actor.TenantId, OwnerId = actor.UserId, Name = name, TaskName = taskName };
             db.EntryTemplates.Add(template);
         }
-        template.Name = name; template.TaskName = taskName;
+        template.Name = name; template.NormalizedName = normalized; template.TaskName = taskName;
         template.StartTime = body.StartTime; template.EndTime = body.EndTime;
         template.ProjectId = body.ProjectId; template.CategoryId = body.CategoryId;
         template.Detail = body.Detail; template.Notes = body.Notes; template.IncludesBreak = body.IncludesBreak;
         template.UpdatedAtUtc = DateTime.UtcNow;
         Audit(actor, "entry_template", template.Id, before is null ? "created" : "updated", before, template);
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        // The unique index decides between two requests saving the same name at once.
+        catch (DbUpdateException)
+        {
+            if (!await NameTakenAsync(actor, id, normalized, ct)) throw;
+            return Error(409, "TEMPLATE_EXISTS");
+        }
         return id is null ? Created(template, $"/api/v1/entry-templates/{template.Id}") : Ok(template);
     }
+
+    /// <summary>Whether another of the member's live templates already has this name, read from the database.</summary>
+    private Task<bool> NameTakenAsync(Actor actor, Guid? id, string normalized, CancellationToken ct) =>
+        db.EntryTemplates.AsNoTracking().AnyAsync(x => x.OwnerId == actor.UserId && !x.IsDeleted && x.Id != id &&
+            x.NormalizedName == normalized, ct);
 
     public async Task<ServiceResponse> DeleteEntryTemplate(Actor actor, Guid id, CancellationToken ct)
     {
@@ -855,8 +866,7 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         string? detail, string? notes, Guid? projectId, Guid? categoryId, Guid? personalTaskId, TimeOnly start,
         TimeOnly end, bool includesBreak, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(taskName) || taskName.Length > 200 ||
-            detail?.Length > 4000 || notes?.Length > 4000 ||
+        if (!ValidTaskName(taskName) || detail?.Length > 4000 || notes?.Length > 4000 ||
             !await ValidReferences(projectId, categoryId, ct) ||
             personalTaskId is not null && !await db.PersonalTasks.AnyAsync(x =>
                 x.Id == personalTaskId && x.OwnerId == actor.UserId && !x.IsDeleted, ct))
@@ -885,6 +895,9 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
     private static ServiceResponse MonthClosed(string[] dates) =>
         new ServiceErrorResponse(409, "MONTH_CLOSED", "The request could not be completed.",
             new Dictionary<string, string[]> { ["dates"] = dates });
+
+    /// <summary>A task name with something in it, at most 200 characters as sent; it is stored trimmed.</summary>
+    private static bool ValidTaskName(string? taskName) => !string.IsNullOrWhiteSpace(taskName) && taskName.Length <= 200;
 
     private async Task<bool> ValidReferences(Guid? projectId, Guid? categoryId, CancellationToken ct) =>
         (projectId is null || await db.Projects.AnyAsync(x => x.Id == projectId && !x.IsDeleted, ct)) &&

@@ -159,6 +159,71 @@ public sealed class CopyAndBulkEntryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Copy_and_bulk_follow_the_approval_of_the_target_month()
+    {
+        var lastMonth = first.AddDays(-1);
+        var carol = Guid.NewGuid();
+        await using (var scope = Scope(tenantA))
+        {
+            // Alice's current month is submitted and her last month was returned; Carol's current month is approved.
+            var db = scope.ServiceProvider.GetRequiredService<TimesheetDbContext>();
+            db.MonthApprovals.AddRange(
+                Approval(alice, first, MonthApproval.Submitted),
+                Approval(alice, lastMonth, MonthApproval.Returned),
+                Approval(carol, first, MonthApproval.Approved));
+            db.TimeEntries.AddRange(Entry(lastMonth.AddDays(-7), "09:00", "10:00", 60, "Weekly sync"),
+                Entry(lastMonth.AddDays(-7), "10:00", "11:00", 60, "Planning"));
+            await db.SaveChangesAsync();
+        }
+
+        foreach (var user in new[] { alice, carol })
+        {
+            using var refused = await Send(HttpMethod.Post, "/api/v1/entries/copy", user, new { from = lastMonth.AddDays(-7), to = Day(10), days = 1 });
+            Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+            var error = await refused.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("MONTH_CLOSED", error.GetProperty("errorCode").GetString());
+            Assert.Equal([Day(10).ToString("yyyy-MM-dd")], error.GetProperty("errors").GetProperty("dates").EnumerateArray().Select(x => x.GetString()));
+        }
+        Assert.Equal("MONTH_CLOSED", await ErrorCode(await Send(HttpMethod.Post, "/api/v1/entries/bulk", carol, Bulk([Day(10)], "09:00", "10:00"))));
+
+        // A returned past month stays open to its member for both.
+        var bulk = await Result(await Send(HttpMethod.Post, "/api/v1/entries/bulk", alice, Bulk([lastMonth], "14:00", "15:00")));
+        Assert.Single(bulk.GetProperty("created").EnumerateArray());
+        var copy = await Result(await Send(HttpMethod.Post, "/api/v1/entries/copy", alice, new { from = lastMonth.AddDays(-7), to = lastMonth.AddDays(-1), days = 1 }));
+        Assert.Equal(2, copy.GetProperty("created").GetArrayLength());
+    }
+
+    private MonthApproval Approval(Guid owner, DateOnly date, string status) => new()
+    {
+        TenantId = tenantA, OwnerId = owner, Year = date.Year, Month = date.Month, Status = status, SubmittedAtUtc = DateTime.UtcNow
+    };
+
+    [Fact]
+    public async Task Template_names_are_unique_in_the_database_until_deleted()
+    {
+        var review = (await Result(await Send(HttpMethod.Post, "/api/v1/entry-templates", alice, Template("Review", "Code review", "16:00", "17:00"))))
+            .GetProperty("id").GetGuid();
+        await using (var scope = Scope(tenantA))
+        {
+            // Two saves that both passed the name check at once: the index refuses the second.
+            var db = scope.ServiceProvider.GetRequiredService<TimesheetDbContext>();
+            db.EntryTemplates.Add(new EntryTemplate { TenantId = tenantA, OwnerId = alice, Name = "review",
+                NormalizedName = EntryTemplate.Normalize("review"), TaskName = "Again" });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(HttpMethod.Delete, $"/api/v1/entry-templates/{review}", alice)).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await Send(HttpMethod.Post, "/api/v1/entry-templates", alice, Template("REVIEW", "Code review", "16:00", "17:00"))).StatusCode);
+        Assert.Equal("TEMPLATE_EXISTS", await ErrorCode(await Send(HttpMethod.Post, "/api/v1/entry-templates", alice, Template(" review ", "x", "16:00", "17:00"))));
+
+        // A task name is at most 200 characters as sent, for templates as for entries.
+        var padded = " " + new string('x', 200);
+        Assert.Equal("VALIDATION_FAILED", await ErrorCode(await Send(HttpMethod.Post, "/api/v1/entry-templates", alice, Template("Long", padded, "09:00", "10:00"))));
+        Assert.Equal("VALIDATION_FAILED", await ErrorCode(await Send(HttpMethod.Post, "/api/v1/entries/bulk", alice,
+            Bulk([Day(5)], "09:00", "10:00", taskName: padded))));
+        Assert.Equal(HttpStatusCode.Created, (await Send(HttpMethod.Post, "/api/v1/entry-templates", alice, Template("Long", new string('x', 200), "09:00", "10:00"))).StatusCode);
+    }
+
+    [Fact]
     public async Task Templates_belong_to_their_member()
     {
         var project = (await Result(await Send(HttpMethod.Post, "/api/v1/projects", alice, new { name = "Client" }, "TenantAdmin"))).GetProperty("id").GetGuid();
@@ -202,9 +267,10 @@ public sealed class CopyAndBulkEntryTests : IAsyncLifetime
             .Audits.Where(x => x.EntityType == "entry_template").OrderBy(x => x.OccurredAtUtc).Select(x => x.Action).ToListAsync());
     }
 
-    private static object Bulk(DateOnly[] dates, string start, string end, Guid? projectId = null, Guid? personalTaskId = null) => new
+    private static object Bulk(DateOnly[] dates, string start, string end, Guid? projectId = null, Guid? personalTaskId = null,
+        string taskName = " Support ") => new
     {
-        dates, startTime = $"{start}:00", endTime = $"{end}:00", taskName = " Support ", detail = (string?)null,
+        dates, startTime = $"{start}:00", endTime = $"{end}:00", taskName, detail = (string?)null,
         notes = (string?)null, projectId, categoryId = (Guid?)null, personalTaskId, reason = (string?)null, includesBreak = false
     };
 

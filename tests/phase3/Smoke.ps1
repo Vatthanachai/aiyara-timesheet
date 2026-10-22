@@ -154,8 +154,12 @@ Expect (Request Post '/api/v1/timesheets/entry-templates' @{ name = 'standup'; t
     startTime = '10:00:00'; endTime = '11:00:00' } $admin) 409 'duplicate entry template' | Out-Null
 if (@(Expect (Request Get '/api/v1/timesheets/entry-templates' $null $admin) 200 'entry templates').Count -ne 1) { throw 'The template was not listed.' }
 if (@(Expect (Request Get '/api/v1/timesheets/entry-templates' $null $employee) 200 'employee entry templates').Count -ne 0) { throw 'Another member can read the template.' }
+# The first two of the tenant's working days in the 8th–14th (the holiday is the 7th); a week later
+# falls on the same weekdays, so the copy writes both whatever the month.
+$workingDays = @((Expect (Request Get '/api/v1/timesheets/catalog' $null $admin) 200 'admin catalog').workingDays)
 $bulkDays = @(8..14 | ForEach-Object { [datetime]::new([int]$year, [int]$month, $_) } |
-    Where-Object DayOfWeek -ne 'Sunday' | Select-Object -First 2 | ForEach-Object { $_.ToString('yyyy-MM-dd') })
+    Where-Object { $workingDays -contains [int]$_.DayOfWeek } | Select-Object -First 2 | ForEach-Object { $_.ToString('yyyy-MM-dd') })
+if ($bulkDays.Count -ne 2) { throw 'The work week has fewer than two working days for the bulk step.' }
 $bulk = Expect (Request Post '/api/v1/timesheets/entries/bulk' @{ dates = $bulkDays; startTime = $template.startTime
     endTime = $template.endTime; taskName = $template.taskName; detail = $template.detail; notes = $null
     projectId = $template.projectId; categoryId = $template.categoryId; personalTaskId = $null; reason = $null

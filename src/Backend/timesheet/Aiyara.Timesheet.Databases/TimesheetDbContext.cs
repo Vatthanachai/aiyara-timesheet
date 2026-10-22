@@ -57,7 +57,11 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
         Configure<TimeEntry>(modelBuilder, "time_entries");
         Configure<EntryTemplate>(modelBuilder, "entry_templates");
         modelBuilder.Entity<EntryTemplate>().HasIndex(x => new { x.TenantId, x.OwnerId });
+        // A deleted template's name may be used again; the filter reads the same on PostgreSQL and SQLite.
+        modelBuilder.Entity<EntryTemplate>().HasIndex(x => new { x.TenantId, x.OwnerId, x.NormalizedName })
+            .IsUnique().HasFilter("\"IsDeleted\" = false");
         modelBuilder.Entity<EntryTemplate>().Property(x => x.Name).HasMaxLength(100);
+        modelBuilder.Entity<EntryTemplate>().Property(x => x.NormalizedName).HasMaxLength(100);
         modelBuilder.Entity<EntryTemplate>().Property(x => x.TaskName).HasMaxLength(200);
         Configure<MonthLock>(modelBuilder, "month_locks");
         Configure<TimesheetAudit>(modelBuilder, "timesheet_audit");

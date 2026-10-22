@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Aiyara.Timesheet.Databases;
 
 public abstract class TenantRecord
@@ -98,6 +100,8 @@ public sealed class EntryTemplate : TenantRecord
 {
     public Guid OwnerId { get; set; }
     public required string Name { get; set; }
+    /// <summary>The name in upper case, unique among the member's live templates.</summary>
+    [JsonIgnore] public string NormalizedName { get; set; } = "";
     public required string TaskName { get; set; }
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }
@@ -108,6 +112,8 @@ public sealed class EntryTemplate : TenantRecord
     public bool IncludesBreak { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+
+    public static string Normalize(string name) => name.Trim().ToUpperInvariant();
 }
 
 public sealed class MonthLock : TenantRecord

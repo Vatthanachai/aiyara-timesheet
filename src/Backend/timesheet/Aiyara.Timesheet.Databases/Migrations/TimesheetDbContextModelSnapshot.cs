@@ -72,6 +72,11 @@ namespace Aiyara.Timesheet.Databases.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
@@ -100,6 +105,10 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     b.HasIndex("TenantId");
 
                     b.HasIndex("TenantId", "OwnerId");
+
+                    b.HasIndex("TenantId", "OwnerId", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
 
                     b.ToTable("entry_templates", (string)null);
                 });
