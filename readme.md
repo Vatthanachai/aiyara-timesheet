@@ -282,7 +282,7 @@ Reporting now exposes tenant-authorized definition, run, schedule, retention,
 download, and signed-PDF upload APIs through Gateway. The worker consumes
 durable RabbitMQ commands and month-lock events, generates PDF/XLSX from
 Timesheet's immutable locked-month snapshots, and stores versioned objects in
-RustFS. The monthly PDF uses Noto Sans Thai and includes work-hour, worked-day,
+RustFS. The monthly PDF uses Sarabun and includes work-hour, worked-day,
 overtime-day, leave, and signature summaries. Identity gRPC supplies employee
 names; the signed PDF versions and generated source snapshots are audited and
 purged under tenant retention policy. Successful employee reports trigger a

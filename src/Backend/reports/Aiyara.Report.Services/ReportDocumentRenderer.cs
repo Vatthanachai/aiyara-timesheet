@@ -121,9 +121,9 @@ public static class ReportDocumentRenderer
         var page = document.AddPage();
         page.Size = PdfSharp.PageSize.A4;
         var gfx = XGraphics.FromPdfPage(page);
-        var title = new XFont("Noto Sans Thai", 15, XFontStyleEx.Bold);
-        var body = new XFont("Noto Sans Thai", 8, XFontStyleEx.Regular);
-        var bold = new XFont("Noto Sans Thai", 8, XFontStyleEx.Bold);
+        var title = new XFont("Sarabun", 15, XFontStyleEx.Bold);
+        var body = new XFont("Sarabun", 8, XFontStyleEx.Regular);
+        var bold = new XFont("Sarabun", 8, XFontStyleEx.Bold);
         var blue = new XSolidBrush(XColor.FromArgb(57, 111, 190));
         var pale = new XSolidBrush(XColor.FromArgb(224, 234, 250));
         var dayOff = new XSolidBrush(XColor.FromArgb(232, 234, 238));
@@ -309,20 +309,28 @@ public static class ReportDocumentRenderer
         lock (FontGate)
         {
             if (_fontConfigured) return;
-            GlobalFontSettings.FontResolver ??= new NotoThaiFontResolver();
+            GlobalFontSettings.FontResolver ??= new SarabunFontResolver();
             _fontConfigured = true;
         }
     }
 
-    private sealed class NotoThaiFontResolver : IFontResolver
+    /// <summary>Sarabun carries Thai and Latin (letters, digits, punctuation) in a real Regular and Bold face.</summary>
+    private sealed class SarabunFontResolver : IFontResolver
     {
-        private static readonly byte[] FontBytes = File.ReadAllBytes(
-            Path.Combine(AppContext.BaseDirectory, "Fonts", "NotoSansThai-Regular.ttf"));
+        private static readonly byte[] Regular = Load("Sarabun-Regular.ttf");
+        private static readonly byte[] Bold = Load("Sarabun-Bold.ttf");
+
+        private static byte[] Load(string file) => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fonts", file));
 
         public FontResolverInfo? ResolveTypeface(string familyName, bool bold, bool italic) =>
-            familyName.Equals("Noto Sans Thai", StringComparison.OrdinalIgnoreCase)
-                ? new FontResolverInfo("NotoThaiRegular", bold, italic) : null;
+            familyName.Equals("Sarabun", StringComparison.OrdinalIgnoreCase)
+                ? new FontResolverInfo(bold ? "SarabunBold" : "SarabunRegular", false, italic) : null;
 
-        public byte[]? GetFont(string faceName) => faceName == "NotoThaiRegular" ? FontBytes : null;
+        public byte[]? GetFont(string faceName) => faceName switch
+        {
+            "SarabunRegular" => Regular,
+            "SarabunBold" => Bold,
+            _ => null
+        };
     }
 }
