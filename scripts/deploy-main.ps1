@@ -26,6 +26,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# `pwsh -File` passes `a,b` as one string, so split it here.
+$Services = @($Services | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
 
