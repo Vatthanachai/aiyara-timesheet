@@ -1,6 +1,6 @@
 # Billable Work And Budgets Plan
 
-> Drafted 22 October 2026 from item 6 of [[Product Backlog]] and a code audit of `develop` at `7199e5e`. Phase A (API) is implemented on `feature/billable-budgets`; Phase B (UI) is not started. Covers how a project carries a client, a billable flag, an hourly rate, and an hours budget, and how a Tenant Admin reads hours used against budget and the billable amount by project and by client.
+> Drafted 22 October 2026 from item 6 of [[Product Backlog]] and a code audit of `develop` at `7199e5e`. Implemented 22 October 2026 on `feature/billable-budgets` (Phase A, API, and Phase B, UI). Covers how a project carries a client, a billable flag, an hourly rate, and an hours budget, and how a Tenant Admin reads hours used against budget and the billable amount by project and by client.
 
 ## Audit: What Exists On `develop`
 
@@ -44,9 +44,9 @@ All under `/api/v1/timesheets` through Gateway; Tenant Admin unless noted. Error
 
 ## Phase B — UI
 
-- [x] B1. Administration → Projects: client, billable toggle, rate with currency, and hours budget in the project form.
-- [x] B2. A usage view for Tenant Admins (Reporting or Administration): by project with used against budget and an over-budget warning, and by client, with a period picker.
-- [x] B3. Playwright and docs.
+- [x] B1. Administration → Projects: a billing form on each project (client, billable toggle, rate with currency, and hours budget), saved through `PUT projects/{id}/billing`; checks in `utils/billing.ts`.
+- [x] B2. Reporting gets a **Projects and clients** panel (`ProjectUsage.vue`, Tenant Admins only): by project with hours used against the budget, a bar, and an over-budget warning, and a members list per project; by client with billable and non-billable hours and amounts per currency; a period picker (this month, last month, a chosen month, a custom range, all time). Shared formatting is in `shared/money.ts`.
+- [x] B3. Playwright (`billing.spec.ts`) and docs (this note, [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]]).
 
 ## Out Of Scope
 
@@ -61,9 +61,19 @@ All under `/api/v1/timesheets` through Gateway; Tenant Admin unless noted. Error
 - Minutes per entry are stored when the entry is saved, so a later change of the organization's break does not change past entries (the same as every report today).
 - The by-project report reads live entries, not the approved snapshots, so it can differ from a signed month if an approved month is later returned and edited.
 
+- Rates are not snapshotted: changing a rate reprices time already logged (decision 7).
+- A budget is for the whole life of the project, not per period.
+- Amounts in different currencies are listed per currency and never summed; there is no conversion.
+- Usage is served live by the Timesheet service, not by Report, so it is not the approved month snapshot.
+- Generated XLSX, CSV, and PDF documents, and scheduled by-project and by-client reports, are not built.
+- Members get no over-budget warning when they save an entry; used figures are admin-only.
+- The UI lives in two places: the Reporting **Projects and clients** panel (read) and the Administration billing form (write).
+- When the test stack is started with `-Frontend`, the Shell's remote iframe URLs must point at the test stack's own ports; the remote URLs are not rewritten automatically (see [[Test Stack Plan]]).
+
 ## Related
 
 - [[Product Backlog]]
 - [[Reporting Page Plan]]
+- [[Test Stack Plan]]
 - [[Timesheet Approval Plan]]
 - [[Project Status]]
