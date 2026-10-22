@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
-import { readSessionLocale, type Locale } from '../../../shared/i18n'
+import { readSessionLocale, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
 import { decimalHours, defaultWorkHours, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type Catalog, type Entry, type EntryForm, type Leave, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
@@ -11,6 +11,7 @@ const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
+provide(fieldLocaleKey, locale)
 const pad = (value: number) => String(value).padStart(2, '0')
 // The browser's local date, so the morning in Thailand is not still yesterday in UTC.
 const now = new Date()

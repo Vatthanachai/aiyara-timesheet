@@ -28,6 +28,7 @@
 - [[Administration Page Plan]] — the Administration remote as the organization's own page, in five tabs, with the week drawn (phases A–C).
 - [[Profile Page Plan]] — profile settings as your card, drawn live, beside the details form (phases A–B).
 - [[Theme Modes Plan]] — light, dark, and system themes across the Shell and remotes, and depth: paper lifts, fields sink, buttons press (phases A–C).
+- [[Form Fields Plan]] — every dropdown an autocomplete, date fields always dd/MM/yyyy, time fields always 24-hour (phases A–C).
 
 ## Repository Facts
 

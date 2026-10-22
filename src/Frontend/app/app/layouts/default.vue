@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
-import { useLocaleText } from '../../../shared/i18n'
+import { fieldLocaleKey, useLocaleText } from '../../../shared/i18n'
 import { DEFAULT_FORMATS, readFormats, type Formats } from '../../../shared/date-format'
 import { nameInitials } from '../../../shared/initials'
 type ProfileSummary = {
@@ -13,6 +13,7 @@ type OrganizationSummary = { name: string; logoUrl: string | null; dateFormat?: 
 
 const { visibleNavigation } = useRemoteNavigation()
 const { locale } = useLocale()
+provide(fieldLocaleKey, locale)
 const { start: startTheme } = useTheme()
 let stopTheme: (() => void) | undefined
 const { token, role, logout, restore } = useSession()

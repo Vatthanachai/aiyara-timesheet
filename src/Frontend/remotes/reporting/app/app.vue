@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { safeError, unwrapResponse, withRemoteRefresh, type ApiEnvelope } from '../../../shared/api-response'
 import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
-import { readSessionLocale, useLocaleText, type Locale } from '../../../shared/i18n'
+import { readSessionLocale, useLocaleText, type Locale, fieldLocaleKey } from '../../../shared/i18n'
+import AutoComplete from '../../../shared/components/AutoComplete.vue'
+import DateField from '../../../shared/components/DateField.vue'
+import TimeField from '../../../shared/components/TimeField.vue'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDateTime as formatInstant, formatMonth, readFormats } from '../../../shared/date-format'
 import {
@@ -31,6 +34,7 @@ useIframeAutoHeight(config.public.shellOrigin)
 const token = ref('')
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
+provide(fieldLocaleKey, locale)
 const isAdmin = ref(false)
 const myName = ref('')
 const timeZoneId = ref('Asia/Bangkok')
@@ -429,6 +433,28 @@ onMounted(() => {
   // The Shell's first session message can arrive before hydration; ask for it once listening.
   if (window.parent !== window) window.parent.postMessage({ type: 'aiyara.ready' }, config.public.shellOrigin)
 })
+
+// The choices each picker offers, as the shared autocomplete takes them.
+const definitionChoices = computed(() => definitions.value.map(item => ({ value: item.id, label: `${item.name} (${text(item.format)})` })))
+const monthChoices = computed(() => monthOptions.value.map(item => ({ value: item.value, label: item.label })))
+const yearChoices = computed(() => yearOptions.value.map(item => ({ value: item, label: String(item) })))
+const subjectChoices = computed(() => [
+  { value: '', label: copy.value.wholeOrganization },
+  ...memberGroups.value.map(group => ({ value: `${GROUP_PREFIX}${group.id}`, label: group.name, hint: copy.value.groups })),
+  ...activeMembers.value.map(member => ({ value: member.id, label: memberNames.value.get(member.id) ?? member.id,
+    hint: memberGroups.value.length ? copy.value.people : undefined }))
+])
+const statusChoices = computed(() => [{ value: '', label: copy.value.allStatuses },
+  ...['Queued', 'Running', 'Succeeded', 'Failed'].map(status => ({ value: status, label: text(status) }))])
+const reportFilterChoices = computed(() => [{ value: '', label: copy.value.allReports }, ...definitions.value.map(item => ({ value: item.id, label: item.name }))])
+const groupFilterChoices = computed(() => [{ value: '', label: copy.value.allGroups },
+  ...memberGroups.value.map(group => ({ value: group.id, label: group.name })), { value: NO_GROUP, label: copy.value.noGroup }])
+const kindChoices = computed(() => ['Weekly', 'Monthly', 'Annual', 'Performance'].map(kind => ({ value: kind, label: text(kind) })))
+const formatChoices = [{ value: 'Pdf', label: 'PDF' }, { value: 'Xlsx', label: 'Excel' }]
+const scheduleReportChoices = computed(() => schedulableDefinitions.value.map(item => ({ value: item.id, label: `${item.name} (${text(item.kind)})` })))
+const scheduleSubjectChoices = computed(() => [{ value: '', label: copy.value.wholeOrganization },
+  ...memberGroups.value.map(group => ({ value: group.id, label: `${copy.value.memberGroup}: ${group.name}` }))])
+const timeZoneChoices = computed(() => timeZones.value.map(zone => ({ value: zone, label: zone })))
 </script>
 
 <template>
@@ -465,41 +491,28 @@ onMounted(() => {
           </div>
           <form v-else class="request-form" @submit.prevent="requestReport">
             <label class="request-report">{{ copy.report }}
-              <select v-model="selectedDefinitionId" required>
-                <option v-for="item in definitions" :key="item.id" :value="item.id">{{ item.name }} ({{ text(item.format) }})</option>
-              </select>
+              <AutoComplete v-model="selectedDefinitionId" :label="copy.report" :options="definitionChoices" required />
             </label>
             <label v-if="selectedDefinition?.kind === 'Weekly'">{{ copy.week }}
-              <input v-model="weekDay" type="date" required />
+              <DateField v-model="weekDay" :label="copy.week" required />
             </label>
             <template v-else-if="selectedDefinition?.kind === 'Monthly'">
               <label>{{ copy.month }}
-                <select v-model.number="monthNumber"><option v-for="item in monthOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select>
+                <AutoComplete v-model="monthNumber" :label="copy.month" :options="monthChoices" required />
               </label>
               <label>{{ copy.year }}
-                <select v-model.number="monthYear"><option v-for="item in yearOptions" :key="item" :value="item">{{ item }}</option></select>
+                <AutoComplete v-model="monthYear" :label="copy.year" :options="yearChoices" inputmode="numeric" required />
               </label>
             </template>
             <label v-else-if="selectedDefinition?.kind === 'Annual'">{{ copy.year }}
-              <select v-model.number="yearValue"><option v-for="item in yearOptions" :key="item" :value="item">{{ item }}</option></select>
+              <AutoComplete v-model="yearValue" :label="copy.year" :options="yearChoices" inputmode="numeric" required />
             </label>
             <template v-else>
-              <label>{{ copy.from }}<input v-model="rangeFrom" type="date" required /></label>
-              <label>{{ copy.to }}<input v-model="rangeTo" type="date" required :min="rangeFrom" /></label>
+              <label>{{ copy.from }}<DateField v-model="rangeFrom" :label="copy.from" required /></label>
+              <label>{{ copy.to }}<DateField v-model="rangeTo" :label="copy.to" required :min="rangeFrom" /></label>
             </template>
             <label v-if="isAdmin">{{ copy.subject }}
-              <select v-model="subjectUserId" :aria-label="copy.subject">
-                <option value="">{{ copy.wholeOrganization }}</option>
-                <optgroup v-if="memberGroups.length" :label="copy.groups">
-                  <option v-for="group in memberGroups" :key="group.id" :value="`${GROUP_PREFIX}${group.id}`">{{ group.name }}</option>
-                </optgroup>
-                <optgroup v-if="memberGroups.length" :label="copy.people">
-                  <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
-                </optgroup>
-                <template v-else>
-                  <option v-for="member in activeMembers" :key="member.id" :value="member.id">{{ memberNames.get(member.id) }}</option>
-                </template>
-              </select>
+              <AutoComplete v-model="subjectUserId" :label="copy.subject" :options="subjectChoices" />
             </label>
             <div class="request-submit">
               <p v-if="requestPeriod" class="preview">
@@ -515,23 +528,13 @@ onMounted(() => {
             <h3 id="history-heading">{{ copy.history }}</h3>
             <form class="filters" @submit.prevent>
               <label>{{ copy.status }}
-                <select v-model="filters.status" @change="applyFilters()">
-                  <option value="">{{ copy.allStatuses }}</option>
-                  <option v-for="status in ['Queued', 'Running', 'Succeeded', 'Failed']" :key="status" :value="status">{{ text(status) }}</option>
-                </select>
+                <AutoComplete v-model="filters.status" :label="copy.status" :options="statusChoices" @change="applyFilters()" />
               </label>
               <label>{{ copy.report }}
-                <select v-model="filters.definitionId" @change="applyFilters()">
-                  <option value="">{{ copy.allReports }}</option>
-                  <option v-for="item in definitions" :key="item.id" :value="item.id">{{ item.name }}</option>
-                </select>
+                <AutoComplete v-model="filters.definitionId" :label="copy.report" :options="reportFilterChoices" @change="applyFilters()" />
               </label>
               <label v-if="isAdmin && memberGroups.length">{{ copy.memberGroup }}
-                <select v-model="filters.group" :aria-label="copy.memberGroup" @change="applyFilters()">
-                  <option value="">{{ copy.allGroups }}</option>
-                  <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
-                  <option :value="NO_GROUP">{{ copy.noGroup }}</option>
-                </select>
+                <AutoComplete v-model="filters.group" :label="copy.memberGroup" :options="groupFilterChoices" @change="applyFilters()" />
               </label>
             </form>
           </div>
@@ -602,8 +605,8 @@ onMounted(() => {
               </li>
             </ul>
             <form class="inline-form" @submit.prevent="addDefinition">
-              <label>{{ copy.kind }}<select v-model="definitionForm.kind"><option v-for="kind in ['Weekly', 'Monthly', 'Annual', 'Performance']" :key="kind" :value="kind">{{ text(kind) }}</option></select></label>
-              <label>{{ copy.format }}<select v-model="definitionForm.format"><option value="Pdf">PDF</option><option value="Xlsx">Excel</option></select></label>
+              <label>{{ copy.kind }}<AutoComplete v-model="definitionForm.kind" :label="copy.kind" :options="kindChoices" required /></label>
+              <label>{{ copy.format }}<AutoComplete v-model="definitionForm.format" :label="copy.format" :options="formatChoices" required /></label>
               <label class="grow">{{ copy.name }}<input v-model="definitionForm.name" required maxlength="160" /></label>
               <button type="submit">{{ copy.addFormat }}</button>
             </form>
@@ -623,13 +626,10 @@ onMounted(() => {
               </li>
             </ul>
             <form v-if="schedulableDefinitions.length" class="inline-form" @submit.prevent="addSchedule">
-              <label class="grow">{{ copy.report }}<select v-model="scheduleForm.reportDefinitionId" required><option v-for="item in schedulableDefinitions" :key="item.id" :value="item.id">{{ item.name }} ({{ text(item.kind) }})</option></select></label>
-              <label v-if="memberGroups.length" class="grow">{{ copy.subject }}<select v-model="scheduleForm.groupId" :aria-label="`${copy.schedules}: ${copy.subject}`">
-                <option value="">{{ copy.wholeOrganization }}</option>
-                <option v-for="group in memberGroups" :key="group.id" :value="group.id">{{ copy.memberGroup }}: {{ group.name }}</option>
-              </select></label>
-              <label class="grow">{{ copy.timezone }}<select v-model="scheduleForm.timeZoneId"><option v-for="zone in timeZones" :key="zone" :value="zone">{{ zone }}</option></select></label>
-              <label v-if="scheduleKind !== 'Monthly'">{{ copy.localTime }}<input v-model="scheduleForm.localTime" type="time" required /></label>
+              <label class="grow">{{ copy.report }}<AutoComplete v-model="scheduleForm.reportDefinitionId" :label="copy.report" :options="scheduleReportChoices" required /></label>
+              <label v-if="memberGroups.length" class="grow">{{ copy.subject }}<AutoComplete v-model="scheduleForm.groupId" :label="`${copy.schedules}: ${copy.subject}`" :options="scheduleSubjectChoices" /></label>
+              <label class="grow">{{ copy.timezone }}<AutoComplete v-model="scheduleForm.timeZoneId" :label="copy.timezone" :options="timeZoneChoices" required /></label>
+              <label v-if="scheduleKind !== 'Monthly'">{{ copy.localTime }}<TimeField v-model="scheduleForm.localTime" :label="copy.localTime" required /></label>
               <p v-else class="muted full">{{ copy.monthlyTime }}</p>
               <p v-if="scheduleForm.groupId" class="muted full">{{ copy.groupScheduleHint }}</p>
               <button type="submit">{{ copy.addSchedule }}</button>
