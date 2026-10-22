@@ -178,6 +178,22 @@ Expect (Request Post '/api/v1/timesheets/entries/copy' @{ from = "$year-$month-0
 Expect (Request Delete "/api/v1/timesheets/entry-templates/$($template.id)" $null $employee) 404 'template owner isolation' | Out-Null
 Expect (Request Delete "/api/v1/timesheets/entry-templates/$($template.id)" $null $admin) 204 'template deletion' | Out-Null
 
+# Running timer: one per member, kept on the server; a stop that is refused keeps it, and stopping
+# writes the entry.
+Expect (Request Post '/api/v1/timesheets/timer/start' @{ taskName = 'Timer task' } $admin) 201 'timer start' | Out-Null
+Expect (Request Post '/api/v1/timesheets/timer/start' @{} $admin) 409 'second timer start' | Out-Null
+if (-not (Expect (Request Get '/api/v1/timesheets/timer' $null $admin) 200 'running timer').timer) { throw 'The running timer was not kept.' }
+if ((Expect (Request Get '/api/v1/timesheets/timer' $null $employee) 200 'employee timer').timer) { throw 'Another member can see the timer.' }
+Expect (Request Post '/api/v1/timesheets/timer/stop' @{ startTime = '06:00:00'; endTime = '06:00:00' } $admin) 400 'timer stop with no time' | Out-Null
+if (-not (Expect (Request Get '/api/v1/timesheets/timer' $null $admin) 200 'timer after refused stop').timer) { throw 'A refused stop lost the timer.' }
+Expect (Request Post '/api/v1/timesheets/timer/stop' @{ date = "$year-$month-15"; startTime = '06:00:00'; endTime = '06:30:00' } $employee) 404 'timer owner isolation' | Out-Null
+$timed = Expect (Request Post '/api/v1/timesheets/timer/stop' @{ date = "$year-$month-15"; startTime = '06:00:00'; endTime = '06:30:00' } $admin) 201 'timer stop'
+if ($timed.taskName -ne 'Timer task' -or $timed.durationMinutes -ne 30) { throw 'Stopping the timer did not write the entry.' }
+if ((Expect (Request Get '/api/v1/timesheets/timer' $null $admin) 200 'timer after stop').timer) { throw 'The timer still runs after it was stopped.' }
+Expect (Request Post '/api/v1/timesheets/timer/start' @{} $admin) 201 'timer restart' | Out-Null
+Expect (Request Delete '/api/v1/timesheets/timer' $null $admin) 204 'timer discard' | Out-Null
+Expect (Request Delete '/api/v1/timesheets/timer' $null $admin) 404 'discard without a timer' | Out-Null
+
 # Reminders: off until a Tenant Admin turns them on; only a Tenant Admin may change them.
 $reminders = Expect (Request Get '/api/v1/timesheets/reminders' $null $admin) 200 'reminder settings'
 if ($reminders.dailyEnabled -or $reminders.monthEndEnabled -or $reminders.sendAt -ne '09:00') { throw 'Reminders are not off by default.' }
@@ -216,4 +232,4 @@ Expect (Request Get "/api/v1/timesheets/months/$year/$month/snapshot" $null $emp
 Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $employee) 409 'locked entry' | Out-Null
 Expect (Request Delete "/api/v1/timesheets/leave/$($leave.id)" $null $employee) 409 'locked leave' | Out-Null
 
-Write-Output 'Phase 3 profile, catalog, task, overnight time entry, templates, bulk and copied entries, leave, isolation, approval, month lock and snapshot smoke test passed.'
+Write-Output 'Phase 3 profile, catalog, task, overnight time entry, templates, bulk and copied entries, running timer, leave, isolation, approval, month lock and snapshot smoke test passed.'

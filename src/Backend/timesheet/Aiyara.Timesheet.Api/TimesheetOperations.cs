@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Aiyara.Timesheet.Api;
 
 /// <param name="notifier">Emails a member whose month was returned; none in tests that do not need it.</param>
-public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotifier? notifier = null)
+/// <param name="clock">Tells a timer the time; the system clock unless a test fixes it.</param>
+public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotifier? notifier = null,
+    TimeProvider? clock = null)
 {
     public async Task<ServiceResponse> Context(Actor actor, CancellationToken ct)
     {
@@ -522,6 +524,114 @@ public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotif
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    /// <summary>The member's running timer, or none, with the server's time so the page can count from it.</summary>
+    public async Task<ServiceResponse> Timer(Actor actor, CancellationToken ct) =>
+        Ok(TimerResult(await db.RunningTimers.AsNoTracking().SingleOrDefaultAsync(x => x.OwnerId == actor.UserId, ct)));
+
+    /// <summary>Starts the member's timer now. A second start is refused with <c>409 TIMER_RUNNING</c>.</summary>
+    public async Task<ServiceResponse> StartTimer(Actor actor, StartTimerRequest? body, CancellationToken ct)
+    {
+        body ??= new StartTimerRequest();
+        if (body.TaskName?.Length > 200 || body.Detail?.Length > 4000 || body.Notes?.Length > 4000 ||
+            !await ValidReferences(body.ProjectId, body.CategoryId, ct) ||
+            body.PersonalTaskId is not null && !await db.PersonalTasks.AnyAsync(x =>
+                x.Id == body.PersonalTaskId && x.OwnerId == actor.UserId && !x.IsDeleted, ct))
+            return Error(400, "VALIDATION_FAILED");
+        if (await TimerRunningAsync(actor, ct)) return Error(409, "TIMER_RUNNING");
+        var timer = new RunningTimer
+        {
+            TenantId = actor.TenantId, OwnerId = actor.UserId, StartedAtUtc = Now().UtcDateTime,
+            TaskName = string.IsNullOrWhiteSpace(body.TaskName) ? null : body.TaskName.Trim(), Detail = body.Detail,
+            Notes = body.Notes, ProjectId = body.ProjectId, CategoryId = body.CategoryId,
+            PersonalTaskId = body.PersonalTaskId, IncludesBreak = body.IncludesBreak
+        };
+        db.RunningTimers.Add(timer);
+        try { await db.SaveChangesAsync(ct); }
+        // The unique index decides between two starts at once.
+        catch (DbUpdateException)
+        {
+            if (!await TimerRunningAsync(actor, ct)) throw;
+            return Error(409, "TIMER_RUNNING");
+        }
+        return Created(TimerResult(timer), "/api/v1/timer");
+    }
+
+    /// <summary>Stops the member's timer into an entry on the day it started, from its start to now, counted
+    /// with the organization's break like any entry. Any refusal (<c>MONTH_CLOSED</c>, <c>TIMER_TOO_LONG</c>, a
+    /// failed entry check) keeps the timer so nothing is lost; <see cref="StopTimerRequest"/> can place it elsewhere.</summary>
+    public async Task<ServiceResponse> StopTimer(Actor actor, StopTimerRequest? body, CancellationToken ct)
+    {
+        body ??= new StopTimerRequest();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var timer = await db.RunningTimers.SingleOrDefaultAsync(x => x.OwnerId == actor.UserId, ct);
+        if (timer is null) return Error(404, "NOT_FOUND");
+        var now = Now();
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(actor.TimeZoneId);
+        var startedUtc = new DateTimeOffset(DateTime.SpecifyKind(timer.StartedAtUtc, DateTimeKind.Utc));
+        var started = TimeZoneInfo.ConvertTime(startedUtc, zone);
+        var ended = TimeZoneInfo.ConvertTime(now, zone);
+        // An entry is at most 24 hours; a longer timer needs its times given.
+        if (now - startedUtc >= TimeSpan.FromHours(24) && (body.StartTime is null || body.EndTime is null))
+            return Error(409, "TIMER_TOO_LONG");
+        var date = body.Date ?? DateOnly.FromDateTime(started.DateTime);
+        // A timer that crosses midnight becomes an overnight entry on its start day (end before start).
+        var start = body.StartTime ?? new TimeOnly(started.Hour, started.Minute);
+        var end = body.EndTime ?? new TimeOnly(ended.Hour, ended.Minute);
+        var taskName = body.TaskName ?? timer.TaskName;
+        var detail = body.Detail ?? timer.Detail;
+        var notes = body.Notes ?? timer.Notes;
+        var projectId = body.ProjectId ?? timer.ProjectId;
+        var categoryId = body.CategoryId ?? timer.CategoryId;
+        var personalTaskId = body.PersonalTaskId ?? timer.PersonalTaskId;
+        var includesBreak = body.IncludesBreak ?? timer.IncludesBreak;
+        if (!await CanMutate(actor, date, ct))
+            return MonthClosed([date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)]);
+        var (invalid, duration) = await CheckEntryAsync(actor, taskName, detail, notes, projectId, categoryId,
+            personalTaskId, start, end, includesBreak, ct);
+        if (invalid is not null) return invalid;
+        var entry = new TimeEntry
+        {
+            TenantId = actor.TenantId, OwnerId = actor.UserId, Date = date, StartTime = start, EndTime = end,
+            DurationMinutes = duration, TaskName = taskName!.Trim(), Detail = detail, Notes = notes, ProjectId = projectId,
+            CategoryId = categoryId, PersonalTaskId = personalTaskId, IncludesBreak = includesBreak,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+        db.TimeEntries.Add(entry);
+        db.RunningTimers.Remove(timer);
+        Audit(actor, "entry", entry.Id, "created", null, entry, body.Reason ?? "stopped timer");
+        Changed(actor, date);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Created(entry, $"/api/v1/entries/{entry.Id}");
+    }
+
+    /// <summary>Throws the member's timer away without an entry.</summary>
+    public async Task<ServiceResponse> DiscardTimer(Actor actor, CancellationToken ct)
+    {
+        var timer = await db.RunningTimers.SingleOrDefaultAsync(x => x.OwnerId == actor.UserId, ct);
+        if (timer is null) return Error(404, "NOT_FOUND");
+        var before = JsonSerializer.Serialize(timer);
+        db.RunningTimers.Remove(timer);
+        Audit(actor, "running_timer", timer.Id, "discarded", before, null);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    private Task<bool> TimerRunningAsync(Actor actor, CancellationToken ct) =>
+        db.RunningTimers.AsNoTracking().AnyAsync(x => x.OwnerId == actor.UserId, ct);
+
+    private DateTimeOffset Now() => (clock ?? TimeProvider.System).GetUtcNow();
+
+    private object TimerResult(RunningTimer? timer) => new
+    {
+        timer = timer is null ? null : new
+        {
+            timer.Id, StartedAtUtc = DateTime.SpecifyKind(timer.StartedAtUtc, DateTimeKind.Utc), timer.TaskName,
+            timer.Detail, timer.Notes, timer.ProjectId, timer.CategoryId, timer.PersonalTaskId, timer.IncludesBreak
+        },
+        nowUtc = Now().UtcDateTime
+    };
 
     public async Task<ServiceResponse> Leaves(Actor actor, int year, int month, CancellationToken ct)
     {

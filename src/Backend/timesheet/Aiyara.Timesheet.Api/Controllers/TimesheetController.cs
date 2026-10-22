@@ -271,6 +271,38 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> DeleteEntryTemplate(Guid id, CancellationToken ct) =>
         Execute(actor => operations.DeleteEntryTemplate(actor, id, ct));
 
+    /// <summary>The member's running timer (<c>timer</c> is null when none) and the server's time, <c>nowUtc</c>.</summary>
+    [HttpGet("timer", Name = "GetTimerV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    public Task<IActionResult> Timer(CancellationToken ct) => Execute(actor => operations.Timer(actor, ct));
+
+    /// <summary>Starts the member's timer now; <c>409 TIMER_RUNNING</c> when one already runs.</summary>
+    [HttpPost("timer/start", Name = "StartTimerV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> StartTimer([FromBody] StartTimerRequest? body, CancellationToken ct) =>
+        Execute(actor => operations.StartTimer(actor, body, ct));
+
+    /// <summary>Stops the timer into a time entry with the break left out. A refusal keeps the timer:
+    /// <c>409 MONTH_CLOSED</c>, <c>409 TIMER_TOO_LONG</c>, or an entry error (400).</summary>
+    [HttpPost("timer/stop", Name = "StopTimerV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<TimeEntry>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> StopTimer([FromBody] StopTimerRequest? body, CancellationToken ct) =>
+        Execute(actor => operations.StopTimer(actor, body, ct));
+
+    [HttpDelete("timer", Name = "DiscardTimerV1")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    public Task<IActionResult> DiscardTimer(CancellationToken ct) => Execute(actor => operations.DiscardTimer(actor, ct));
+
     [HttpGet("leave", Name = "GetLeaveEntriesV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<IReadOnlyList<LeaveEntry>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
