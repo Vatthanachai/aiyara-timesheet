@@ -145,7 +145,6 @@ public static class ReportDocumentRenderer
         var headers = showMember
             ? new[] { "Date", "Member", "Time", "Task / activity", "Notes" }
             : new[] { "Date", "Time", "Task / activity", "Notes" };
-        var descriptionChars = showMember ? 40d : 54d;
         double x = left;
         for (var i = 0; i < headers.Length; i++)
         {
@@ -160,9 +159,15 @@ public static class ReportDocumentRenderer
         {
             var description = string.Join(" · ", new[] { line.Task, line.Detail, line.Project, line.Category }
                 .Where(value => !string.IsNullOrWhiteSpace(value)));
-            var lines = Math.Max(1, (int)Math.Ceiling(Math.Max(description.Length / descriptionChars,
-                showMember ? line.Member.Length / 14d : 0)));
-            var height = Math.Max(18, lines * 11 + 6);
+            // A day's date only on its first row, and again at the top of a new page.
+            var day = line.Date != previousDate || y == 45 ? line.Date.Day.ToString(CultureInfo.InvariantCulture) : "";
+            var time = line.Start.Length > 0 ? $"{formats.Time(line.Start)} - {formats.Time(line.End)}" : "";
+            var values = showMember
+                ? new[] { day, line.Member, time, description, line.Notes }
+                : new[] { day, time, description, line.Notes };
+            // The PDF library neither wraps nor clips, so each cell is broken into lines by its measured width.
+            var cells = values.Select((value, i) => Wrap(gfx, value, body, widths[i] - 6)).ToArray();
+            var height = Math.Max(18, cells.Max(cell => cell.Count) * LineHeight + 6);
             if (y + height > 770)
             {
                 page = document.AddPage();
@@ -171,20 +176,15 @@ public static class ReportDocumentRenderer
                 y = 45;
             }
             x = left;
-            // A day's date only on its first row, and again at the top of a new page.
-            var day = line.Date != previousDate || y == 45 ? line.Date.Day.ToString(CultureInfo.InvariantCulture) : "";
             previousDate = line.Date;
-            var time = line.Start.Length > 0 ? $"{formats.Time(line.Start)} - {formats.Time(line.End)}" : "";
-            var values = showMember
-                ? new[] { day, line.Member, time, description, line.Notes }
-                : new[] { day, time, description, line.Notes };
             for (var i = 0; i < values.Length; i++)
             {
                 if (IsDayOff(line)) gfx.DrawRectangle(dayOff, x, y, widths[i], height);
                 else if ((line.Date.Day & 1) == 0) gfx.DrawRectangle(pale, x, y, widths[i], height);
                 gfx.DrawRectangle(XPens.LightGray, x, y, widths[i], height);
-                gfx.DrawString(values[i] ?? "", body, XBrushes.Black,
-                    new XRect(x + 3, y + 3, widths[i] - 6, height - 6), XStringFormats.TopLeft);
+                for (var row = 0; row < cells[i].Count; row++)
+                    gfx.DrawString(cells[i][row], body, XBrushes.Black,
+                        new XRect(x + 3, y + 3 + row * LineHeight, widths[i] - 6, LineHeight), XStringFormats.TopLeft);
                 x += widths[i];
             }
             y += height;
@@ -299,6 +299,46 @@ public static class ReportDocumentRenderer
     private static string Get(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? "" : "";
+
+    private const double LineHeight = 12;
+
+    /// <summary>Breaks text into lines no wider than the width: after a space or a dot between parts when there is one,
+    /// otherwise between characters, never between a Thai consonant and its vowel or tone marks, nor after a leading vowel.</summary>
+    private static List<string> Wrap(XGraphics gfx, string? text, XFont font, double width)
+    {
+        var lines = new List<string>();
+        foreach (var paragraph in (text ?? "").Replace("\r", "").Split('\n'))
+        {
+            var line = new List<string>();
+            var enumerator = StringInfo.GetTextElementEnumerator(paragraph);
+            while (enumerator.MoveNext())
+            {
+                var element = (string)enumerator.Current;
+                line.Add(element);
+                if (line.Count == 1 || gfx.MeasureString(string.Concat(line), font).Width <= width) continue;
+                line.RemoveAt(line.Count - 1);
+                var carried = new List<string> { element };
+                var space = line.FindLastIndex(x => x is " " or "·");
+                if (space > 0)
+                {
+                    carried.InsertRange(0, line.Skip(space + 1));
+                    line.RemoveRange(space + 1, line.Count - space - 1);
+                }
+                else if (line.Count > 1 && IsLeadingThaiVowel(line[^1]))
+                {
+                    carried.Insert(0, line[^1]);
+                    line.RemoveAt(line.Count - 1);
+                }
+                lines.Add(string.Concat(line).TrimEnd());
+                line = carried;
+                if (line[0] == " ") line.RemoveAt(0);
+            }
+            lines.Add(string.Concat(line));
+        }
+        return lines;
+    }
+
+    private static bool IsLeadingThaiVowel(string element) => element[0] is >= '\u0E40' and <= '\u0E44';
 
     private static readonly object FontGate = new();
     private static bool _fontConfigured;

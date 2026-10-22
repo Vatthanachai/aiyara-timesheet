@@ -288,6 +288,16 @@ public sealed class ReportFoundationTests
         Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
     }
 
+    [Fact]
+    public void Pdf_renderer_wraps_long_unspaced_text_over_several_pages()
+    {
+        var lines = Enumerable.Range(1, 60).Select(day => new ReportLine(new DateOnly(2026, 10, 1 + day % 28), "08:30", "12:00", 210,
+            string.Concat(Enumerable.Repeat("ศึกษาโครงสร้างและรูปแบบการเขียนโค้ด", 6)), new string('x', 400), string.Concat(Enumerable.Repeat("หมายเหตุยาวมาก", 20)),
+            "โครงการ", "หมวดหมู่", "work")).ToArray();
+        var pdf = ReportDocumentRenderer.RenderPdf(new ReportDocumentData("พนักงาน", "ทีม", "ตุลาคม", lines, 0));
+        Assert.StartsWith("%PDF-", System.Text.Encoding.ASCII.GetString(pdf, 0, 5));
+    }
+
     [Theory]
     [InlineData("Sarabun-Regular.ttf")]
     [InlineData("Sarabun-Bold.ttf")]
