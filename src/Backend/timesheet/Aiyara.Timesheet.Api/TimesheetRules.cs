@@ -37,4 +37,10 @@ public static class TimesheetRules
         var local = TimeZoneInfo.ConvertTime(now, zone);
         return date.Year == local.Year && date.Month == local.Month;
     }
+
+    public static bool IsFutureMonth(int year, int month, string timeZoneId, DateTimeOffset now)
+    {
+        var local = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
+        return year * 12 + month > local.Year * 12 + local.Month;
+    }
 }

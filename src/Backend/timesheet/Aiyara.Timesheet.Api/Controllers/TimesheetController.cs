@@ -209,6 +209,43 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> Snapshot(int year, int month, [FromQuery] Guid? ownerId, CancellationToken ct) =>
         Execute(actor => operations.Snapshot(actor, year, month, ownerId, ct));
 
+    /// <summary>The signed-in member's month: approval status, return reason, lock, and whether it can be edited.</summary>
+    [HttpGet("me/months/{year:int}/{month:int}", Name = "GetMyTimesheetMonthV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    public Task<IActionResult> MyMonth(int year, int month, CancellationToken ct) =>
+        Execute(actor => operations.MyMonth(actor, year, month, ct));
+
+    /// <summary>Submits the signed-in member's open or returned month for approval.</summary>
+    [HttpPost("me/months/{year:int}/{month:int}/submit", Name = "SubmitTimesheetMonthV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<MonthApproval>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> SubmitMonth(int year, int month, CancellationToken ct) =>
+        Execute(actor => operations.SubmitMonth(actor, year, month, ct));
+
+    /// <summary>Tenant Admin only: approves a member's submitted month and takes its snapshot.</summary>
+    [HttpPost("members/{ownerId:guid}/months/{year:int}/{month:int}/approve", Name = "ApproveTimesheetMonthV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<MonthApproval>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> ApproveMonth(Guid ownerId, int year, int month, CancellationToken ct) =>
+        Execute(actor => operations.ApproveMonth(actor, ownerId, year, month, ct));
+
+    /// <summary>Tenant Admin only: returns a member's submitted month with a reason and emails them.</summary>
+    [HttpPost("members/{ownerId:guid}/months/{year:int}/{month:int}/return", Name = "ReturnTimesheetMonthV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<MonthApproval>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<IActionResult> ReturnMonth(Guid ownerId, int year, int month, [FromBody] ReturnRequest body,
+        CancellationToken ct) => Execute(actor => operations.ReturnMonth(actor, ownerId, year, month, body, ct));
+
     /// <summary>Tenant Admin only: hours, entry count, and leave days per member for a month.</summary>
     [HttpGet("members/summary", Name = "GetMemberTimesheetSummaryV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]

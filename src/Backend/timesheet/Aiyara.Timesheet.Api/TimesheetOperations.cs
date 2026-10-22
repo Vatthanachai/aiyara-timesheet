@@ -8,7 +8,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Aiyara.Timesheet.Api;
 
-public sealed class TimesheetOperations(TimesheetDbContext db)
+/// <param name="notifier">Emails a member whose month was returned; none in tests that do not need it.</param>
+public sealed class TimesheetOperations(TimesheetDbContext db, IMonthReturnNotifier? notifier = null)
 {
     public async Task<ServiceResponse> Context(Actor actor, CancellationToken ct)
     {
@@ -316,35 +317,13 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         if (await db.MonthLocks.AnyAsync(x => x.Year == year && x.Month == month, ct))
             return Error(409, "MONTH_CLOSED");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-        var entries = await db.TimeEntries.AsNoTracking().Where(x => !x.IsDeleted &&
-            x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
-        var leaves = await db.LeaveEntries.AsNoTracking().Where(x => !x.IsDeleted &&
-            x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
-        var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
-            x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
-        var (workingDays, workHours) = await ScheduleAsync(ct);
-        var projects = await db.Projects.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
-        var categories = await db.Categories.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
-        var entrySnapshots = entries.Select(entry => new
-        {
-            entry.Id, entry.TenantId, entry.OwnerId, entry.Date, entry.StartTime,
-            entry.EndTime, entry.DurationMinutes, entry.TaskName, entry.Detail,
-            entry.Notes, entry.ProjectId,
-            ProjectName = entry.ProjectId is { } projectId && projects.TryGetValue(projectId, out var projectName)
-                ? projectName : "",
-            entry.CategoryId,
-            CategoryName = entry.CategoryId is { } categoryId && categories.TryGetValue(categoryId, out var categoryName)
-                ? categoryName : "",
-            entry.PersonalTaskId, entry.IncludesBreak, entry.IsDeleted, entry.UpdatedAtUtc
-        }).ToArray();
-        db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId,
-            OwnerId = Guid.Empty, Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
-            PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots, leaves, holidays, workingDays, workHours }) });
-        foreach (var ownerId in entries.Select(x => x.OwnerId).Concat(leaves.Select(x => x.OwnerId)).Distinct())
-            db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId, OwnerId = ownerId,
-                Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow,
-                PayloadJson = JsonSerializer.Serialize(new { entries = entrySnapshots.Where(x => x.OwnerId == ownerId),
-                    leaves = leaves.Where(x => x.OwnerId == ownerId), holidays, workingDays, workHours }) });
+        // Members whose month was approved keep the snapshot taken then.
+        var taken = await db.MonthSnapshots.AsNoTracking().Where(x => x.Year == year && x.Month == month)
+            .Select(x => x.OwnerId).ToListAsync(ct);
+        foreach (var (ownerId, payload) in await SnapshotPayloadsAsync(year, month, null, ct))
+            if (!taken.Contains(ownerId))
+                db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId, OwnerId = ownerId,
+                    Year = year, Month = month, CreatedAtUtc = DateTime.UtcNow, PayloadJson = payload });
         var monthLock = new MonthLock { TenantId = actor.TenantId, Year = year, Month = month,
             LockedBy = actor.UserId, LockedAtUtc = DateTime.UtcNow };
         db.MonthLocks.Add(monthLock);
@@ -355,6 +334,86 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Ok(monthLock);
+    }
+
+    /// <summary>The signed-in member's month: its approval status, why it was returned, whether the
+    /// organization has locked it, and whether the member may still change it.</summary>
+    public async Task<ServiceResponse> MyMonth(Actor actor, int year, int month, CancellationToken ct)
+    {
+        if (!ValidMonth(year, month)) return Error(400, "INVALID_DATE");
+        var locked = await IsLocked(year, month, ct);
+        var approval = await FindApproval(actor.UserId, year, month, ct);
+        return Ok(new { year, month, locked, status = StatusOf(approval), returnReason = approval?.ReturnReason,
+            editable = Editable(actor, year, month, locked, approval) });
+    }
+
+    /// <summary>A member submits their own open or returned month, the current one or a past one, for approval.</summary>
+    public async Task<ServiceResponse> SubmitMonth(Actor actor, int year, int month, CancellationToken ct)
+    {
+        if (!ValidMonth(year, month) ||
+            TimesheetRules.IsFutureMonth(year, month, actor.TimeZoneId, DateTimeOffset.UtcNow))
+            return Error(400, "INVALID_DATE");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        if (await IsLocked(year, month, ct)) return Error(409, "MONTH_CLOSED");
+        var approval = await FindApproval(actor.UserId, year, month, ct);
+        if (approval is not null && approval.Status != MonthApproval.Returned) return Error(409, "INVALID_TRANSITION");
+        var before = approval is null ? null : JsonSerializer.Serialize(approval);
+        if (approval is null)
+        {
+            approval = new MonthApproval { TenantId = actor.TenantId, OwnerId = actor.UserId, Year = year,
+                Month = month, Status = MonthApproval.Submitted };
+            db.MonthApprovals.Add(approval);
+        }
+        approval.Status = MonthApproval.Submitted; approval.SubmittedAtUtc = DateTime.UtcNow;
+        approval.DecidedBy = null; approval.DecidedAtUtc = null; approval.ReturnReason = null;
+        Audit(actor, "month_approval", approval.Id, "submitted", before, approval);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Ok(approval);
+    }
+
+    /// <summary>Tenant Admin only: approves a submitted month and takes the member's snapshot of it.</summary>
+    public async Task<ServiceResponse> ApproveMonth(Actor actor, Guid ownerId, int year, int month, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        if (!ValidMonth(year, month)) return Error(400, "INVALID_DATE");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        if (await IsLocked(year, month, ct)) return Error(409, "MONTH_CLOSED");
+        var approval = await FindApproval(ownerId, year, month, ct);
+        if (approval?.Status != MonthApproval.Submitted) return Error(409, "INVALID_TRANSITION");
+        var before = JsonSerializer.Serialize(approval);
+        var payloads = await SnapshotPayloadsAsync(year, month, ownerId, ct);
+        db.MonthSnapshots.Add(new MonthSnapshot { TenantId = actor.TenantId, OwnerId = ownerId, Year = year,
+            Month = month, CreatedAtUtc = DateTime.UtcNow, PayloadJson = payloads[ownerId] });
+        approval.Status = MonthApproval.Approved; approval.DecidedBy = actor.UserId; approval.DecidedAtUtc = DateTime.UtcNow;
+        Audit(actor, "month_approval", approval.Id, "approved", before, approval, subject: ownerId);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Ok(approval);
+    }
+
+    /// <summary>Tenant Admin only: returns a submitted month to its member with a reason, opening it
+    /// for edits again, and emails the member.</summary>
+    public async Task<ServiceResponse> ReturnMonth(Actor actor, Guid ownerId, int year, int month,
+        ReturnRequest body, CancellationToken ct)
+    {
+        if (!actor.IsAdmin) return Error(403, "FORBIDDEN");
+        if (!ValidMonth(year, month)) return Error(400, "INVALID_DATE");
+        var reason = body.Reason?.Trim();
+        if (string.IsNullOrEmpty(reason) || reason.Length > 1000) return Error(400, "VALIDATION_FAILED");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        if (await IsLocked(year, month, ct)) return Error(409, "MONTH_CLOSED");
+        var approval = await FindApproval(ownerId, year, month, ct);
+        if (approval?.Status != MonthApproval.Submitted) return Error(409, "INVALID_TRANSITION");
+        var before = JsonSerializer.Serialize(approval);
+        approval.Status = MonthApproval.Returned; approval.DecidedBy = actor.UserId;
+        approval.DecidedAtUtc = DateTime.UtcNow; approval.ReturnReason = reason;
+        Audit(actor, "month_approval", approval.Id, "returned", before, approval, reason, ownerId);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        // Best effort once the return is saved; the reason is also on the member's Timesheet page.
+        if (notifier is not null) await notifier.MonthReturnedAsync(actor.TenantId, ownerId, year, month, reason, ct);
+        return Ok(approval);
     }
 
     public async Task<ServiceResponse> Snapshot(Actor actor, int year, int month,
@@ -383,12 +442,15 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             .GroupBy(x => x.OwnerId)
             .Select(x => new { OwnerId = x.Key, LeaveDays = x.Count() })
             .ToListAsync(ct);
-        var members = entries.Select(x => x.OwnerId).Union(leaves.Select(x => x.OwnerId))
+        var statuses = await db.MonthApprovals.AsNoTracking().Where(x => x.Year == year && x.Month == month)
+            .ToDictionaryAsync(x => x.OwnerId, x => x.Status, ct);
+        var members = entries.Select(x => x.OwnerId).Union(leaves.Select(x => x.OwnerId)).Union(statuses.Keys)
             .Select(ownerId =>
             {
                 var worked = entries.SingleOrDefault(x => x.OwnerId == ownerId);
                 return new MemberMonthSummary(ownerId, worked?.EntryCount ?? 0, worked?.TotalMinutes ?? 0,
-                    leaves.SingleOrDefault(x => x.OwnerId == ownerId)?.LeaveDays ?? 0);
+                    leaves.SingleOrDefault(x => x.OwnerId == ownerId)?.LeaveDays ?? 0,
+                    statuses.GetValueOrDefault(ownerId, Open));
             })
             .OrderByDescending(x => x.TotalMinutes).ToArray();
         return Ok(new { year, month, locked = await IsLocked(year, month, ct), members });
@@ -430,8 +492,10 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
                 x.Date.Year == year && x.Date.Month == month)
             .OrderBy(x => x.Date).Select(x => new { x.Date, x.Name }).ToListAsync(ct);
         var (workingDays, workHours) = await ScheduleAsync(ct);
-        return Ok(new { ownerId, year, month, locked = await IsLocked(year, month, ct), entries, leaves, holidays,
-            workingDays, workHours });
+        var approval = await db.MonthApprovals.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.OwnerId == ownerId && x.Year == year && x.Month == month, ct);
+        return Ok(new { ownerId, year, month, locked = await IsLocked(year, month, ct), status = StatusOf(approval),
+            returnReason = approval?.ReturnReason, entries, leaves, holidays, workingDays, workHours });
     }
 
     /// <summary>The working weekdays and hours; an organization without a work week gets the defaults.</summary>
@@ -460,8 +524,59 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
             : await db.Categories.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct);
 
     private async Task<bool> CanMutate(Actor actor, DateOnly date, CancellationToken ct) =>
-        TimesheetRules.IsCurrentMonth(date, actor.TimeZoneId, DateTimeOffset.UtcNow) &&
-        !await db.MonthLocks.AnyAsync(x => x.Year == date.Year && x.Month == date.Month, ct);
+        Editable(actor, date.Year, date.Month, await IsLocked(date.Year, date.Month, ct),
+            await FindApproval(actor.UserId, date.Year, date.Month, ct));
+
+    /// <summary>A member changes their current month, or a month returned to them, until it is
+    /// submitted, approved, or locked.</summary>
+    private static bool Editable(Actor actor, int year, int month, bool locked, MonthApproval? approval) =>
+        !locked && (approval is null
+            ? TimesheetRules.IsCurrentMonth(new DateOnly(year, month, 1), actor.TimeZoneId, DateTimeOffset.UtcNow)
+            : approval.Status == MonthApproval.Returned);
+
+    private Task<MonthApproval?> FindApproval(Guid ownerId, int year, int month, CancellationToken ct) =>
+        db.MonthApprovals.SingleOrDefaultAsync(x => x.OwnerId == ownerId && x.Year == year && x.Month == month, ct);
+
+    private const string Open = "open";
+    private static string StatusOf(MonthApproval? approval) => approval?.Status ?? Open;
+
+    /// <summary>Month snapshot payloads: the organization's (<see cref="Guid.Empty"/>) and one for each
+    /// member with entries or leave, or, given a member, that member's alone.</summary>
+    private async Task<Dictionary<Guid, string>> SnapshotPayloadsAsync(int year, int month, Guid? ownerId,
+        CancellationToken ct)
+    {
+        var entries = await db.TimeEntries.AsNoTracking().Where(x => !x.IsDeleted &&
+            x.Date.Year == year && x.Date.Month == month && (ownerId == null || x.OwnerId == ownerId)).ToListAsync(ct);
+        var leaves = await db.LeaveEntries.AsNoTracking().Where(x => !x.IsDeleted &&
+            x.Date.Year == year && x.Date.Month == month && (ownerId == null || x.OwnerId == ownerId)).ToListAsync(ct);
+        var holidays = await db.Holidays.AsNoTracking().Where(x => !x.IsDeleted &&
+            x.Date.Year == year && x.Date.Month == month).ToListAsync(ct);
+        var (workingDays, workHours) = await ScheduleAsync(ct);
+        var projects = await db.Projects.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        var categories = await db.Categories.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        var entrySnapshots = entries.Select(entry => new
+        {
+            entry.Id, entry.TenantId, entry.OwnerId, entry.Date, entry.StartTime,
+            entry.EndTime, entry.DurationMinutes, entry.TaskName, entry.Detail,
+            entry.Notes, entry.ProjectId,
+            ProjectName = entry.ProjectId is { } projectId && projects.TryGetValue(projectId, out var projectName)
+                ? projectName : "",
+            entry.CategoryId,
+            CategoryName = entry.CategoryId is { } categoryId && categories.TryGetValue(categoryId, out var categoryName)
+                ? categoryName : "",
+            entry.PersonalTaskId, entry.IncludesBreak, entry.IsDeleted, entry.UpdatedAtUtc
+        }).ToArray();
+        string Payload(Guid? owner) => JsonSerializer.Serialize(new
+        {
+            entries = entrySnapshots.Where(x => owner is null || x.OwnerId == owner),
+            leaves = leaves.Where(x => owner is null || x.OwnerId == owner), holidays, workingDays, workHours
+        });
+        if (ownerId is { } member) return new Dictionary<Guid, string> { [member] = Payload(member) };
+        var payloads = new Dictionary<Guid, string> { [Guid.Empty] = Payload(null) };
+        foreach (var owner in entries.Select(x => x.OwnerId).Concat(leaves.Select(x => x.OwnerId)).Distinct())
+            payloads[owner] = Payload(owner);
+        return payloads;
+    }
 
     private async Task<bool> ValidReferences(Guid? projectId, Guid? categoryId, CancellationToken ct) =>
         (projectId is null || await db.Projects.AnyAsync(x => x.Id == projectId && !x.IsDeleted, ct)) &&
@@ -475,10 +590,11 @@ public sealed class TimesheetOperations(TimesheetDbContext db)
     private static bool ValidMonth(int year, int month) => year is >= 2000 and <= 2100 &&
         month is >= 1 and <= 12;
 
+    /// <param name="subject">The member the change is about, when it is not the actor.</param>
     private void Audit(Actor actor, string entityType, Guid entityId, string action,
-        string? before, object? after, string? reason = null) =>
+        string? before, object? after, string? reason = null, Guid? subject = null) =>
         db.Audits.Add(new TimesheetAudit { TenantId = actor.TenantId, ActorId = actor.UserId,
-            SubjectId = actor.UserId, EntityType = entityType, EntityId = entityId, Action = action,
+            SubjectId = subject ?? actor.UserId, EntityType = entityType, EntityId = entityId, Action = action,
             BeforeJson = before, AfterJson = after is null ? null : JsonSerializer.Serialize(after, after.GetType()),
             Reason = reason, OccurredAtUtc = DateTime.UtcNow });
 

@@ -106,6 +106,9 @@ notificationApi
     .WithEnvironment("Smtp__UseTls", "false")
     .WithEnvironment("Smtp__From", "no-reply@aiyara.local");
 identityApi.WithEnvironment("Notification__BaseUrl", notificationApi.GetEndpoint("https"));
+timesheetApi
+    .WithEnvironment("Notifications__BaseUrl", notificationApi.GetEndpoint("https"))
+    .WithEnvironment("Notifications__InternalKey", notificationInternalKey);
 
 var reportWorker = builder.AddProject<Projects.Aiyara_Report_Worker>("aiyara-report-worker")
     .WithReference(composeRabbitMq)

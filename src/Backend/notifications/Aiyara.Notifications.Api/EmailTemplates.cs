@@ -87,6 +87,31 @@ internal static class EmailTemplates
         return Create(subject, text, body);
     }
 
+    public static EmailContent MonthReturned(string memberName, string period, string reason, Uri timesheetUri)
+    {
+        var greeting = memberName.Length > 0 ? $"Hello {memberName}," : "Hello,";
+        var safeGreeting = WebUtility.HtmlEncode(greeting);
+        var safePeriod = WebUtility.HtmlEncode(period);
+        // The reason is the admin's own text: encoded, with its line breaks kept.
+        var safeReason = WebUtility.HtmlEncode(reason).ReplaceLineEndings("<br>");
+        var safeUrl = WebUtility.HtmlEncode(timesheetUri.AbsoluteUri);
+        var subject = $"Your timesheet for {period} was returned";
+        var text = $"{greeting}\n\nYour timesheet for {period} was returned for changes.\n\nReason:\n{reason}\n\n" +
+            $"Update it and submit it again: {timesheetUri.AbsoluteUri}\n\n{Brand}";
+        var body = $"""
+            <p style="margin:0 0 18px;color:{Muted};font-size:16px;line-height:1.7">{safeGreeting}</p>
+            <p style="margin:0 0 18px;color:{Muted};font-size:16px;line-height:1.7">Your timesheet for <strong style="color:{Ink}">{safePeriod}</strong> was returned for changes.</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6fb;border:1px solid #dce5f1;border-radius:10px">
+              <tr><td style="padding:14px 16px 4px;color:{Muted};font-size:13px">Reason</td></tr>
+              <tr><td style="padding:0 16px 16px;color:{Ink};font-size:15px;line-height:1.6">{safeReason}</td></tr>
+            </table>
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:22px"><tr><td style="background:{BrandColor};border-radius:8px">
+              <a href="{safeUrl}" style="display:inline-block;padding:12px 20px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none">Open my timesheet</a>
+            </td></tr></table>
+            """;
+        return Create(subject, text, body);
+    }
+
     private static EmailContent Create(string title, string text, string body)
     {
         var safeTitle = WebUtility.HtmlEncode(title);

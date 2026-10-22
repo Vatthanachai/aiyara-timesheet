@@ -88,6 +88,22 @@ public sealed class MonthLock : TenantRecord
     public DateTime LockedAtUtc { get; set; }
 }
 
+/// <summary>A member's month in the approval flow. A month without a row is open.</summary>
+public sealed class MonthApproval : TenantRecord
+{
+    public const string Submitted = "submitted";
+    public const string Approved = "approved";
+    public const string Returned = "returned";
+    public Guid OwnerId { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public required string Status { get; set; }
+    public DateTime SubmittedAtUtc { get; set; }
+    public Guid? DecidedBy { get; set; }
+    public DateTime? DecidedAtUtc { get; set; }
+    public string? ReturnReason { get; set; }
+}
+
 public sealed class TimesheetAudit : TenantRecord
 {
     public Guid ActorId { get; set; }

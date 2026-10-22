@@ -18,7 +18,10 @@ public sealed record EntryRequest(DateOnly Date, TimeOnly StartTime, TimeOnly En
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,
     Guid? PersonalTaskId, string? Reason, bool IncludesBreak = false);
 public sealed record LeaveRequest(DateOnly Date, string Kind, string? Notes);
-public sealed record MemberMonthSummary(Guid OwnerId, int EntryCount, int TotalMinutes, int LeaveDays);
+/// <summary>Why a Tenant Admin returns a submitted month to its member (1–1000 characters).</summary>
+public sealed record ReturnRequest(string? Reason);
+/// <param name="Status">The member's approval status for the month: open, submitted, approved, or returned.</param>
+public sealed record MemberMonthSummary(Guid OwnerId, int EntryCount, int TotalMinutes, int LeaveDays, string Status);
 
 public sealed record Actor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {

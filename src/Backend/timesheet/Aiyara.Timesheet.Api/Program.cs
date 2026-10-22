@@ -18,6 +18,12 @@ builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
     builder.Configuration["IdentityGrpc:Url"] ?? "http://localhost:8082"));
 builder.Services.AddSingleton(provider => new IdentityValidationService.IdentityValidationServiceClient(
     provider.GetRequiredService<GrpcChannel>()));
+builder.Services.AddHttpClient("notifications", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Notifications:BaseUrl"] ?? "http://localhost:8080");
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddScoped<IMonthReturnNotifier, MonthReturnNotifier>();
 builder.Services.AddHostedService<TimesheetOutboxPublisher>();
 builder.Services.AddDbContext<TimesheetDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("TimesheetDb")

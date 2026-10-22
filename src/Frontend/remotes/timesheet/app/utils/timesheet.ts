@@ -12,6 +12,9 @@ export type Catalog = { projects: CatalogItem[]; categories: CatalogItem[]; holi
 /** When the organization's working day starts and ends, and its break (null for none), as HH:mm. */
 export type WorkHours = { startTime: string; endTime: string; breakStart?: string | null; breakEnd?: string | null }
 export const defaultWorkHours: WorkHours = { startTime: '09:00', endTime: '17:00' }
+/** A member's month in the approval flow, as `GET /me/months/{year}/{month}` returns it. */
+export type ApprovalStatus = 'open' | 'submitted' | 'approved' | 'returned'
+export type MonthState = { locked: boolean; status: ApprovalStatus; returnReason: string | null; editable: boolean }
 
 const minutesOf = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
 const overlap = (from: number, to: number, breakFrom: number, breakTo: number) =>
@@ -88,7 +91,12 @@ export function useTimesheetText(locale: Ref<Locale>) {
     hoursUnit: 'ชม.', monthTotals: 'บันทึกแล้ว {hours} ชม. ใน {days} วัน', monthTotalsOneDay: 'บันทึกแล้ว {hours} ชม. ใน 1 วัน', monthLeave: ' ลา {count} วัน', monthLeaveOne: ' ลา 1 วัน', monthEmpty: 'เดือนนี้ยังไม่มีเวลาที่บันทึก',
     editEntry: 'แก้ไขรายการ', saveChanges: 'บันทึกการแก้ไข', entriesIn: 'รายการทั้งหมดใน{month}',
     dayEmpty: 'ยังไม่มีรายการในวันนี้', dayEmptyReadOnly: 'ไม่มีรายการในวันนี้', dayOff: 'วันหยุดประจำสัปดาห์',
-    overtime: 'เกินเวลาทำงานปกติ', weekdays: 'จ.,อ.,พ.,พฤ.,ศ.,ส.,อา.'
+    overtime: 'เกินเวลาทำงานปกติ', weekdays: 'จ.,อ.,พ.,พฤ.,ศ.,ส.,อา.',
+    statusOpen: 'ยังไม่ส่ง', statusSubmitted: 'รออนุมัติ', statusApproved: 'อนุมัติแล้ว', statusReturned: 'ถูกส่งกลับ', statusLocked: 'ปิดรอบแล้ว',
+    submitMonth: 'ส่งให้อนุมัติ', resubmitMonth: 'ส่งอีกครั้ง', returnReason: 'เหตุผล',
+    submitHint: 'เมื่อบันทึกเดือนนี้ครบแล้ว ส่งให้ผู้ดูแลอนุมัติ', submittedHint: 'ส่งแล้ว ระหว่างรออนุมัติจะแก้ไขเดือนนี้ไม่ได้',
+    approvedHint: 'เดือนนี้อนุมัติแล้วและแก้ไขไม่ได้อีก', returnedHint: 'ผู้ดูแลส่งกลับให้แก้ไข แก้ไขแล้วส่งอีกครั้ง', lockedHint: 'เดือนนี้ปิดรอบแล้ว',
+    confirmSubmit: 'ส่ง{month}ให้อนุมัติ? ระหว่างรออนุมัติจะแก้ไขไม่ได้', submittedNotice: 'ส่งให้อนุมัติแล้ว'
   }, en: {
     hoursLogged: 'Hours logged', daysTracked: 'Days with entries', leaveDays: 'Leave days',
     previousMonth: 'Previous month', nextMonth: 'Next month', selectedDate: 'Selected date',
@@ -101,7 +109,12 @@ export function useTimesheetText(locale: Ref<Locale>) {
     hoursUnit: 'h', monthTotals: '{hours} h logged over {days} days', monthTotalsOneDay: '{hours} h logged on 1 day', monthLeave: ', {count} days of leave', monthLeaveOne: ', 1 day of leave', monthEmpty: 'No time logged this month yet',
     editEntry: 'Edit entry', saveChanges: 'Save changes', entriesIn: 'Entries in {month}',
     dayEmpty: 'Nothing logged on this day yet', dayEmptyReadOnly: 'Nothing logged on this day', dayOff: 'Day off',
-    overtime: 'Over the normal working day', weekdays: 'Mon,Tue,Wed,Thu,Fri,Sat,Sun'
+    overtime: 'Over the normal working day', weekdays: 'Mon,Tue,Wed,Thu,Fri,Sat,Sun',
+    statusOpen: 'Not submitted', statusSubmitted: 'Submitted', statusApproved: 'Approved', statusReturned: 'Returned', statusLocked: 'Closed',
+    submitMonth: 'Submit for approval', resubmitMonth: 'Submit again', returnReason: 'Reason',
+    submitHint: 'When the month is complete, submit it for your admin to approve.', submittedHint: 'Waiting for approval. The month cannot be changed meanwhile.',
+    approvedHint: 'This month is approved and can no longer be changed.', returnedHint: 'Your admin returned this month for changes. Update it, then submit it again.', lockedHint: 'This month is closed.',
+    confirmSubmit: 'Submit {month} for approval? It cannot be changed while it waits.', submittedNotice: 'Submitted for approval'
   } })
   return { text, labels }
 }
