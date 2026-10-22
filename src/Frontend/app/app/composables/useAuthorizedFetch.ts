@@ -2,9 +2,10 @@
 export function useAuthorizedFetch() {
   const { token, renew } = useSession()
 
-  return async function authorizedFetch<T>(url: string, asBlob = false): Promise<T> {
+  return async function authorizedFetch<T>(url: string, asBlob = false, options: { method?: string; body?: object } = {}): Promise<T> {
     const send = () => $fetch<T>(url, {
       headers: { Authorization: `Bearer ${token.value}` },
+      ...options,
       ...(asBlob ? { responseType: 'blob' as const } : {})
     })
     try { return await send() }

@@ -289,3 +289,4 @@ tr.editing td { background: var(--color-brand-soft); }
   .simple-list li { flex-wrap: wrap; }
   .day-button { min-height: 3.2rem; padding: .25rem; }
 }
+.timer-section { margin-bottom: 1rem; }

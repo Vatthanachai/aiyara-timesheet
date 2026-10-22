@@ -8,7 +8,8 @@
 2. [[#2. Leave types and balances|Leave types and balances]] — `feature/leave-types-balance` (done)
 3. [[#3. Missing-entry reminders|Missing-entry reminders]] — `feature/missing-entry-reminders` (done)
 4. [[#4. Copy and bulk entry|Copy and bulk entry]] — `feature/copy-and-bulk-entry` (done)
-5. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+5. [[#5. Running timer|Running timer]] — `feature/running-timer` (done)
+6. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -57,6 +58,8 @@ Out of scope in [[Timesheet Page Plan]].
 - Saved templates for recurring work.
 
 ### 5. Running timer
+
+> Done 22 October 2026 on `feature/running-timer`: see [[Running Timer Plan]]. Still open: choosing a project, category, or personal task for the timer, pausing, and stopping a forgotten timer automatically.
 
 Out of scope in [[Timesheet Page Plan]] and [[Home Page Plan]].
 

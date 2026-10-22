@@ -116,6 +116,21 @@ public sealed class EntryTemplate : TenantRecord
     public static string Normalize(string name) => name.Trim().ToUpperInvariant();
 }
 
+/// <summary>A member's running timer, kept on the server so it survives a reload or another device. At
+/// most one per member; stopping it turns it into a <see cref="TimeEntry"/> and removes it.</summary>
+public sealed class RunningTimer : TenantRecord
+{
+    public Guid OwnerId { get; set; }
+    public DateTime StartedAtUtc { get; set; }
+    public string? TaskName { get; set; }
+    public string? Detail { get; set; }
+    public string? Notes { get; set; }
+    public Guid? ProjectId { get; set; }
+    public Guid? CategoryId { get; set; }
+    public Guid? PersonalTaskId { get; set; }
+    public bool IncludesBreak { get; set; }
+}
+
 public sealed class MonthLock : TenantRecord
 {
     public int Year { get; set; }

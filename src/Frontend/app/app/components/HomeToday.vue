@@ -4,10 +4,17 @@ import { useLocaleText } from '../../../shared/i18n'
 import { DEFAULT_FORMATS, formatDate, formatMonth, formatTime, type Formats } from '../../../shared/date-format'
 import { isoDate, type MyEntry, type MyWeek } from '../composables/useMyTimesheet'
 import DayRuler, { type RulerBand } from '../../../shared/components/DayRuler.vue'
+import TimerPanel from '../../../shared/components/TimerPanel.vue'
+import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
 
 const { locale } = useLocale()
 const { visibleNavigation } = useRemoteNavigation()
 const { loadWeek } = useMyTimesheet()
+const config = useRuntimeConfig()
+const authorizedFetch = useAuthorizedFetch()
+/** The Timesheet API's timer routes, with the session's token. */
+const timerApi = async <T,>(path: string, options: { method?: string; body?: object } = {}) =>
+  unwrapResponse(await authorizedFetch<ApiEnvelope<T>>(`${config.public.gatewayUrl}/api/v1/timesheets${path}`, false, options))
 const formats = useState<Formats>('organization-formats', () => DEFAULT_FORMATS)
 const profile = useState<{ firstName: string } | null>('profile-summary', () => null)
 const text = useLocaleText(locale, {
@@ -159,6 +166,10 @@ const links = computed(() => visibleNavigation.value.filter(item => item.id !== 
       <p>{{ text.loadFailed }}. {{ error }}</p>
       <button type="button" class="button" @click="load">{{ text.tryAgain }}</button>
     </div>
+
+    <TimerPanel class="today-timer" :api="timerApi" :locale="locale" :formats="formats" :today="todayIso"
+      :can-edit="!week?.monthLocked" :default-times="week ? { startTime: week.workHours.startTime.slice(0, 5), endTime: week.workHours.endTime.slice(0, 5) } : undefined"
+      @stopped="load" />
 
     <template v-if="week && hours">
       <DayRuler class="today-ruler" :work-start="hours.start" :work-end="hours.end" :break-start="hours.breakStart"

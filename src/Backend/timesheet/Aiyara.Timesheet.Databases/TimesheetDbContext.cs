@@ -14,6 +14,7 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
     public DbSet<LeaveEntry> LeaveEntries => Set<LeaveEntry>();
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
     public DbSet<EntryTemplate> EntryTemplates => Set<EntryTemplate>();
+    public DbSet<RunningTimer> RunningTimers => Set<RunningTimer>();
     public DbSet<MonthLock> MonthLocks => Set<MonthLock>();
     public DbSet<MonthApproval> MonthApprovals => Set<MonthApproval>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
@@ -63,6 +64,10 @@ public sealed class TimesheetDbContext(DbContextOptions<TimesheetDbContext> opti
         modelBuilder.Entity<EntryTemplate>().Property(x => x.Name).HasMaxLength(100);
         modelBuilder.Entity<EntryTemplate>().Property(x => x.NormalizedName).HasMaxLength(100);
         modelBuilder.Entity<EntryTemplate>().Property(x => x.TaskName).HasMaxLength(200);
+        Configure<RunningTimer>(modelBuilder, "running_timers");
+        // One running timer per member; the index decides between two starts at once.
+        modelBuilder.Entity<RunningTimer>().HasIndex(x => new { x.TenantId, x.OwnerId }).IsUnique();
+        modelBuilder.Entity<RunningTimer>().Property(x => x.TaskName).HasMaxLength(200);
         Configure<MonthLock>(modelBuilder, "month_locks");
         Configure<TimesheetAudit>(modelBuilder, "timesheet_audit");
         Configure<TimesheetOutboxEvent>(modelBuilder, "timesheet_outbox");

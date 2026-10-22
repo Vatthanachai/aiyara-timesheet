@@ -30,6 +30,15 @@ public sealed record SkippedDay(DateOnly Date, string Reason);
 /// <summary>A member's saved entry: its name (1–100 characters, unique for the member) and what it fills in.</summary>
 public sealed record EntryTemplateRequest(string Name, string TaskName, TimeOnly StartTime, TimeOnly EndTime,
     Guid? ProjectId, Guid? CategoryId, string? Detail, string? Notes, bool IncludesBreak = false);
+/// <summary>What a member fills in when starting a timer; all of it may be left out and given when stopping.</summary>
+public sealed record StartTimerRequest(string? TaskName = null, string? Detail = null, string? Notes = null,
+    Guid? ProjectId = null, Guid? CategoryId = null, Guid? PersonalTaskId = null, bool IncludesBreak = false);
+/// <summary>Stops the timer into an entry. A field left out keeps what the timer holds, or the clock: the
+/// entry's date and start time are the timer's start and its end time is now, in the organization's zone.
+/// Sending them places the entry elsewhere, for a timer left running past midnight or into a closed month.</summary>
+public sealed record StopTimerRequest(string? TaskName = null, string? Detail = null, string? Notes = null,
+    Guid? ProjectId = null, Guid? CategoryId = null, Guid? PersonalTaskId = null, bool? IncludesBreak = null,
+    DateOnly? Date = null, TimeOnly? StartTime = null, TimeOnly? EndTime = null, string? Reason = null);
 /// <summary>A day of leave: with the organization's leave types, <c>LeaveTypeId</c> names the type
 /// and <c>Kind</c> is ignored; without them <c>Kind</c> is free text. <c>Minutes</c> is a part of the
 /// day (at most the normal working day); leave it out for the whole day.</summary>

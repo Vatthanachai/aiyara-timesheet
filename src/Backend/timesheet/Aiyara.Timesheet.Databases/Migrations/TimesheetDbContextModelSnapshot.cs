@@ -452,6 +452,53 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     b.ToTable("reminder_settings", (string)null);
                 });
 
+            modelBuilder.Entity("Aiyara.Timesheet.Databases.RunningTimer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Detail")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IncludesBreak")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PersonalTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TaskName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "OwnerId")
+                        .IsUnique();
+
+                    b.ToTable("running_timers", (string)null);
+                });
+
             modelBuilder.Entity("Aiyara.Timesheet.Databases.TimeEntry", b =>
                 {
                     b.Property<Guid>("Id")

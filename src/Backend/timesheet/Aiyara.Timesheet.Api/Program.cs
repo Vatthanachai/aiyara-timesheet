@@ -12,6 +12,7 @@ builder.AddServiceDefaults();
 builder.AddTcpDependencyHealthCheck("Postgres", 5432);
 builder.AddTcpDependencyHealthCheck("Redis", 6379);
 builder.AddTcpDependencyHealthCheck("RabbitMQ", 5672);
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<TimesheetTenantScope>();
 builder.Services.AddScoped<TimesheetOperations>();
 builder.Services.AddSingleton(_ => GrpcChannel.ForAddress(
