@@ -320,6 +320,71 @@ namespace Aiyara.Timesheet.Databases.Migrations
                     b.ToTable("projects", (string)null);
                 });
 
+            modelBuilder.Entity("Aiyara.Timesheet.Databases.ReminderDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "OwnerId", "Kind", "Date")
+                        .IsUnique();
+
+                    b.ToTable("reminder_deliveries", (string)null);
+                });
+
+            modelBuilder.Entity("Aiyara.Timesheet.Databases.ReminderSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("DailyEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly?>("DailyRanOn")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("MonthEndEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly?>("MonthEndRanOn")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly>("SendAt")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("reminder_settings", (string)null);
+                });
+
             modelBuilder.Entity("Aiyara.Timesheet.Databases.TimeEntry", b =>
                 {
                     b.Property<Guid>("Id")

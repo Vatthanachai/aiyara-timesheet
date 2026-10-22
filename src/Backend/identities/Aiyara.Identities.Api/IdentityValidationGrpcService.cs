@@ -91,6 +91,31 @@ internal sealed class IdentityValidationGrpcService(
             MemberIds = { found.MemberIds.Select(x => x.ToString()) } };
     }
 
+    public override async Task<ListMembersResponse> ListMembers(ListMembersRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.TenantId, out var tenantId)) return new ListMembersResponse();
+        tenantScope.TenantId = tenantId;
+        var memberships = await db.Memberships.AsNoTracking()
+            .Where(x => x.Status == MembershipStatus.Active && x.Role != TenantRole.PlatformAdmin)
+            .Select(x => new { x.AccountId, x.Role, x.CreatedAtUtc }).ToListAsync(context.CancellationToken);
+        var ids = memberships.Select(x => x.AccountId).ToList();
+        var accounts = await db.Accounts.AsNoTracking().Where(x => ids.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, context.CancellationToken);
+        return new ListMembersResponse
+        {
+            Members =
+            {
+                memberships.Where(x => accounts.ContainsKey(x.AccountId)).Select(x => new TenantMember
+                {
+                    SubjectId = x.AccountId.ToString(), Email = accounts[x.AccountId].Email,
+                    FirstName = accounts[x.AccountId].FirstName, LastName = accounts[x.AccountId].LastName,
+                    Role = x.Role.ToString(),
+                    JoinedAtUtc = Timestamp.FromDateTime(DateTime.SpecifyKind(x.CreatedAtUtc, DateTimeKind.Utc))
+                })
+            }
+        };
+    }
+
     private static ValidateAccessTokenResponse Invalid(string reason) => new()
     {
         IsValid = false, FailureReason = reason

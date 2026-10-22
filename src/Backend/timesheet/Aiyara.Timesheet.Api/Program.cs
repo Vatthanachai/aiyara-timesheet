@@ -25,6 +25,10 @@ builder.Services.AddHttpClient("notifications", client =>
 });
 builder.Services.AddScoped<IMonthReturnNotifier, MonthReturnNotifier>();
 builder.Services.AddHostedService<TimesheetOutboxPublisher>();
+builder.Services.AddScoped<IReminderDirectory, GrpcReminderDirectory>();
+builder.Services.AddScoped<IReminderSender, ReminderEmailSender>();
+builder.Services.AddScoped<MissingEntryReminders>();
+builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddDbContext<TimesheetDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("TimesheetDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TimesheetDb is required.")));

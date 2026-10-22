@@ -51,6 +51,11 @@ function showWorkHours(value: WorkHours) {
   if (value.breakStart && value.breakEnd) Object.assign(breakTime, { start: value.breakStart, end: value.breakEnd })
 }
 const isSavingWorkWeek = ref(false)
+/** Emails about time not logged, sent at `sendAt` (HH:mm) in the organization's time zone. */
+const reminders = reactive({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
+// Loaded once, so a catalog reload does not discard unsaved reminder edits.
+let remindersLoaded = false
+const isSavingReminders = ref(false)
 const error = ref('')
 const notice = ref('')
 const isLoading = ref(false)
@@ -139,6 +144,10 @@ const copy = useLocaleText(locale, { th: {
   leaveTypes: 'ประเภทการลา', leaveTypeHint: 'สมาชิกเลือกประเภทเมื่อบันทึกวันลา และเห็นวันลาที่เหลือของปี เว้นจำนวนวันว่างไว้ถ้าไม่จำกัด',
   leaveTypeName: 'ชื่อประเภท', annualDays: 'วันต่อปี', unlimited: 'ไม่จำกัด', leaveTypeExists: 'มีประเภทการลาชื่อนี้อยู่แล้ว',
   noLeaveTypes: 'ยังไม่มีประเภทการลา สมาชิกเลือกได้จาก พักร้อน ลาป่วย หรืออื่น ๆ',
+  reminders: 'การแจ้งเตือน', reminderHint: 'ส่งอีเมลเตือนสมาชิกที่ยังไม่ได้ลงเวลา ตามเวลาที่ตั้งไว้ในเขตเวลาขององค์กร โดยข้ามวันหยุด วันที่ไม่ทำงาน และวันลา',
+  dailyReminder: 'เตือนรายวัน', dailyReminderHint: 'ทุกวันทำงาน ถึงสมาชิกที่ไม่ได้ลงเวลาหรือวันลาในวันทำงานก่อนหน้า',
+  monthEndReminder: 'เตือนสิ้นเดือน', monthEndReminderHint: 'วันทำงานสุดท้ายของเดือน ถึงสมาชิกที่ชั่วโมงยังไม่ครบตามที่ควรลงถึงเมื่อวาน',
+  sendAt: 'เวลาส่ง', saveReminders: 'บันทึกการแจ้งเตือน', remindersSaved: 'บันทึกการแจ้งเตือนแล้ว',
   saveWorkWeek: 'บันทึกวันและเวลาทำงาน', workWeekSaved: 'บันทึกวันและเวลาทำงานแล้ว', workWeekRequired: 'ต้องมีวันทำงานอย่างน้อยหนึ่งวัน'
 }, en: {
   title: 'Administration', subtitle: 'Manage projects, categories, holidays and access requirements in one place.', signIn: 'Please sign in through Aiyara Shell',
@@ -196,6 +205,10 @@ const copy = useLocaleText(locale, { th: {
   leaveTypes: 'Leave types', leaveTypeHint: 'Members choose a type when they record leave and see what is left of it this year. Leave the days empty for no limit.',
   leaveTypeName: 'Type name', annualDays: 'Days a year', unlimited: 'No limit', leaveTypeExists: 'A leave type with this name already exists.',
   noLeaveTypes: 'No leave types yet. Members choose from Annual, Sick, or Other.',
+  reminders: 'Reminders', reminderHint: 'Email members about time they have not logged, at this time in the organization\'s time zone. Holidays, days off, and leave are skipped.',
+  dailyReminder: 'Daily reminder', dailyReminderHint: 'Each working day, to members who logged no time or leave on the previous working day.',
+  monthEndReminder: 'Month-end reminder', monthEndReminderHint: 'On the last working day, to members whose month is short of the hours expected up to yesterday.',
+  sendAt: 'Send at', saveReminders: 'Save reminders', remindersSaved: 'Reminders saved.',
   saveWorkWeek: 'Save working days and hours', workWeekSaved: 'Working days and hours saved.', workWeekRequired: 'Keep at least one working day.'
 } })
 // ---- Tabs: one subject at a time, remembered for the session ----------------------------------
@@ -278,6 +291,7 @@ async function load() {
     catalog.value = await api<Catalog>('/catalog')
     workingDays.value = [...(catalog.value.workingDays ?? [1, 2, 3, 4, 5])]
     showWorkHours(catalog.value.workHours ?? { startTime: '09:00', endTime: '17:00' })
+    if (!remindersLoaded) { Object.assign(reminders, await api<typeof reminders>('/reminders')); remindersLoaded = true }
     if (tenantId.value) Object.assign(policy, await identityApi<typeof policy>(`/identity/tenants/${tenantId.value}/password-policy`))
     await Promise.all([loadMembers(), loadOrganization()])
   }
@@ -334,6 +348,17 @@ async function saveWorkWeek() {
     notice.value = copy.value.workWeekSaved
   } catch (cause) { error.value = safeError(cause, locale.value) }
   finally { isSavingWorkWeek.value = false }
+}
+async function saveReminders() {
+  isSavingReminders.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    Object.assign(reminders, await api<typeof reminders>('/reminders', { method: 'PUT',
+      body: { dailyEnabled: reminders.dailyEnabled, monthEndEnabled: reminders.monthEndEnabled, sendAt: `${reminders.sendAt}:00` } }))
+    notice.value = copy.value.remindersSaved
+  } catch (cause) { error.value = safeError(cause, locale.value) }
+  finally { isSavingReminders.value = false }
 }
 async function showOrganization(value: Organization) {
   organization.value = value
@@ -640,6 +665,14 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
             </div>
           </form>
         </section>
+        <section class="panel" aria-labelledby="reminders-heading">
+          <div class="panel-heading"><h2 id="reminders-heading">{{ copy.reminders }}</h2><p>{{ copy.reminderHint }}</p></div>
+          <form class="reminder-form" @submit.prevent="saveReminders">
+            <label class="check-card reminder-option"><input v-model="reminders.dailyEnabled" type="checkbox" /><span class="check-mark"></span><span><strong>{{ copy.dailyReminder }}</strong><small>{{ copy.dailyReminderHint }}</small></span></label>
+            <label class="check-card reminder-option"><input v-model="reminders.monthEndEnabled" type="checkbox" /><span class="check-mark"></span><span><strong>{{ copy.monthEndReminder }}</strong><small>{{ copy.monthEndReminderHint }}</small></span></label>
+            <div class="work-week-footer"><label class="reminder-time"><span>{{ copy.sendAt }}</span><TimeField v-model="reminders.sendAt" :label="copy.sendAt" :step="15" required /></label><button class="button button-primary" :disabled="isSavingReminders">{{ isSavingReminders ? copy.loading : copy.saveReminders }}</button></div>
+          </form>
+        </section>
         <section class="panel" aria-labelledby="holidays-heading">
           <div class="panel-heading"><h2 id="holidays-heading">{{ copy.holidays }}</h2><p>{{ copy.holidayHint }}</p></div>
           <form class="add-form holiday-form" @submit.prevent="add('holidays')"><label><span>{{ copy.date }}</span><DateField v-model="holidayDate" required :label="copy.date" :pick-label="copy.pickDate" /></label><label class="holiday-name"><span>{{ copy.holidayName }}</span><input v-model="holidayName" required maxlength="200" :placeholder="copy.holidayName" /></label><button class="button button-primary">{{ copy.add }}</button></form>
@@ -807,6 +840,12 @@ input:disabled+.check-mark{opacity:.55}
 .break-toggle{flex:0 1 auto}
 .work-week-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem;border-top:1px solid var(--color-border);padding-top:1rem}
 .workday-summary{margin:0;color:var(--color-ink)}
+.reminder-form{display:grid;gap:.6rem}
+.reminder-option{align-items:flex-start}
+.reminder-option>span:last-child{display:grid;gap:.15rem;min-width:0}
+.reminder-option strong{color:var(--color-ink);font-weight:600}
+.reminder-option small{color:var(--color-muted);font-size:.8rem;line-height:1.45}
+.reminder-time{display:grid;gap:.3rem}
 .holiday-form label{display:grid;gap:.3rem;min-width:9rem}
 .leave-type-form label{display:grid;gap:.3rem;min-width:8rem}
 .leave-type-form .leave-type-name{flex:1}

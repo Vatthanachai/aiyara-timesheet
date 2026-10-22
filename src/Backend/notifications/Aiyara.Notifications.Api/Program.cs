@@ -20,6 +20,7 @@ builder.Services.AddHostedService<NotificationDispatchWorker>();
 builder.Services.AddScoped<CredentialEmailDispatcher>();
 builder.Services.AddScoped<ReportReadyEmailDispatcher>();
 builder.Services.AddScoped<MonthReturnedEmailDispatcher>();
+builder.Services.AddScoped<ReminderEmailDispatcher>();
 
 var app = builder.Build();
 app.UseExceptionHandler();

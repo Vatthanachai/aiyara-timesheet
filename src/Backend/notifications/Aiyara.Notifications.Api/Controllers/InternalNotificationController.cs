@@ -8,8 +8,23 @@ public sealed class InternalNotificationController(
     CredentialEmailDispatcher credentials,
     ReportReadyEmailDispatcher reports,
     MonthReturnedEmailDispatcher returns,
+    ReminderEmailDispatcher reminders,
     IConfiguration configuration) : BaseController
 {
+    [HttpPost("timesheet-reminder")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> TimesheetReminder([FromBody] ReminderEmailRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!HasInternalKey()) return ReturnResponseWithHttpStatus(
+            new ServiceErrorResponse(401, "UNAUTHORIZED", "Authentication is required."));
+        return ReturnResponseWithHttpStatus(await reminders.SendAsync(request, cancellationToken)
+            ? new ServiceOkResponse<object?>(null, 202)
+            : new ServiceErrorResponse(503, "DELIVERY_UNAVAILABLE", "Delivery is unavailable."));
+    }
+
     [HttpPost("credential-email")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
