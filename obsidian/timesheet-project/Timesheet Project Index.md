@@ -20,7 +20,7 @@
 - [[Leave Types Plan]] — organization leave types, part-day leave, and yearly balances (phases A–B).
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
-- [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (draft, awaiting decisions).
+- [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (phases A–D, complete).
 - [[Reporting Workspace Plan]] — reporting remote gaps and the R1–R3 delivery plan.
 - [[Tenant Member Management Plan]] — how a Tenant Admin invites and manages members (phases A–C).
 - [[Working Days Plan]] — how a Tenant Admin sets the organization's working weekdays (phases A–B).
