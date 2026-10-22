@@ -17,11 +17,20 @@ public sealed record TaskRequest(string Name, string Status, Guid? ProjectId, Gu
 public sealed record EntryRequest(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,
     Guid? PersonalTaskId, string? Reason, bool IncludesBreak = false);
-public sealed record LeaveRequest(DateOnly Date, string Kind, string? Notes);
+/// <summary>A day of leave: with the organization's leave types, <c>LeaveTypeId</c> names the type
+/// and <c>Kind</c> is ignored; without them <c>Kind</c> is free text. <c>Minutes</c> is a part of the
+/// day (at most the normal working day); leave it out for the whole day.</summary>
+public sealed record LeaveRequest(DateOnly Date, string? Kind, string? Notes, Guid? LeaveTypeId = null, int? Minutes = null);
+/// <summary>A leave type and the days a member may take each calendar year (0–366 in half days); null is no limit.</summary>
+public sealed record LeaveTypeRequest(string Name, decimal? AnnualDays);
+/// <summary>One leave type's year: its entitlement, the days taken (part days against the normal
+/// working day), and what is left (null without a limit).</summary>
+public sealed record LeaveBalance(Guid LeaveTypeId, string Name, decimal? AnnualDays, decimal UsedDays, decimal? RemainingDays);
 /// <summary>Why a Tenant Admin returns a submitted month to its member (1–1000 characters).</summary>
 public sealed record ReturnRequest(string? Reason);
 /// <param name="Status">The member's approval status for the month: open, submitted, approved, or returned.</param>
-public sealed record MemberMonthSummary(Guid OwnerId, int EntryCount, int TotalMinutes, int LeaveDays, string Status);
+/// <param name="LeaveDays">Days of leave, part days counted against the normal working day.</param>
+public sealed record MemberMonthSummary(Guid OwnerId, int EntryCount, int TotalMinutes, decimal LeaveDays, string Status);
 
 public sealed record Actor(Guid TenantId, Guid UserId, string Role, string TimeZoneId)
 {

@@ -16,7 +16,7 @@ public sealed record ReportLine(DateOnly Date, string Start, string End, int Dur
 /// <summary><paramref name="StandardDayMinutes"/> is a normal working day (the working hours less the
 /// break); a day with more work than that counts as overtime.</summary>
 public sealed record ReportDocumentData(string EmployeeName, string Department, string Period,
-    IReadOnlyList<ReportLine> Lines, int LeaveDays, ReportFormats? Formats = null,
+    IReadOnlyList<ReportLine> Lines, decimal LeaveDays, ReportFormats? Formats = null,
     int StandardDayMinutes = ReportDocumentRenderer.DefaultStandardDayMinutes);
 
 /// <summary>The organization's date and time formats (Identity's <c>OrganizationFormats</c>):
@@ -136,7 +136,7 @@ public static class ReportDocumentRenderer
         var workedDays = workLines.Select(x => x.Date).Distinct().Count();
         var hours = workLines.Sum(x => x.DurationMinutes) / 60d;
         var overtimeDays = OvertimeDays(data);
-        gfx.DrawString($"Leave days: {data.LeaveDays}    Days off: {DaysOff(data)}    Worked days: {workedDays}    Work hours: {hours:0.##}    Overtime days: {overtimeDays}",
+        gfx.DrawString($"Leave days: {data.LeaveDays:0.##}    Days off: {DaysOff(data)}    Worked days: {workedDays}    Work hours: {hours:0.##}    Overtime days: {overtimeDays}",
             body, XBrushes.Black, left, 91);
         var y = 112d;
         var showMember = data.Lines.Any(x => x.Member.Length > 0);
@@ -226,7 +226,9 @@ public static class ReportDocumentRenderer
             foreach (var leave in leaves.EnumerateArray())
             {
                 var date = DateOnly.Parse(leave.GetProperty("Date").GetString()!, CultureInfo.InvariantCulture);
-                lines.Add(new ReportLine(date, "", "", 0, Get(leave, "Kind"), "", Get(leave, "Notes"), "", "", "leave"));
+                // A part-day leave carries its minutes; work hours count work rows only.
+                lines.Add(new ReportLine(date, "", "", LeaveMinutes(leave) ?? 0, Get(leave, "Kind"), "",
+                    Get(leave, "Notes"), "", "", "leave"));
             }
         }
         return lines;
@@ -276,12 +278,23 @@ public static class ReportDocumentRenderer
         return end - start - breakMinutes;
     }
 
-    public static int CountLeaveDays(string json)
+    /// <summary>Days of leave in a month snapshot: a whole day each, or a part day's minutes against
+    /// the snapshot's normal working day.</summary>
+    public static decimal CountLeaveDays(string json)
     {
         using var document = JsonDocument.Parse(json);
-        return document.RootElement.TryGetProperty("leaves", out var leaves) &&
-            leaves.ValueKind == JsonValueKind.Array ? leaves.GetArrayLength() : 0;
+        if (!document.RootElement.TryGetProperty("leaves", out var leaves) || leaves.ValueKind != JsonValueKind.Array)
+            return 0;
+        var standard = ReadStandardDayMinutes(json) ?? DefaultStandardDayMinutes;
+        return leaves.EnumerateArray().Sum(leave => LeaveDays(LeaveMinutes(leave), standard));
     }
+
+    /// <summary>One leave in days: the whole day, or its minutes against the normal working day, to two places.</summary>
+    public static decimal LeaveDays(int? minutes, int standardDayMinutes) =>
+        minutes is { } part and > 0 && standardDayMinutes > 0 ? Math.Round((decimal)part / standardDayMinutes, 2) : 1;
+
+    private static int? LeaveMinutes(JsonElement leave) =>
+        leave.TryGetProperty("Minutes", out var value) && value.ValueKind == JsonValueKind.Number ? value.GetInt32() : null;
 
     private static string Get(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

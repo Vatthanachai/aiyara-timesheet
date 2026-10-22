@@ -378,10 +378,12 @@ public sealed class ReportOperations(ReportingDbContext db, IConfiguration confi
         if (!ValidTimesheetPdf(body)) return Error(400, "VALIDATION_FAILED");
         var lines = body.Lines.Select(x => new ReportLine(x.Date, x.Start ?? "", x.End ?? "", x.DurationMinutes,
             x.Task.Trim(), x.Detail ?? "", x.Notes ?? "", x.Project ?? "", x.Category ?? "", x.Kind)).ToList();
+        var standardDay = body.StandardDayMinutes ?? ReportDocumentRenderer.DefaultStandardDayMinutes;
+        // A leave line with minutes is a part day.
         var data = new ReportDocumentData(body.MemberName.Trim(), body.Department?.Trim() ?? "", body.Period.Trim(),
-            lines, lines.Count(x => x.Kind == "leave"),
+            lines, lines.Where(x => x.Kind == "leave").Sum(x => ReportDocumentRenderer.LeaveDays(x.DurationMinutes, standardDay)),
             new ReportFormats(body.DateFormat ?? ReportFormats.Default.DateFormat, body.TimeFormat ?? ReportFormats.Default.TimeFormat),
-            body.StandardDayMinutes ?? ReportDocumentRenderer.DefaultStandardDayMinutes);
+            standardDay);
         return new ServiceFileResponse(ReportDocumentRenderer.RenderPdf(data), "application/pdf", "timesheet.pdf");
     }
 
