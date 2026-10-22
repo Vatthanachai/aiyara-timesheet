@@ -21,7 +21,7 @@ Validation is complete only when all applicable checks below pass:
 2. Static review: `git diff --check` passes and no unresolved conflict markers remain.
 3. Backend changes: restore/build the affected .NET projects and run affected unit/integration/contract tests.
 4. Frontend changes: run the affected frontend type/lint checks when configured and a production build.
-5. Runtime/configuration changes: validate Docker Compose configuration and exercise changed health/API paths where feasible.
+5. Runtime/configuration changes: validate Docker Compose configuration (`docker-compose.yml` and `docker-compose.test.yml`) and exercise changed health/API paths on a test stack (`pwsh -NoProfile -File scripts/test-stack.ps1 up`, then `smoke`), never on the main stack.
 6. API, database, or message-contract changes: update OpenAPI/Scalar, migrations, contracts, and their tests in the same branch.
 7. Documentation changes: update affected project/Obsidian documentation and validate its links.
 
@@ -34,6 +34,7 @@ Every role (backend-implementer, frontend-implementer, docs-keeper, validator) m
 - Each agent works on its own Git Flow branch in its own worktree (spawn it with `isolation: "worktree"`), so no two agents share a working tree or a checked-out branch. Only the primary agent works in the main checkout.
 - A backend change and its frontend half stay in sequence on one branch: the frontend agent starts from the backend hand-back. Different changes run side by side.
 - Two branches may each add an EF migration to the same service. The one that merges second first merges the latest `develop`, deletes its own migration, regenerates it on top of the merged snapshot, and reruns its tests before validation.
-- The Docker Compose stack, its ports, and `tests/phase3/Smoke.ps1` exist once per machine. One agent holds that slot at a time, normally the validator. Implementers rely on unit/integration tests and production builds until the primary agent gives them the slot; they do not rebuild or restart the stack on their own.
+- Runtime checks run on a test stack, not on the user's main Compose stack. Each agent may start its own with `scripts/test-stack.ps1` (`docker-compose.test.yml`: its own project name, network, volumes, database, and loopback ports from `TEST_STACK_NAME` and `TEST_PORT_BASE`, derived from the worktree path unless set), run `tests/phaseN/Smoke.ps1` against it with `test-stack.ps1 smoke -Phase N`, and tear it down with `down` or `reset`. Implementers may do this on their own branch; it never touches the main stack.
+- The main compose (`docker-compose.yml`, project `aiyara-timesheet`) is rebuilt only by the primary agent, only after a change is validated and merged into `develop`, with `scripts/deploy-main.ps1` (it refuses unless run in the main checkout on a clean `develop`). No other agent restarts, rebuilds, or modifies the main stack or its volumes.
 - `docs-keeper` edits only `obsidian/` and may run beside an implementer once the implementation is committed.
 - Merges into `develop` are made by the primary agent one at a time, each after its own validation; the next branch merges the latest `develop` first.

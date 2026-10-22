@@ -6,6 +6,8 @@
 #   (create one on its API Tokens page). A token selects aiyara-maildev.
 
 function Resolve-MailDevToken([string]$Token, [string]$EnvFile = '.env') {
+    # A test stack points TIMESHEET_ENV_FILE at its own env file so the main stack's token is not picked up.
+    if ($env:TIMESHEET_ENV_FILE) { $EnvFile = $env:TIMESHEET_ENV_FILE }
     if ($Token) { return $Token }
     if ($env:MAILDEV_API_TOKEN) { return $env:MAILDEV_API_TOKEN }
     if ($EnvFile -and (Test-Path -LiteralPath $EnvFile)) {
