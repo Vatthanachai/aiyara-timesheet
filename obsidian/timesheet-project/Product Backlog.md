@@ -24,6 +24,8 @@ Today a month can only be locked (`POST months/{year}/{month}/lock`); there is n
 
 ### 2. Leave types and balances
 
+> Done 22 October 2026 on `feature/leave-types-balance`: see [[Leave Types Plan]]. Leave requests approved by a Tenant Admin are still open.
+
 `LeaveEntry` holds a date and a free-text `Kind` only.
 
 - Organization-defined leave types (sick, personal, annual, …) managed in Administration.

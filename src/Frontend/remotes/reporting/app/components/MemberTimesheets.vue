@@ -19,13 +19,16 @@ type Entry = {
 type Detail = {
   ownerId: string; locked: boolean; entries: Entry[]
   status?: ApprovalStatus; returnReason?: string | null
-  leaves: { id: string; date: string; kind: string; notes: string | null }[]
+  /** `minutes` is a part-day leave; null or absent is the whole day. */
+  leaves: { id: string; date: string; kind: string; notes: string | null; minutes?: number | null }[]
   holidays: { date: string; name: string }[]
   /** Date.getDay() numbers the organization works; older API responses omit it (Monday to Friday). */
   workingDays?: number[]
   workHours?: WorkHours
 }
 type Catalog = { holidays: { date: string }[]; workingDays?: number[]; workHours?: WorkHours }
+/** One leave type's calendar year; remaining is null without a limit. */
+type LeaveBalance = { leaveTypeId: string; name: string; annualDays: number | null; usedDays: number; remainingDays: number | null }
 
 const props = defineProps<{
   members: Member[]
@@ -61,7 +64,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   submittedHint: '{name} ส่ง{month}ให้อนุมัติแล้ว', approve: 'อนุมัติ', returnMonth: 'ส่งกลับให้แก้ไข',
   returnReason: 'เหตุผลที่ส่งกลับ', returnHint: 'สมาชิกจะเห็นเหตุผลนี้และได้รับอีเมล', sendReturn: 'ส่งกลับ', cancel: 'ยกเลิก',
   confirmApprove: 'อนุมัติ{month}ของ {name}? เมื่ออนุมัติแล้วจะแก้ไขไม่ได้อีก', approvedNotice: 'อนุมัติแล้ว', returnedNotice: 'ส่งกลับให้สมาชิกแก้ไขแล้ว',
-  returnedBecause: 'ส่งกลับเพราะ: {reason}'
+  returnedBecause: 'ส่งกลับเพราะ: {reason}',
+  leaveBalance: 'วันลาปี {year}', balanceLeft: 'ใช้ {used} จาก {total} วัน เหลือ {left}', balanceTaken: 'ใช้ {used} วัน', partDay: '{hours} ชม.'
 }, en: {
   title: 'Member timesheets', hint: "Review each member's hours and leave by month, including the current open month.",
   month: 'Month', member: 'Member', entries: 'Entries', hours: 'Hours', leaveDays: 'Leave days', view: 'View timesheet', viewShort: 'View',
@@ -80,7 +84,8 @@ const copy = useLocaleText(toRef(props, 'locale'), { th: {
   submittedHint: '{name} submitted {month} for approval.', approve: 'Approve', returnMonth: 'Return for changes',
   returnReason: 'Why are you returning it?', returnHint: 'The member sees this reason and gets an email.', sendReturn: 'Return', cancel: 'Cancel',
   confirmApprove: "Approve {name}'s {month}? It can no longer be changed once approved.", approvedNotice: 'Approved', returnedNotice: 'Returned to the member for changes',
-  returnedBecause: 'Returned: {reason}'
+  returnedBecause: 'Returned: {reason}',
+  leaveBalance: 'Leave in {year}', balanceLeft: '{used} of {total} days taken, {left} left', balanceTaken: '{used} days taken', partDay: '{hours} h'
 } })
 
 const month = ref(zonedToday(props.timeZoneId).slice(0, 7))
@@ -95,6 +100,20 @@ const detail = ref<Detail | null>(null)
 const busy = ref(false)
 const error = ref('')
 const notice = ref('')
+const balances = ref<LeaveBalance[]>([])
+const days = (value: number) => String(Math.round(value * 100) / 100)
+const balanceLine = (balance: LeaveBalance) => balance.annualDays == null
+  ? fill(copy.value.balanceTaken, { used: days(balance.usedDays) })
+  : fill(copy.value.balanceLeft, { used: days(balance.usedDays), total: days(balance.annualDays), left: days(balance.remainingDays ?? 0) })
+/** The open month's leave balances for its year; a failure leaves them out rather than the month. */
+async function loadBalances(id: string | null) {
+  try {
+    balances.value = (await props.load<{ balances: LeaveBalance[] }>(id ? `/members/${id}/leave-balance` : '/me/leave-balance',
+      { year: period.value.year })).balances
+  } catch { balances.value = [] }
+}
+const leaveKind = (leave: Detail['leaves'][number]) => leave.minutes
+  ? `${leave.kind} (${fill(copy.value.partDay, { hours: String(Math.round(leave.minutes / 60 * 100) / 100) })})` : leave.kind
 /** The approval status as a dot colour: approved reads as done, submitted as waiting, returned as blocked. */
 const approvalDot = { open: '', submitted: 'Queued', approved: 'Succeeded', returned: 'Blocked' } as const
 const approvalLabel = (status: ApprovalStatus | undefined) => status === 'submitted' ? copy.value.statusSubmitted
@@ -173,6 +192,12 @@ const describeDay = (date: string, minutes: number) => `${formatDate(date)}: ${h
 const hoursLabel = (name: string, logged: number, expected: number) =>
   fill(copy.value.hoursLabel, { name, logged: hours(logged), expected: hours(expected) })
 const totalMinutes = computed(() => detail.value?.entries.reduce((sum, x) => sum + x.durationMinutes, 0) ?? 0)
+/** Leave in days: part days against the normal working day. */
+const leaveDayCount = computed(() => {
+  const standard = detailSchedule.value?.standardMinutes ?? 0
+  return Math.round((detail.value?.leaves ?? []).reduce((sum, leave) =>
+    sum + (leave.minutes && standard ? leave.minutes / standard : 1), 0) * 100) / 100
+})
 const daysWorked = computed(() => new Set(detail.value?.entries.map(x => x.date)).size)
 const dayTotals = computed(() => {
   const totals = new Map<string, number>()
@@ -219,7 +244,8 @@ function exportRows(forReading: boolean): Cell[][] {
   for (const [date, name] of daysOff.value)
     lines.push({ date, order: 0, start: '', cells: [day(date), '', '', '', name, '', '', '', '', c.daysOff] })
   for (const leave of current.leaves)
-    lines.push({ date: leave.date, order: 1, start: '', cells: [day(leave.date), '', '', '', leave.kind, '', leave.notes ?? '', '', '', c.leave] })
+    lines.push({ date: leave.date, order: 1, start: '', cells: [day(leave.date), '', '', leave.minutes ? Math.round(leave.minutes / 60 * 100) / 100 : '',
+      leave.kind, '', leave.notes ?? '', '', '', c.leave] })
   for (const entry of current.entries)
     lines.push({ date: entry.date, order: 2, start: entry.startTime, cells: [day(entry.date), clock(entry.startTime), clock(entry.endTime),
       Math.round(entry.durationMinutes / 60 * 100) / 100, entry.taskName, entry.detail ?? '', entry.notes ?? '',
@@ -230,7 +256,7 @@ function exportRows(forReading: boolean): Cell[][] {
     [props.self ? c.myTitle : c.title, `${selectedName.value} · ${monthLabel.value}`],
     [c.status, current.locked ? c.monthClosed : c.monthOpen],
     [c.totalHours, Math.round(totalMinutes.value / 60 * 100) / 100, c.daysWorked, daysWorked.value,
-      c.leaveDays, current.leaves.length, c.daysOff, daysOff.value.size],
+      c.leaveDays, leaveDayCount.value, c.daysOff, daysOff.value.size],
     [],
     [c.date, c.start, c.end, c.duration, c.task, c.detail, c.notes, c.project, c.category, c.remark],
     ...lines.map(x => x.cells)
@@ -258,7 +284,7 @@ function pdfRequest() {
     lines: [
       ...[...daysOff.value].map(([date, name]) => ({ date, start: null, end: null, durationMinutes: 0, task: name,
         notes: holidays.has(date) ? copy.value.holidays : copy.value.weeklyDayOff, kind: holidays.has(date) ? 'holiday' : 'dayoff' })),
-      ...current.leaves.map(leave => ({ date: leave.date, start: null, end: null, durationMinutes: 0, task: leave.kind,
+      ...current.leaves.map(leave => ({ date: leave.date, start: null, end: null, durationMinutes: leave.minutes ?? 0, task: leave.kind,
         notes: leave.notes, kind: 'leave' })),
       ...current.entries.map(entry => ({ date: entry.date, start: entry.startTime.slice(0, 5), end: entry.endTime.slice(0, 5),
         durationMinutes: entry.durationMinutes, task: entry.taskName, detail: entry.detail, notes: entry.notes,
@@ -287,14 +313,19 @@ const loadSummary = () => run(async () => {
   if (props.self) {
     detail.value = await props.load<Detail>('/me/timesheet', period.value)
     selectedId.value = detail.value.ownerId
+    await loadBalances(null)
     return
   }
   summary.value = await props.load<Summary>('/members/summary', period.value)
-  if (selectedId.value) detail.value = await props.load<Detail>(`/members/${selectedId.value}/timesheet`, period.value)
+  if (selectedId.value) {
+    detail.value = await props.load<Detail>(`/members/${selectedId.value}/timesheet`, period.value)
+    await loadBalances(selectedId.value)
+  }
 })
 const open = (id: string) => run(async () => {
   detail.value = await props.load<Detail>(`/members/${id}/timesheet`, period.value)
   selectedId.value = id
+  await loadBalances(id)
 })
 function close() {
   selectedId.value = ''
@@ -378,7 +409,7 @@ onMounted(async () => {
         <div><dt>{{ copy.totalHours }}</dt><dd>{{ hours(totalMinutes) }}</dd></div>
         <div><dt>{{ copy.daysWorked }}</dt><dd>{{ daysWorked }}</dd></div>
         <div><dt>{{ copy.entries }}</dt><dd>{{ detail.entries.length }}</dd></div>
-        <div><dt>{{ copy.leaveDays }}</dt><dd>{{ detail.leaves.length }}</dd></div>
+        <div><dt>{{ copy.leaveDays }}</dt><dd>{{ leaveDayCount }}</dd></div>
         <div><dt>{{ copy.daysOff }}</dt><dd>{{ daysOff.size }}</dd></div>
       </dl>
       <p v-if="!detail.entries.length" class="empty">{{ copy.noEntries }}</p>
@@ -409,8 +440,12 @@ onMounted(async () => {
         </div>
         <div>
           <h3>{{ copy.leave }}</h3>
-          <ul v-if="detail.leaves.length" class="plain-list"><li v-for="leave in detail.leaves" :key="leave.id"><span>{{ formatDate(leave.date) }}</span><strong>{{ leave.kind }}</strong></li></ul>
+          <ul v-if="detail.leaves.length" class="plain-list"><li v-for="leave in detail.leaves" :key="leave.id"><span>{{ formatDate(leave.date) }}</span><strong>{{ leaveKind(leave) }}</strong></li></ul>
           <p v-else class="muted">{{ copy.noLeave }}</p>
+          <template v-if="balances.length">
+            <h4 class="balance-heading">{{ fill(copy.leaveBalance, { year: String(period.year) }) }}</h4>
+            <ul class="plain-list leave-balances"><li v-for="balance in balances" :key="balance.leaveTypeId" :class="{ overdrawn: (balance.remainingDays ?? 0) < 0 }"><span>{{ balance.name }}</span><strong>{{ balanceLine(balance) }}</strong></li></ul>
+          </template>
         </div>
         <div>
           <h3>{{ copy.holidays }}</h3>
@@ -531,6 +566,9 @@ tr.day-end td{border-bottom-color:var(--color-border-strong)}
 .detail-lists{margin-top:1.5rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:0 1.5rem}
 .detail-lists h3{font-family:var(--font-display);font-weight:600}
 .plain-list{list-style:none;margin:0;padding:0;display:grid;gap:.35rem}
+.balance-heading{margin:1rem 0 .5rem;font-size:.9rem;font-weight:600;color:var(--color-muted)}
+.leave-balances strong{font-weight:500;font-variant-numeric:tabular-nums;text-align:right}
+.leave-balances li.overdrawn strong{color:var(--color-danger);font-weight:600}
 .plain-list li{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;border-bottom:1px solid var(--color-border);padding:.35rem 0}
 @media (max-width:40rem){
   .ledger{table-layout:auto;min-width:0}

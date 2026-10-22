@@ -134,6 +134,16 @@ if ($myMonth.locked -or @($myMonth.entries).Count -ne 1 -or @($myMonth.leaves).C
 $adminMonth = Expect (Request Get "/api/v1/timesheets/me/timesheet?year=$year&month=$month" $null $admin) 200 'admin own month'
 if (@($adminMonth.entries).Count -ne 0) { throw 'Own month shows another member''s entries.' }
 
+# Leave types: once the organization has them, leave names one, may cover part of the day, and
+# counts against the type's days for the year (half of the 8-hour working day is 0.5).
+$annual = Expect (Request Post '/api/v1/timesheets/leave-types' @{ name = 'Annual'; annualDays = 10 } $admin) 201 'leave type'
+Expect (Request Post '/api/v1/timesheets/leave-types' @{ name = 'Denied'; annualDays = 1 } $employee) 403 'employee leave type permission' | Out-Null
+Expect (Request Post '/api/v1/timesheets/leave' @{ date = $date; kind = 'annual' } $employee) 400 'leave without a type' | Out-Null
+Expect (Request Post '/api/v1/timesheets/leave' @{ date = $date; leaveTypeId = $annual.id; minutes = 240 } $employee) 201 'half-day leave' | Out-Null
+$balance = Expect (Request Get "/api/v1/timesheets/me/leave-balance?year=$year" $null $employee) 200 'leave balance'
+$annualBalance = @($balance.balances) | Where-Object leaveTypeId -eq $annual.id
+if ($annualBalance.usedDays -ne 0.5 -or $annualBalance.remainingDays -ne 9.5) { throw 'The leave balance does not count the half day.' }
+
 # Approval: the employee submits, the admin returns it with a reason (emailed), the employee fixes
 # it and submits again, and the admin approves it.
 $employeeId = $myMonth.ownerId
