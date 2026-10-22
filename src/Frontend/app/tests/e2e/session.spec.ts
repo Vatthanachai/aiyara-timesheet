@@ -73,10 +73,24 @@ test('sign in persists the session, restores it after reload, and signs out', as
   await expect(page.getByRole('link', { name: 'Profile settings' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out' }).click()
-  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
+  await expect(page).toHaveURL(/\/signed-out$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'You’re signed out' })).toBeVisible()
+  await expect(page.locator('.slip-time')).toHaveText(/^\d{2}:\d{2}$/)
   await expect(navigation).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('aiyara.access')))
     .toBeNull()
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 800 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
+  await page.getByRole('link', { name: 'Sign in again' }).click()
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
+})
+
+test('the signed-out page sends a visit that did not sign out to the sign-in page', async ({ page }) => {
+  await page.goto('/signed-out')
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 })
 
 test('profile settings previews and uploads an image then refreshes the shell avatar', async ({ page }) => {
