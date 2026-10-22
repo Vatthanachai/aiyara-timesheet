@@ -49,7 +49,7 @@ const time = computed(() => record.value && formatTime(record.value.time, record
 <style scoped>
 .signed-out {
   align-items: center; display: grid; gap: 2.5rem 5rem;
-  grid-template-columns: auto minmax(0, 32rem); justify-content: center; padding-block: clamp(0rem, 6vh, 4rem);
+  grid-template-columns: auto minmax(0, 32rem); justify-content: center; min-height: var(--shell-fill);
 }
 .slip {
   animation: slip-in 420ms cubic-bezier(.2, .7, .2, 1) both; padding: 2.4rem 1.75rem 1.5rem;
@@ -72,7 +72,7 @@ const time = computed(() => record.value && formatTime(record.value.time, record
 .signed-out-copy .button:hover { background: var(--color-brand-strong); }
 @media (prefers-reduced-motion: reduce) { .slip, .slip-time { animation: none; } }
 @media (max-width: 48rem) {
-  .signed-out { gap: 2rem; grid-template-columns: minmax(0, 1fr); justify-items: start; padding-block: 0; }
+  .signed-out { align-content: center; gap: 2rem; grid-template-columns: minmax(0, 1fr); justify-items: start; }
   .slip { justify-self: center; }
 }
 </style>
