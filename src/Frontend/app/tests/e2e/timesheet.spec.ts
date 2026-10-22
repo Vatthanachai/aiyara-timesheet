@@ -405,7 +405,7 @@ test('a template fills the form, the form is saved as a template, and templates 
 
   // Rename in place, then save the name from the row's menu.
   await panel.getByLabel('Template name').fill('Morning stand-up')
-  await panel.getByLabel('More for Morning stand-up', { exact: true }).click()
+  await panel.getByLabel('More for Stand-up', { exact: true }).click()
   await panel.getByRole('button', { name: 'Save name' }).click()
   await expect.poll(() => requests.at(-1)).toMatch(/^PUT \/entry-templates\/t1 /)
   expect(bodyOf(requests.at(-1))).toMatchObject({ name: 'Morning stand-up', taskName: 'Daily stand-up', startTime: '09:30:00', projectId: 'p2' })
