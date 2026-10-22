@@ -16,7 +16,8 @@ button, input, select { font: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
 
-.workspace { margin: auto; max-width: 82rem; padding: clamp(1rem, 3vw, 2rem); }
+/* The Shell sets the width and the side margins; a few pixels keep focus outlines inside the frame. */
+.workspace { margin: auto; padding: clamp(1rem, 3vw, 2rem) 3px; }
 
 /* Heading: the month is the subject of the page. */
 .page-heading { align-items: flex-end; display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; margin: 0 0 1.5rem; }
@@ -201,7 +202,7 @@ tr.editing td { background: var(--color-brand-soft); }
   .support-panel { order: 4; }
 }
 @media (max-width: 46rem) {
-  .workspace { padding: 1rem; }
+  .workspace { padding: 1rem 3px; }
   .month-control { justify-content: space-between; width: 100%; }
   .month-picker { flex: 1; }
   .month-picker input { width: 100%; }
@@ -226,7 +227,7 @@ tr.editing td { background: var(--color-brand-soft); }
   .day-entries .row-actions { display: flex; grid-column: 1 / -1; justify-content: flex-start; }
 }
 @media (max-width: 26rem) {
-  .workspace { padding: .75rem; }
+  .workspace { padding: .75rem 3px; }
   .entry-grid { grid-template-columns: minmax(0, 1fr); }
   .inline-form { grid-template-columns: 1fr 1fr; }
   .inline-form .primary-button { grid-column: 1 / -1; }
