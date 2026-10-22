@@ -1,4 +1,5 @@
 import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
+import { DEFAULT_FORMATS, readFormats, type Formats } from '../../../shared/date-format'
 
 type AuthResponse = {
   accessToken: string
@@ -16,6 +17,17 @@ export type PlatformAdminLoginResult = {
   session: AuthResponse | null
   enrollment: MfaEnrollment | null
   recoveryCodes: string[]
+}
+
+/** When this browser last signed out, as the signed-out page prints it. */
+export type SignOutRecord = { date: string; time: string; formats: Formats; admin: boolean }
+const signOutKey = 'aiyara.signed-out'
+
+export function readSignOut(): SignOutRecord | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(signOutKey) || 'null')
+    return value?.date && value?.time ? { ...value, formats: readFormats(value.formats) } : null
+  } catch { return null }
 }
 
 export function useSession() {
@@ -113,6 +125,18 @@ export function useSession() {
   }
 
   async function logout() {
+    // Kept past the sign-out so the signed-out page can say when it happened, in the organization's formats.
+    if (import.meta.client) {
+      const now = new Date()
+      const pad = (value: number) => String(value).padStart(2, '0')
+      const record: SignOutRecord = {
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+        formats: useState<Formats>('organization-formats', () => DEFAULT_FORMATS).value,
+        admin: role.value === 'PlatformAdmin'
+      }
+      sessionStorage.setItem(signOutKey, JSON.stringify(record))
+    }
     if (refreshToken.value) {
       try {
         await $fetch(`${config.public.gatewayUrl}/api/v1/auth/logout`, {
