@@ -75,7 +75,7 @@ Out of scope in [[Timesheet Page Plan]] and [[Home Page Plan]].
 
 > Done 22 October 2026 on `feature/billable-budgets`: see [[Billable Work And Budgets Plan]]. Still open: rate history, generated XLSX/CSV/PDF and scheduled by-project and by-client reports, a client entity, budgets per period or in money, and an over-budget warning for members.
 
-`Project` and `Category` carry only names today.
+Before this item `Project` and `Category` carried only names.
 
 - Billable / non-billable flag and an hourly rate per project.
 - An hours budget per project, with used against budget.
