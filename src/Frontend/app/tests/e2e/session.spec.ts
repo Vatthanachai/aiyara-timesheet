@@ -249,6 +249,10 @@ test('timesheet gives a clear month summary, quick date selection, and a respons
       ])) })
       return
     }
+    if (url.pathname.endsWith('/api/v1/timesheets/entry-templates')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk([])) })
+      return
+    }
     if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
       await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk({
         projects: [], categories: [], holidays: [{ id: 'holiday-1', date: `${currentMonth}-05`, name: 'วันหยุดทดสอบ' }]
@@ -379,6 +383,10 @@ test('timesheet task tray keeps a rejected task name, prefills the entry form, a
       await route.fulfill(json([]))
       return
     }
+    if (url.pathname.endsWith('/api/v1/timesheets/entry-templates')) {
+      await route.fulfill(json([]))
+      return
+    }
     if (url.pathname.endsWith('/api/v1/timesheets/catalog')) {
       await route.fulfill(json({ projects: [{ id: 'project-1', name: 'Website' }], categories: [], holidays: [] }))
       return
@@ -482,6 +490,10 @@ test('timesheet task board moves cards by button and drag, reverts a rejected mo
       return
     }
     if (url.pathname.endsWith('/api/v1/timesheets/leave') || url.pathname.endsWith('/api/v1/timesheets/entries')) {
+      await route.fulfill(json([]))
+      return
+    }
+    if (url.pathname.endsWith('/api/v1/timesheets/entry-templates')) {
       await route.fulfill(json([]))
       return
     }
@@ -1154,6 +1166,7 @@ test('administration asks the Shell for its session and keeps unsaved edits when
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (url.pathname.endsWith('/timesheets/entry-templates')) return ok([])
     if (url.pathname.endsWith('/timesheets/catalog')) {
       catalogCalls++
       return ok({ projects: [{ id: 'p1', name: 'Apollo' }], categories: [], holidays: [] })
@@ -1260,6 +1273,7 @@ test('tenant admin manages members and invitations from the Members panel', asyn
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [] })
     if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
@@ -1470,6 +1484,7 @@ test('tenant admin renames the organization and sets its logo, and the Shell hea
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [] })
     if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
@@ -1932,6 +1947,7 @@ async function openReporting(page: import('@playwright/test').Page, role: 'Tenan
           detail: null, notes: null, projectName: 'Apollo', categoryName: null }],
         leaves: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
     }
+    if (url.pathname.endsWith('/timesheets/entry-templates')) return ok([])
     // A Monday-to-Friday organization working 09:00–17:00 with an hour's break: a 7-hour day.
     if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [], categories: [],
       holidays: [{ id: 'h1', date: '2026-10-13', name: 'Memorial day' }], workingDays: [1, 2, 3, 4, 5],
@@ -2329,6 +2345,7 @@ test('tenant admin sets the working days and hours from Administration and canno
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays, workHours })
     if (path === '/timesheets/work-week') {
       const body = request.postDataJSON()
@@ -2436,6 +2453,7 @@ test('timesheet calendar shades the days the organization does not work and new 
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     // A Sunday-to-Thursday organization.
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [0, 1, 2, 3, 4],
       workHours: { startTime: '08:30', endTime: '17:30' } })
@@ -2497,6 +2515,7 @@ test('tenant admin chooses the date and time format and every remote follows it'
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
     if (path === '/timesheets/reminders') return ok({ dailyEnabled: false, monthEndEnabled: false, sendAt: '09:00' })
     if (path === `/identity/tenants/${tenantId}/password-policy`)
@@ -2569,6 +2588,7 @@ test('timesheet shows dates and times in the organization\'s format', async ({ p
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
     if (path === '/identity/organization') return ok({ name: 'Acme', organizationCode: 'ACME123', logoUrl: null, dateFormat: 'd MMM yyyy', timeFormat: 'h:mm a' })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], workingDays: [1, 2, 3, 4, 5],
       holidays: [{ id: 'h1', date: `${currentMonth}-12`, name: 'Founders day' }] })
     if (path === '/timesheets/entries') return ok([{ id: 'e1', date: `${currentMonth}-05`, startTime: '13:00:00', endTime: '14:30:00', durationMinutes: 90,
@@ -2615,6 +2635,7 @@ test('holiday dates are typed and shown as dd/MM/yyyy instead of the browser\'s 
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays, workingDays: [1, 2, 3, 4, 5] })
     if (path === '/timesheets/holidays' && request.method() === 'POST') {
       calls.push(`POST ${request.postData()}`)
@@ -2718,6 +2739,7 @@ test('timesheet leaves the break out of an entry unless the member worked throug
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5],
       workHours: { startTime: '08:30', endTime: '17:30', breakStart: '11:30', breakEnd: '12:30' } })
     if (path === '/timesheets/entries' && request.method() === 'POST') {
@@ -2752,7 +2774,7 @@ test('timesheet leaves the break out of an entry unless the member worked throug
   await workedThrough.check()
   await expect(composer.locator('.duration-pill')).toContainText('9.00')
   await composer.getByLabel('Task', { exact: true }).fill('Release day')
-  await composer.getByRole('button', { name: 'Save' }).click()
+  await composer.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => posted.length).toBe(1)
   expect(posted[0]).toMatchObject({ startTime: '08:30:00', endTime: '17:30:00', includesBreak: true })
 
@@ -2769,11 +2791,11 @@ test('timesheet leaves the break out of an entry unless the member worked throug
   await composer.getByLabel('End', { exact: true }).fill('12:30')
   await expect(composer.locator('.duration-pill')).toHaveCount(0)
   await composer.getByLabel('Task', { exact: true }).fill('Lunch meeting')
-  await composer.getByRole('button', { name: 'Save' }).click()
+  await composer.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(timesheet.getByText('This entry is entirely in the break. If you worked then, tick "Worked through the break".')).toBeVisible()
   await workedThrough.check()
   await expect(composer.locator('.duration-pill')).toContainText('1.00')
-  await composer.getByRole('button', { name: 'Save' }).click()
+  await composer.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => posted.at(-1)).toMatchObject({ startTime: '11:30:00', endTime: '12:30:00', includesBreak: true })
 
   for (const width of [375, 320]) {
@@ -2844,6 +2866,7 @@ test('tenant admin adds, changes, and retires leave types from Administration', 
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], leaveTypes, workingDays: [1, 2, 3, 4, 5] })
     if (path.startsWith('/timesheets/leave-types')) {
       requests.push(`${request.method()} ${path.replace('/timesheets', '')} ${request.postData() ?? ''}`.trim())
@@ -2922,6 +2945,7 @@ test('tenant admin turns on missing-entry reminders and chooses when they are se
       accessExpiresAtUtc: new Date(Date.now() + 60 * 60_000).toISOString(),
       refreshExpiresAtUtc: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
     }, organizations: [] })
+    if (path === '/timesheets/entry-templates') return ok([])
     if (path === '/timesheets/catalog') return ok({ projects: [], categories: [], holidays: [], workingDays: [1, 2, 3, 4, 5] })
     if (path === '/timesheets/reminders') {
       if (request.method() === 'PUT') {

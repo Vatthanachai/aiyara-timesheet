@@ -37,10 +37,10 @@ Nothing copies entries, writes more than one entry per request, or remembers an 
 
 ## Phase B — UI
 
-- [ ] B1. Timesheet: **Copy previous day** and **Copy previous week**, with the skipped days and their reasons shown after.
-- [ ] B2. Entry form: **Several days** picks dates (working days preselected) and saves through `entries/bulk`; a closed day is named from `errors.dates`.
-- [ ] B3. Templates: pick one to fill the form, **Save as template**, and a list to rename, change, or delete them.
-- [ ] B4. Playwright for copy, bulk, and templates at 375 and 320 px.
+- [x] B1. Timesheet: **Copy previous day** and **Copy previous week**, with the skipped days and their reasons shown after.
+- [x] B2. Entry form: **Several days** picks dates (working days preselected) and saves through `entries/bulk`; a closed day is named from `errors.dates`.
+- [x] B3. Templates: pick one to fill the form, **Save as template**, and a list to rename, change, or delete them.
+- [x] B4. Playwright for copy, bulk, and templates at 375 and 320 px.
 - [ ] B5. Docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
 
 ## Out Of Scope

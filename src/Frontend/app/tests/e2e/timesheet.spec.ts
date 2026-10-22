@@ -16,22 +16,35 @@ const entry = (id: string, date: string, startTime: string, endTime: string, dur
 /** Signs in through the Shell and opens Timesheet with a normal working day of 7 hours (09:00–17:00 less a 1-hour break). */
 /** Leave the mocked API returns: the month's leave, the year's balances, and the organization's leave types. */
 type LeaveMock = { leaves: unknown[]; balances: unknown[]; leaveTypes: unknown[] }
+/** The rest of the mocked organization and member: the work week, holidays, saved entry templates, and a
+ * hook that answers a write (a Timesheet path such as `/entries/copy`) instead of the default success. */
+type MockOptions = { workingDays?: number[]; holidays?: unknown[]; templates?: unknown[]
+  respond?: (method: string, path: string, body: string | null) => { status?: number; result?: unknown; error?: Record<string, unknown> } | undefined }
 
 async function openTimesheet(page: Page, requests: string[] = [], state: Record<string, unknown> = {},
-  leave: LeaveMock = { leaves: [], balances: [], leaveTypes: [] }) {
+  leave: LeaveMock = { leaves: [], balances: [], leaveTypes: [] }, options: MockOptions = {}) {
   await page.route('**/api/v1/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
+    const path = url.pathname.replace(/.*\/timesheets/, '')
     const ok = (result: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json',
       body: JSON.stringify({ statusCode: status, statusMessage: 'OK', result }) })
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    const answer = request.method() !== 'GET' && url.pathname.includes('/timesheets/') ? options.respond?.(request.method(), path, request.postData()) : undefined
+    if (answer) {
+      requests.push(`${request.method()} ${path} ${request.postData()}`)
+      const status = answer.status ?? 200
+      return answer.error
+        ? route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify({ statusCode: status, statusMessage: 'Refused', ...answer.error }) })
+        : ok(answer.result, status)
+    }
     if (url.pathname.endsWith('/auth/sign-in')) return ok({ organizations: [], session: {
       accessToken: 'card-token', refreshToken: 'card-refresh', accessExpiresAtUtc: new Date(Date.now() + 3600_000).toISOString(),
       mustChangePassword: false, tenantId, role: 'Employee' } })
     if (url.pathname.includes('/timesheets/entries')) {
       if (request.method() !== 'GET') {
-        requests.push(`${request.method()} ${url.pathname.replace(/.*\/timesheets/, '')} ${request.postData()}`)
-        return ok(null)
+        requests.push(`${request.method()} ${path} ${request.postData()}`)
+        return ok(path === '/entries/copy' ? { created: [], skipped: [] } : path === '/entries/bulk' ? { created: [] } : null)
       }
       return ok([
         entry('e1', day(5), '09:00:00', '17:00:00', 420, 'Full day'),
@@ -40,8 +53,13 @@ async function openTimesheet(page: Page, requests: string[] = [], state: Record<
       ])
     }
     if (url.pathname.endsWith('/timesheets/tasks')) return ok([])
-    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [{ id: 'p1', name: 'Website redesign' }, { id: 'p2', name: 'Mobile app' }, { id: 'p3', name: 'Internal tools' }], categories: [], holidays: [], leaveTypes: leave.leaveTypes,
-      workingDays: [0, 1, 2, 3, 4, 5, 6], workHours: { startTime: '09:00', endTime: '17:00', breakStart: '12:00', breakEnd: '13:00' } })
+    if (url.pathname.includes('/timesheets/entry-templates')) {
+      if (request.method() === 'GET') return ok(options.templates ?? [])
+      requests.push(`${request.method()} ${path} ${request.postData()}`)
+      return request.method() === 'DELETE' ? route.fulfill({ status: 204, headers: cors }) : ok({ id: 't-new' }, request.method() === 'POST' ? 201 : 200)
+    }
+    if (url.pathname.endsWith('/timesheets/catalog')) return ok({ projects: [{ id: 'p1', name: 'Website redesign' }, { id: 'p2', name: 'Mobile app' }, { id: 'p3', name: 'Internal tools' }], categories: [], holidays: options.holidays ?? [], leaveTypes: leave.leaveTypes,
+      workingDays: options.workingDays ?? [0, 1, 2, 3, 4, 5, 6], workHours: { startTime: '09:00', endTime: '17:00', breakStart: '12:00', breakEnd: '13:00' } })
     if (url.pathname.endsWith('/submit')) {
       requests.push(`${request.method()} ${url.pathname.replace(/.*\/timesheets/, '')}`)
       Object.assign(state, { status: 'submitted', returnReason: null, editable: false })
@@ -218,6 +236,10 @@ test('an approved month cannot be changed or submitted', async ({ page }) => {
   await expect(bar.locator('.approval-pill')).toHaveText('Approved')
   await expect(bar.getByRole('button')).toHaveCount(0)
   await expect(timesheet.locator('.entry-panel')).toHaveCount(0)
+  // Nothing in a closed month offers to copy, enter several days, or use templates.
+  await expect(timesheet.getByRole('button', { name: 'Copy previous day' })).toHaveCount(0)
+  await expect(timesheet.getByRole('button', { name: 'Copy previous week' })).toHaveCount(0)
+  await expect(timesheet.getByRole('region', { name: 'Entry templates' })).toHaveCount(0)
 })
 
 test('leave names an organization leave type, can be half a day, and shows the year\'s balance', async ({ page }) => {
@@ -247,4 +269,155 @@ test('leave names an organization leave type, can be half a day, and shows the y
   await form.getByLabel('Hours').fill('1.5')
   await form.getByRole('button', { name: 'Add entry' }).click()
   await expect.poll(() => requests.at(-1)).toMatch(/"minutes":90/)
+})
+
+/** The body of a recorded write, `METHOD /path {json}`. */
+const bodyOf = (line: string | undefined) => JSON.parse(line!.slice(line!.indexOf(' {') + 1))
+/** The Monday of the week of the 15th, which is in the month along with the whole of its week. */
+const mondayOf15 = () => 15 - (new Date(`${day(15)}T00:00:00Z`).getUTCDay() + 6) % 7
+
+test('copying the previous day or week reports the days it skipped, and a closed day is named', async ({ page }) => {
+  const requests: string[] = []
+  const monday = mondayOf15()
+  let closed = false
+  const timesheet = await openTimesheet(page, requests, {}, undefined, { respond: (method, path, body) => {
+    if (path !== '/entries/copy') return undefined
+    if (closed) return { status: 409, error: { errorCode: 'MONTH_CLOSED', errors: { dates: [day(15)] } } }
+    return JSON.parse(body!).days === 1
+      ? { result: { created: [entry('c1', day(8), '08:00:00', '17:30:00', 510, 'Long day')], skipped: [] } }
+      : { result: { created: [], skipped: [{ date: day(monday), reason: 'holiday' }, { date: day(monday + 1), reason: 'has-entries' }] } }
+  } })
+  const notice = timesheet.getByRole('status').filter({ hasText: /copied/i })
+
+  await timesheet.getByRole('button', { name: `Date ${day(8)}` }).click()
+  await timesheet.getByRole('button', { name: 'Copy previous day' }).click()
+  await expect.poll(() => requests.at(-1)).toBe(`POST /entries/copy {"from":"${day(7)}","to":"${day(8)}","days":1}`)
+  await expect(notice).toHaveText(/^Copied 1 entry\.$/)
+
+  // The week is the selected day's Monday to Sunday, copied from the week before.
+  await timesheet.getByRole('button', { name: `Date ${day(15)}` }).click()
+  await timesheet.getByRole('button', { name: 'Copy previous week' }).click()
+  await expect.poll(() => requests.at(-1)).toBe(`POST /entries/copy {"from":"${day(monday - 7)}","to":"${day(monday)}","days":7}`)
+  await expect(notice.getByText('Nothing was copied.')).toBeVisible()
+  await expect(notice.locator('li')).toHaveText([`${shownDate(day(monday))}: Holiday`, `${shownDate(day(monday + 1))}: Already has entries`])
+
+  closed = true
+  await timesheet.getByRole('button', { name: 'Copy previous day' }).click()
+  await expect(timesheet.getByRole('alert')).toHaveText(`These days cannot be changed: ${shownDate(day(15))}.`)
+})
+
+test('one entry on several days starts from the week\'s working days and sends exactly the days chosen', async ({ page }) => {
+  const requests: string[] = []
+  const monday = mondayOf15()
+  let closed = false
+  const timesheet = await openTimesheet(page, requests, {}, undefined, {
+    workingDays: [1, 2, 3, 4, 5], holidays: [{ id: 'h1', date: day(monday + 2), name: 'Founders day' }],
+    respond: (method, path) => closed && path === '/entries/bulk'
+      ? { status: 409, error: { errorCode: 'MONTH_CLOSED', errors: { dates: [day(monday), day(monday + 5)] } } } : undefined
+  })
+  const form = timesheet.locator('.entry-panel')
+  const box = (value: number, note = '') => form.getByRole('checkbox', { name: note ? `${shownDate(day(value))}, ${note}` : shownDate(day(value)), exact: true })
+
+  await timesheet.getByRole('button', { name: `Date ${day(15)}` }).click()
+  await form.getByLabel('Task', { exact: true }).fill('Sprint review')
+  await form.getByLabel('Several days').check()
+  // Monday to Friday of the week, less the holiday; the weekend is offered but not chosen.
+  for (const value of [monday, monday + 1, monday + 3, monday + 4]) await expect(box(value)).toBeChecked()
+  await expect(box(monday + 2, 'Founders day')).not.toBeChecked()
+  await expect(box(monday + 5, 'Day off')).not.toBeChecked()
+  await expect(form.getByLabel('Date')).toHaveCount(0)
+  await box(monday + 5, 'Day off').check()
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+
+  await form.getByRole('button', { name: 'Add to 5 days' }).click()
+  await expect.poll(() => requests.at(-1)).toMatch(/^POST \/entries\/bulk /)
+  const body = bodyOf(requests.at(-1))
+  expect(body.dates).toEqual([monday, monday + 1, monday + 3, monday + 4, monday + 5].map(day))
+  expect(body).toMatchObject({ taskName: 'Sprint review', startTime: '09:00:00', endTime: '17:00:00', projectId: null })
+  await expect(timesheet.getByRole('status').filter({ hasText: 'Added to 5 days.' })).toBeVisible()
+
+  // A day the member may not change refuses the whole request and is named.
+  closed = true
+  await form.getByLabel('Task', { exact: true }).fill('Sprint review')
+  await form.getByLabel('Several days').check()
+  await box(monday + 5, 'Day off').check()
+  await form.getByRole('button', { name: 'Add to 5 days' }).click()
+  await expect(timesheet.getByRole('alert')).toHaveText(`These days cannot be changed: ${shownDate(day(monday))}, ${shownDate(day(monday + 5))}.`)
+})
+
+test('a template fills the form, the form is saved as a template, and templates are renamed, replaced, and deleted', async ({ page }) => {
+  const requests: string[] = []
+  const timesheet = await openTimesheet(page, requests, {}, undefined, {
+    templates: [{ id: 't1', name: 'Stand-up', taskName: 'Daily stand-up', startTime: '09:30:00', endTime: '09:45:00', projectId: 'p2',
+      categoryId: null, detail: 'Team sync', notes: null, includesBreak: false }],
+    respond: (method, path, body) => method === 'POST' && path === '/entry-templates' && JSON.parse(body!).name.toLowerCase() === 'stand-up'
+      ? { status: 409, error: { errorCode: 'TEMPLATE_EXISTS' } } : undefined
+  })
+  const form = timesheet.locator('.entry-panel')
+  const panel = timesheet.getByRole('region', { name: 'Entry templates' })
+  await expect(panel.getByLabel('Template name')).toHaveValue('Stand-up')
+  await expect(panel.locator('small')).toHaveText('09:30–09:45 · Daily stand-up')
+
+  await choose(form.getByLabel('Fill from a template'), 'Stand-up')
+  await expect(form.getByLabel('Task', { exact: true })).toHaveValue('Daily stand-up')
+  await expect(form.getByLabel('Start', { exact: true })).toHaveValue('09:30')
+  await expect(form.getByLabel('End', { exact: true })).toHaveValue('09:45')
+  await expect(form.getByLabel('Project')).toHaveValue('Mobile app')
+  await expect(form.getByLabel('Detail')).toHaveValue('Team sync')
+  await form.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => requests.at(-1)).toMatch(/^POST \/entries /)
+  expect(bodyOf(requests.at(-1))).toMatchObject({ taskName: 'Daily stand-up', startTime: '09:30:00', endTime: '09:45:00', projectId: 'p2', detail: 'Team sync' })
+
+  // Save as template names the form; a name the member already has is refused.
+  await form.getByLabel('Task', { exact: true }).fill('Code review')
+  await form.getByLabel('Start', { exact: true }).fill('13:00')
+  await form.getByLabel('End', { exact: true }).fill('15:00')
+  await form.getByRole('button', { name: 'Save as template' }).click()
+  const name = form.locator('.template-save').getByLabel('Template name')
+  await name.fill('stand-up')
+  await form.getByRole('button', { name: 'Save template' }).click()
+  await expect(timesheet.getByRole('alert')).toHaveText('You already have a template called "stand-up".')
+  await name.fill('Review')
+
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 850 })
+    await expect.poll(() => timesheet.locator('html').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+
+  await form.getByRole('button', { name: 'Save template' }).click()
+  await expect.poll(() => requests.at(-1)).toMatch(/^POST \/entry-templates /)
+  expect(bodyOf(requests.at(-1))).toMatchObject({ name: 'Review', taskName: 'Code review', startTime: '13:00:00', endTime: '15:00:00', projectId: null })
+  await expect(timesheet.getByRole('status').filter({ hasText: 'Template saved.' })).toBeVisible()
+  await expect(form.locator('.template-save')).toHaveCount(0)
+
+  // Rename in place, then save the name from the row's menu.
+  await panel.getByLabel('Template name').fill('Morning stand-up')
+  await panel.getByLabel('More for Morning stand-up', { exact: true }).click()
+  await panel.getByRole('button', { name: 'Save name' }).click()
+  await expect.poll(() => requests.at(-1)).toMatch(/^PUT \/entry-templates\/t1 /)
+  expect(bodyOf(requests.at(-1))).toMatchObject({ name: 'Morning stand-up', taskName: 'Daily stand-up', startTime: '09:30:00', projectId: 'p2' })
+
+  // Replace with the form keeps the name and takes what the form holds.
+  await form.getByLabel('Task', { exact: true }).fill('Planning')
+  await panel.getByLabel('More for Stand-up', { exact: true }).click()
+  await panel.getByRole('button', { name: 'Replace with the form' }).click()
+  await expect.poll(() => requests.at(-1)).toMatch(/^PUT \/entry-templates\/t1 /)
+  expect(bodyOf(requests.at(-1))).toMatchObject({ name: 'Stand-up', taskName: 'Planning' })
+
+  // Use fills the form from the list too.
+  await panel.getByRole('button', { name: 'Use Stand-up' }).click()
+  await expect(form.getByLabel('Task', { exact: true })).toHaveValue('Daily stand-up')
+
+  let question = ''
+  page.on('dialog', dialog => { question = dialog.message(); void dialog.accept() })
+  await panel.getByLabel('More for Stand-up', { exact: true }).click()
+  await panel.getByRole('button', { name: 'Delete' }).click()
+  await expect.poll(() => requests.at(-1)).toBe('DELETE /entry-templates/t1 null')
+  expect(question).toBe('Delete the template "Stand-up"?')
 })
