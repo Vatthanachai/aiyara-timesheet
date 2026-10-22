@@ -153,6 +153,9 @@ test('profile settings previews and uploads an image then refreshes the shell av
 
   const profileFrame = page.frameLocator('iframe')
   await expect(profileFrame.getByRole('heading', { name: 'Profile settings' })).toBeVisible()
+  // Initials skip a Thai leading vowel: อรทัย ใจดี is อจ, on the card and in the Shell header alike.
+  await expect(profileFrame.locator('.photo-preview')).toHaveText('อจ')
+  await expect(page.locator('.profile-trigger .profile-avatar-fallback')).toHaveText('อจ')
   await expect.poll(async () => {
     const frameHeight = await page.locator('iframe').evaluate(frame => frame.getBoundingClientRect().height)
     const contentHeight = await profileFrame.locator('html').evaluate(element => element.scrollHeight)
@@ -175,6 +178,26 @@ test('profile settings previews and uploads an image then refreshes the shell av
   await expect(profileFrame.getByRole('status')).toHaveText('Profile photo updated.')
   expect(uploadedFile).toContain('headshot.png')
   await expect(page.locator('.profile-trigger .profile-avatar')).toHaveAttribute('src', /^blob:/)
+
+  // The card follows the form as it is typed; Save waits for a change, and Cancel puts back what was saved.
+  const card = profileFrame.getByRole('region', { name: 'Your profile as colleagues see it' })
+  const save = profileFrame.getByRole('button', { name: 'Save changes' })
+  const jobTitle = profileFrame.getByLabel('Job title')
+  await expect(card).toContainText('อรทัย ใจดี')
+  await expect(profileFrame.getByText('admin@example.test', { exact: true })).toHaveCount(1)
+  await expect(save).toBeDisabled()
+  await jobTitle.fill('Team lead')
+  await expect(card).toContainText('Team lead')
+  await expect(profileFrame.getByText('Unsaved changes')).toBeVisible()
+  await expect(save).toBeEnabled()
+  await profileFrame.getByRole('button', { name: 'Cancel' }).click()
+  await expect(jobTitle).toHaveValue('')
+  await expect(card).not.toContainText('Team lead')
+  await expect(save).toBeDisabled()
+  await jobTitle.fill('Team lead')
+  await save.click()
+  await expect(profileFrame.getByText('Profile details saved.')).toBeVisible()
+  await expect(save).toBeDisabled()
 })
 
 test('timesheet gives a clear month summary, quick date selection, and a responsive time form', async ({ page }) => {

@@ -2,6 +2,7 @@
 import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
 import { DEFAULT_FORMATS, readFormats, type Formats } from '../../../shared/date-format'
+import { nameInitials } from '../../../shared/initials'
 type ProfileSummary = {
   email: string
   firstName: string
@@ -36,13 +37,8 @@ const profileName = computed(() => {
   return fullName || profile.value?.email || text.value.profile
 })
 
-const profileInitials = computed(() => {
-  const initials = [profile.value?.firstName, profile.value?.lastName]
-    .filter((part) => part?.trim())
-    .map((part) => part!.trim()[0])
-    .join('')
-  return initials || profile.value?.email?.[0]?.toUpperCase() || '•'
-})
+const profileInitials = computed(() =>
+  nameInitials(profile.value?.firstName, profile.value?.lastName) || profile.value?.email?.[0]?.toUpperCase() || '•')
 
 async function loadProfile() {
   if (!token.value) {
