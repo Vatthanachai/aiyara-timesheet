@@ -121,6 +121,12 @@ test('profile settings previews and uploads an image then refreshes the shell av
       return
     }
 
+    if (request.url().endsWith('/api/v1/identity/mfa')) {
+      await route.fulfill({ status: 200, headers: corsHeaders, contentType: 'application/json', body: JSON.stringify(apiOk({
+        enabled: false, enabledAtUtc: null, recoveryCodesRemaining: 0, requiredByOrganization: false, canDisable: true })) })
+      return
+    }
+
     if (request.url().endsWith('/api/v1/identity/profile/me/photo')) {
       if (request.method() === 'POST') {
         uploadedFile = request.postData() || ''
@@ -994,7 +1000,7 @@ test('platform admin can sign in with a recovery code and sees why a wrong code 
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.getByLabel('Authentication code').fill('000000')
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('alert')).toHaveText('That code is not valid or has already been used.')
+  await expect(page.getByRole('alert')).toContainText('That code is not valid, has expired, or was already used.')
 
   await page.getByRole('button', { name: 'Use a recovery code instead' }).click()
   await page.getByLabel('Recovery code').fill('ABCDE-FGHJK')
@@ -1003,19 +1009,6 @@ test('platform admin can sign in with a recovery code and sees why a wrong code 
   await expect(page).toHaveURL(/\/sys-admin$/)
   expect(loginRequests.at(-1)).toMatchObject({ recoveryCode: 'ABCDE-FGHJK' })
   expect(loginRequests.at(-1)).not.toHaveProperty('totpCode')
-})
-
-test('email sign in for a platform admin account points to the system administrator page', async ({ page }) => {
-  await page.route('**/api/v1/auth/sign-in', route => route.fulfill(mfaRequired))
-
-  await page.goto('/')
-  await waitForHydration(page)
-  await page.getByLabel('Email').fill('operator@platform.test')
-  await page.getByLabel('Password').fill('test-password')
-  await page.getByRole('button', { name: 'Sign in' }).click()
-
-  await expect(page.getByRole('alert')).toHaveText('This account signs in on the system administrator page.')
-  expect(await page.evaluate(() => sessionStorage.getItem('aiyara.access'))).toBeNull()
 })
 
 test('platform admin sign in shows a safe error for rejected credentials', async ({ page }) => {

@@ -44,10 +44,10 @@ Accounts are global (one per email), and one account can be a member of several 
 
 ## Phase B — UI
 
-- [ ] B1. Shell sign-in: handle `MFAREQUIRED` (code or recovery code field), `MFA_ENROLLMENT_REQUIRED` (secret, QR, first code, then the one-time recovery codes), `MFAINVALID`, and the lockout message.
-- [ ] B2. Profile: MFA card with status, opt-in, regenerate recovery codes, and opt-out (hidden when `canDisable` is false).
-- [ ] B3. Administration: an "Require MFA for all members" switch with a plain warning that members without an authenticator are signed out; an MFA column and **Reset MFA** (with reason) in the members list.
-- [ ] B4. Playwright for the flows above; docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+- [x] B1. Shell sign-in (`pages/index.vue` with the shared `MfaCodeForm`, `MfaSetup`, `RecoveryCodes`): handle `MFAREQUIRED` (code or recovery code field), `MFA_ENROLLMENT_REQUIRED` (secret, QR, first code, then the one-time recovery codes), `MFAINVALID`, and the lockout message.
+- [x] B2. Profile (`MfaSection.vue` in identity-profile): MFA card with status, opt-in, regenerate recovery codes, and opt-out (hidden when `canDisable` is false).
+- [x] B3. Administration (`MfaRequirement.vue`, `MemberMfa.vue`, `MemberMfaReset.vue`): an "Require MFA for all members" switch with a plain warning that members without an authenticator are signed out; an MFA column and **Reset MFA** (with reason) in the members list.
+- [x] B4. Playwright (`member-mfa.spec.ts`) for the flows above; docs (docs-keeper): [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
 
 ## Known Limits
 
@@ -72,3 +72,13 @@ Accounts are global (one per email), and one account can be a member of several 
 - [[Tenant Member Management Plan]]
 - [[Platform Admin Console Plan]]
 - [[Project Status]]
+
+## Checkpoint — 22 October 2026 (work paused by the user, to resume later)
+
+- Branch `feature/member-mfa`. Backend is committed as `3a4f656` and was validated by its own agent (build 0 warnings, .NET tests 78/48/63/68, Smoke phase 2 on a test stack) but has **not** been through the validator. Nothing here is merged into `develop` and nothing is deployed to the main stack.
+- The UI (phase B) was written by the frontend agent, which was **stopped mid-run before it reported**. Its files are saved in one WIP commit (`wip: member MFA UI checkpoint`): Shell sign-in (`pages/index.vue`, `useSession.ts`), shared `MfaCodeForm`, `MfaSetup`, `RecoveryCodes`, the identity-profile `MfaSection`, the Administration `MfaRequirement`, `MemberMfa`, `MemberMfaReset`, `api-response.ts`, a new dependency `uqr` (QR drawing, `identity-profile/package.json` and `bun.lock`), and `member-mfa.spec.ts` with changes to `session.spec.ts`.
+- **Not run or not known:** `git diff --check`, `npm run build` of the Shell, identity-profile and administration remotes, the full Playwright suite (`--workers=2`; the last known count on `develop` is 85), the real UI on a test stack, and whether `member-mfa.spec.ts` passes. Treat the WIP as unverified.
+- Throwaway files the agent left untracked in its worktree and that must not be committed: `src/Frontend/app/playwright.local.config.ts`, `src/Frontend/app/real-ui.tmp.mjs`, `src/Frontend/app/tests/e2e-local/`. The agent's test stack was shut down with `test-stack.ps1 reset -Frontend`; the main stack was untouched.
+- To resume: open the worktree `.claude/worktrees/agent-a9ff8f0a73dcdc39a` (or check out `feature/member-mfa`), run the frontend checks above and fix what fails, then docs-keeper (Project Status, Product Backlog item 7 done, Index), the validator, merge into `develop` with `--no-ff`, delete the branch and worktree, and deploy `identities-api`, `frontend`, `identity-profile-remote` and `administration-remote` with `scripts/deploy-main.ps1`. The migration `AddTenantRequireMfa` is on top of the latest Identity migration on `develop`; if another branch adds an Identity migration first, regenerate it.
+- Open points from the backend hand-back: an admin reset clears the authenticator in every organization the person belongs to; a sole Tenant Admin who loses both device and recovery codes has no self-service path; TOTP tests can flake across a 30-second boundary.
+

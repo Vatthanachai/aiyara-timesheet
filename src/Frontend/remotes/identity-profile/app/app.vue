@@ -4,6 +4,7 @@ import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, useLocaleText, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { nameInitials } from '../../../shared/initials'
+import MfaSection from './components/MfaSection.vue'
 
 type Profile = {
   id: string
@@ -95,6 +96,14 @@ async function authenticatedFetch(path: string, options: RequestInit = {}) {
     }
     return response
   }, token, config.public.shellOrigin)
+}
+
+/** The member's own two-step verification endpoints; the answer is unwrapped, and 204 gives undefined. */
+async function mfaApi<T>(path: string, options: { method?: string; body?: object } = {}) {
+  return unwrapResponse(await withRemoteRefresh(accessToken =>
+    $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/identity/mfa${path}`, {
+      ...options, headers: { Authorization: `Bearer ${accessToken}` }
+    }), token, config.public.shellOrigin)) as T
 }
 
 function notifyShell() {
@@ -357,6 +366,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </form>
+
+      <MfaSection class="mfa-section" :token="token" :locale="locale" :api="mfaApi" />
     </div>
   </main>
 </template>
@@ -416,6 +427,7 @@ h1 { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.2rem); 
 .button-quiet:hover:not(:disabled) { background: var(--color-surface-muted); }
 .button-quiet.danger { color: var(--color-danger); }
 .visually-hidden { height: 1px; margin: -1px; overflow: hidden; position: absolute; clip: rect(0, 0, 0, 0); white-space: nowrap; width: 1px; }
+.mfa-section { grid-column: 1 / -1; }
 .sign-in-message { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .75rem; color: var(--color-muted); padding: 1.25rem; }
 @media (max-width: 44rem) {
   .profile-layout { grid-template-columns: minmax(0, 1fr); }
