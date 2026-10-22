@@ -1,6 +1,6 @@
 # Copy And Bulk Entry Plan
 
-> Drafted 22 October 2026 from item 4 of [[Product Backlog]] and a code audit of `develop` at `18cac4a`. Phase A on `feature/copy-and-bulk-entry`. Covers copying a previous day or week of entries, entering one entry on several days at once, and a member's saved entry templates.
+> Drafted 22 October 2026 from item 4 of [[Product Backlog]] and a code audit of `develop` at `18cac4a`. Implemented 22 October 2026 on `feature/copy-and-bulk-entry` (phases A and B). Covers copying a previous day or week of entries, entering one entry on several days at once, and a member's saved entry templates.
 
 ## Audit: What Exists On `develop`
 
@@ -20,12 +20,14 @@ Nothing copies entries, writes more than one entry per request, or remembers an 
 1. **All or nothing.** Copy and bulk requests write every entry or none, in one serializable transaction. A request that touches a day the member may not change is refused whole with `409 MONTH_CLOSED`, and `errors.dates` lists those days, so the page can name them.
 2. **Same rules as one entry.** Bulk and copied entries pass the checks of `SaveEntry`: the month (`Editable`), the task name and lengths, live references, and the duration from `TimesheetRules.WorkedMinutes` with today's break and the entry's `IncludesBreak`. No overlap check, because single entries have none.
 3. **Bulk entry** (`POST entries/bulk`) writes the same entry on each of 1–31 distinct dates the member chose. It writes on exactly those dates, days off and holidays included, because the member picked them; the page preselects only working days. Days that already have entries get one more, as the single form would.
-4. **Copy** (`POST entries/copy`) copies the member's entries from `days` consecutive days starting at `from` (1 for a day, 7 for a week) onto the same number of days starting at `to`, day by day. The source may be any month, even a locked one; only the target must be editable. The two ranges may not overlap.
+4. **Copy** (`POST entries/copy`) copies the member's entries from `days` consecutive days starting at `from` (1–7; the page sends 1 for a day and up to 7 for a week) onto the same number of days starting at `to`, day by day. The source may be any month, even a locked one; only the target must be editable. The two ranges may not overlap.
 5. A target day is **skipped**, not refused, and reported in `skipped` with a reason, when it is a holiday (`holiday`), not a working weekday (`day-off`), has whole-day leave (`leave`), or already has entries (`has-entries`). Skipping a day with entries makes copying twice harmless and never mixes two days. Part-day leave does not skip the day. A source day without entries is not reported.
 6. A copied entry keeps the times, task name, detail, notes, personal task, and `IncludesBreak`, and its duration is computed again with the current break. A project, category, or personal task deleted since is left empty on the copy. An entry that would now lie wholly inside the break (duration 0) is not copied.
 7. **Templates** are a member's own (`entry_templates`: name, task name, start and end, project, category, detail, notes, `IncludesBreak`), listed, created, renamed, changed, and deleted (soft) only by their owner. The name is 1–100 characters and unique per member, ignoring case (`409 TEMPLATE_EXISTS`). Contents follow the entry checks; the break check (`ENTRY_IN_BREAK`) waits until the template is used, since the break can change.
 8. A template is only a prefill: the page fills the entry form or the bulk form from it and saves through `entries` or `entries/bulk`. There is no separate "apply" route. Listing a template leaves out a project or category deleted since.
 9. Audit: each written entry is audited as `entry` `created`, a copy with the reason `copied from yyyy-MM-dd`, bulk with the request's `reason`; templates are audited as `entry_template`. One `timesheet.month.changed.v1` per month touched, not per entry.
+10. **Copy previous working day.** The page's day copy takes the most recent earlier day that is a working weekday and not a holiday, looking back up to 14 days, so a Monday copies the Friday before; the source may be in an earlier month. **Copy previous week** copies the week before onto the selected day's Monday-to-Sunday week, kept within the month, so a week cut by the month's start or end sends fewer than 7 days. Each button's title names the source and target days.
+11. **Several days starts from the week's working days.** Turning on **Several days** ticks the working days of the selected day's week; days off, holidays, and whole-day leave start unticked, and part-day leave stays ticked. **This week**, **Whole month**, and **Clear** reset the choice, and any other day of the month can be ticked. Copy, several days, and templates are hidden when the month cannot be edited.
 
 ## Phase A — API
 
@@ -37,11 +39,11 @@ Nothing copies entries, writes more than one entry per request, or remembers an 
 
 ## Phase B — UI
 
-- [x] B1. Timesheet: **Copy previous day** and **Copy previous week**, with the skipped days and their reasons shown after.
+- [x] B1. Timesheet: **Copy previous working day** and **Copy previous week**, with the skipped days and their reasons shown after.
 - [x] B2. Entry form: **Several days** picks dates (working days preselected) and saves through `entries/bulk`; a closed day is named from `errors.dates`.
 - [x] B3. Templates: pick one to fill the form, **Save as template**, and a list to rename, change, or delete them.
 - [x] B4. Playwright for copy, bulk, and templates at 375 and 320 px.
-- [ ] B5. Docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+- [x] B5. Docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
 
 ## Out Of Scope
 
