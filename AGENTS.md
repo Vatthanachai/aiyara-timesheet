@@ -26,3 +26,14 @@ Validation is complete only when all applicable checks below pass:
 7. Documentation changes: update affected project/Obsidian documentation and validate its links.
 
 Merge into `develop` only after the primary agent records a passing validation summary. Failures are corrected on the same Git Flow branch and revalidated.
+
+## Parallel Agents
+
+Every role (backend-implementer, frontend-implementer, docs-keeper, validator) may run at the same time, so work flows as a pipeline: while the validator checks one branch, the implementers start the next. The primary agent spawns them, tracks which branch each one holds, and hands out the shared slots below.
+
+- Each agent works on its own Git Flow branch in its own worktree (spawn it with `isolation: "worktree"`), so no two agents share a working tree or a checked-out branch. Only the primary agent works in the main checkout.
+- A backend change and its frontend half stay in sequence on one branch: the frontend agent starts from the backend hand-back. Different changes run side by side.
+- Two branches may each add an EF migration to the same service. The one that merges second first merges the latest `develop`, deletes its own migration, regenerates it on top of the merged snapshot, and reruns its tests before validation.
+- The Docker Compose stack, its ports, and `tests/phase3/Smoke.ps1` exist once per machine. One agent holds that slot at a time, normally the validator. Implementers rely on unit/integration tests and production builds until the primary agent gives them the slot; they do not rebuild or restart the stack on their own.
+- `docs-keeper` edits only `obsidian/` and may run beside an implementer once the implementation is committed.
+- Merges into `develop` are made by the primary agent one at a time, each after its own validation; the next branch merges the latest `develop` first.
