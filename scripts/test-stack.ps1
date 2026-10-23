@@ -102,7 +102,8 @@ function Write-EnvFile {
         # Required by the shared service definitions even though Grafana is not in this stack.
         GRAFANA_ADMIN_USER           = 'admin'
         GRAFANA_ADMIN_PASSWORD       = 'unused'
-        BOOTSTRAP_PLATFORM_ADMIN_EMAIL = ''
+        # A pending Platform Admin for the browser tests (scripts/test-e2e-real.ps1 sets it); empty otherwise.
+        BOOTSTRAP_PLATFORM_ADMIN_EMAIL = if ($env:BOOTSTRAP_PLATFORM_ADMIN_EMAIL) { $env:BOOTSTRAP_PLATFORM_ADMIN_EMAIL } else { '' }
         TEST_STACK_NAME              = $name
         TEST_PORT_BASE               = $base
     }

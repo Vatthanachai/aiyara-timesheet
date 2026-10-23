@@ -344,6 +344,12 @@ services:
       NUXT_PUBLIC_TIMESHEET_REMOTE_URL: http://localhost:${TIMESHEET_REMOTE_PORT:-3002}
       NUXT_PUBLIC_REPORTING_REMOTE_URL: http://localhost:${REPORTING_REMOTE_PORT:-3003}
       NUXT_PUBLIC_ADMINISTRATION_REMOTE_URL: http://localhost:${ADMINISTRATION_REMOTE_PORT:-3004}
+      # The names Nitro applies to runtimeConfig.public.remotes at run time (the four above are read
+      # only by `nuxt dev`); without them a stack on other ports embeds the default ports' remotes.
+      NUXT_PUBLIC_REMOTES_IDENTITY: http://localhost:${IDENTITY_PROFILE_REMOTE_PORT:-3005}
+      NUXT_PUBLIC_REMOTES_TIMESHEET: http://localhost:${TIMESHEET_REMOTE_PORT:-3002}
+      NUXT_PUBLIC_REMOTES_REPORTING: http://localhost:${REPORTING_REMOTE_PORT:-3003}
+      NUXT_PUBLIC_REMOTES_ADMINISTRATION: http://localhost:${ADMINISTRATION_REMOTE_PORT:-3004}
     depends_on:
       gateway-api:
         condition: service_healthy

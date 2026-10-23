@@ -16,7 +16,8 @@
 9. [[#9. Session management|Session management]] — `feature/session-management-ui` (done)
 10. [[#10. Bulk invitations|Bulk invitations]] — `feature/bulk-invitations-ui` (done)
 11. [[#12. Backup and restore|Backup and restore]] — `feature/backup-restore` (done)
-12. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+12. [[#13. Broader end-to-end tests|Broader end-to-end tests]] — `feature/real-stack-e2e` (done)
+13. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -124,6 +125,8 @@ Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with
 ### 13. Broader end-to-end tests
 
 Playwright now runs 109 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
+
+> Done 23 October 2026 on `feature/real-stack-e2e`: see [[Real Stack E2E Plan]]. Still open: real-stack flows for reports, leave, approval, and password reset, other browsers, and Thai.
 
 ### 14. Mobile and offline
 
