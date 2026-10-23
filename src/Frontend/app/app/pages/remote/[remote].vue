@@ -14,7 +14,7 @@ const remoteUrl = computed(() => {
 
   return config.public.remotes[remote.value.id]
 })
-const { token, tenantId, renew, restore } = useSession()
+const { token, tenantId, renew, restore, logout } = useSession()
 const { locale } = useLocale()
 const { theme } = useTheme()
 // Set by the layout from the signed-in organization.
@@ -34,6 +34,11 @@ function onRemoteMessage(event: MessageEvent) {
   }
   if (event.data?.type === 'aiyara.sign-in-required') {
     void navigateTo('/')
+    return
+  }
+  if (event.data?.type === 'aiyara.sign-out') {
+    // The member ended every session from the profile page, this one included.
+    void logout().then(() => navigateTo('/signed-out'))
     return
   }
   if (event.data?.type === 'aiyara.refresh-request' && typeof event.data.requestId === 'string') {
