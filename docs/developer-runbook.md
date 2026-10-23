@@ -136,6 +136,35 @@ The phase smoke scripts create test tenants, accounts, timesheets, and reports
 in the configured local databases. Use disposable local data when repeating
 the complete sequence.
 
+### Real-stack browser tests
+
+A second Playwright project (`src/frontend/app/playwright.real.config.ts`, specs in
+`tests/e2e-real`) drives the built Shell and remotes in Chromium against a throwaway test
+stack instead of mocked APIs. It covers: a Platform Admin signing in with an authenticator and
+creating an organization, its administrator activating from the MailDev email and signing in,
+a Tenant Admin adding a project and an employee recording time against it (with the signed-in
+device listed), bulk invitations with the audit log, and a member enrolling in MFA at sign-in.
+
+```powershell
+pwsh -NoProfile -File scripts/test-e2e-real.ps1             # reset, up, run, tear down
+pwsh -NoProfile -File scripts/test-e2e-real.ps1 -Repeat 3   # three runs on one stack
+pwsh -NoProfile -File scripts/test-e2e-real.ps1 -Spec member-mfa -KeepStack
+```
+
+The wrapper resets and starts the test stack with `-Frontend` (its own project name, volumes,
+and loopback ports from `TEST_PORT_BASE`), sets `BOOTSTRAP_PLATFORM_ADMIN_EMAIL` so the stack
+has a pending Platform Admin, runs `bun run test:e2e:real` with `E2E_REAL_BASE_URL`,
+`E2E_REAL_GATEWAY_URL`, `E2E_REAL_MAILDEV_URL`, and `E2E_REAL_PLATFORM_ADMIN_EMAIL` set from
+the stack, and resets the stack again unless `-KeepStack` is given. It starts no dev servers
+and uses none of ports 3100-3105, so it can run beside the mocked suite; it never touches the
+main stack. Reuse a kept stack with `-SkipReset`; the Platform Admin's authenticator secret is
+saved in the git-ignored `tests/e2e-real/.state`, which the wrapper clears on a reset.
+
+To run the specs against a stack you started by hand, set the four variables
+(`scripts/test-stack.ps1 env -Frontend` prints the ports; open the Shell as `localhost`) and run
+`bun run --cwd src/frontend/app test:e2e:real`. Each spec creates its own organization with
+unique names, so specs and repeated runs do not depend on one another.
+
 ## Backup and restore
 
 `scripts/backup-main.ps1` and `scripts/restore-main.ps1` back up and restore the PostgreSQL
