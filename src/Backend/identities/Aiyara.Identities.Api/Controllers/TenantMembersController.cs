@@ -122,6 +122,42 @@ public sealed class TenantMembersController(TenantMemberService members,
         return new ServiceOkResponse<object?>(null, StatusCodes.Status202Accepted);
     });
 
+    /// <summary>Clears a member's authenticator and recovery codes (a lost device) and ends their
+    /// sessions; they enroll again at their next sign-in if the organization requires MFA. Not for the
+    /// caller's own account (409 <c>CANNOT_CHANGE_SELF</c>).</summary>
+    [HttpPost("{accountId:guid}/mfa-reset", Name = "ResetTenantMemberMfaV1")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public Task<IActionResult> ResetMfa(Guid accountId, [FromBody] ResetTenantMemberMfaRequest request,
+        CancellationToken ct) => Run(async actor =>
+    {
+        await members.ResetMemberMfaAsync(actor.TenantId, actor.UserId, actor.SessionVersion, accountId,
+            request, ct);
+        return new ServiceOkResponse<object?>(null, StatusCodes.Status204NoContent);
+    });
+
+    /// <summary>Turns the organization's MFA requirement on or off. On needs the caller to have an
+    /// authenticator (409 <c>MFA_NOT_ENROLLED</c>) and ends the sessions of members who have none.
+    /// Gateway exposes it as <c>/api/v1/identity/organization/mfa</c>.</summary>
+    [HttpPut("~/api/v1/organization/mfa", Name = "SetOrganizationMfaRequirementV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public Task<IActionResult> SetMfaRequirement([FromBody] SetTenantMfaRequirementRequest request,
+        CancellationToken ct) => Run(async actor =>
+    {
+        await members.SetMfaRequirementAsync(actor.TenantId, actor.UserId, actor.SessionVersion, request, ct);
+        return new ServiceOkResponse<object>(new { requireMfa = request.Required });
+    });
+
     /// <summary>Puts a member, the caller included, in a group, or in none with a null groupId.</summary>
     [HttpPut("{accountId:guid}/group", Name = "SetTenantMemberGroupV1")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -204,10 +240,16 @@ public sealed class TenantMembersController(TenantMemberService members,
                 TenantMemberFailure.SelfChange => Error(StatusCodes.Status409Conflict, "CANNOT_CHANGE_SELF"),
                 TenantMemberFailure.GroupNameTaken => Error(StatusCodes.Status409Conflict, "GROUP_NAME_TAKEN"),
                 TenantMemberFailure.GroupInUse => Error(StatusCodes.Status409Conflict, "GROUP_IN_USE"),
+                TenantMemberFailure.MfaNotEnrolled => Error(StatusCodes.Status409Conflict, "MFA_NOT_ENROLLED"),
                 TenantMemberFailure.RateLimited => Error(StatusCodes.Status429TooManyRequests, "RATE_LIMITED"),
                 TenantMemberFailure.Unavailable => Error(StatusCodes.Status503ServiceUnavailable, "ACTIVATION_DELIVERY_UNAVAILABLE"),
                 _ => Error(StatusCodes.Status400BadRequest, "VALIDATION_FAILED")
             };
+        }
+        // Ending sessions publishes to Redis; an outage leaves the change rolled back.
+        catch (AuthenticationException exception) when (exception.Failure == AuthenticationFailure.Unavailable)
+        {
+            return Error(StatusCodes.Status503ServiceUnavailable, "SESSION_REVOCATION_UNAVAILABLE");
         }
     }
 

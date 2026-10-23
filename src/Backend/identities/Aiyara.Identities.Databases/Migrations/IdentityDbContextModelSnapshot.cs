@@ -476,6 +476,9 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.Property<bool>("PasswordRequireUppercase")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("RequireMfa")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(80)

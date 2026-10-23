@@ -239,6 +239,99 @@ if ((($compliant.Content | ConvertFrom-Json).result).mustChangePassword) {
     throw 'Compliant password still requires a change.'
 }
 
+# Member MFA: a Tenant Admin requires it, members enroll at their next sign-in, and a lost device is reset.
+function ConvertFrom-Base32([string]$text) {
+    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+    $bits = -join ($text.ToUpperInvariant().TrimEnd('=').ToCharArray() | ForEach-Object {
+        [Convert]::ToString($alphabet.IndexOf($_), 2).PadLeft(5, '0') })
+    , [byte[]]@(for ($i = 0; $i + 8 -le $bits.Length; $i += 8) { [Convert]::ToByte($bits.Substring($i, 8), 2) })
+}
+function Get-Totp([string]$secret, [int]$offset = 0) {
+    $step = [long][math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 30) + $offset
+    $counter = [BitConverter]::GetBytes($step); [Array]::Reverse($counter)
+    $hash = [Security.Cryptography.HMACSHA1]::new((ConvertFrom-Base32 $secret)).ComputeHash($counter)
+    $start = $hash[$hash.Length - 1] -band 0x0F
+    # Bytes are widened first: PowerShell keeps a shifted byte a byte and would drop the high bits.
+    $binary = (([int]$hash[$start] -band 0x7F) -shl 24) -bor ([int]$hash[$start + 1] -shl 16) -bor
+        ([int]$hash[$start + 2] -shl 8) -bor [int]$hash[$start + 3]
+    ($binary % 1000000).ToString('000000')
+}
+function Expect-ErrorCode($response, [int]$status, [string]$code, [string]$step) {
+    Expect-Status $response $status $step
+    $actual = ($response.Content | ConvertFrom-Json).errorCode
+    if ($actual -ne $code) { throw "$step returned error code $actual, expected $code." }
+}
+
+# Gateway allows 60 auth calls a minute per client; start this section on a fresh window.
+Start-Sleep -Seconds 61
+
+$mfaAdmin = "phase2-mfa-admin-$suffix@example.test"
+$mfaStaff = "phase2-mfa-staff-$suffix@example.test"
+$mfaTenantResponse = Send-Json '/api/v1/tenants' @{ name = 'Phase 2 MFA'; slug = "phase2-mfa-$suffix"; adminEmail = $mfaAdmin }
+Expect-Status $mfaTenantResponse 201 'MFA tenant creation'
+$mfaTenant = ($mfaTenantResponse.Content | ConvertFrom-Json).result
+Expect-Status (Send-Json '/api/v1/auth/activate' @{
+    code = (Get-Code $mfaAdmin 'Activate your Aiyara Timesheet account'); password = $oldPassword
+}) 204 'MFA admin activation'
+$mfaLogin = @{ organizationCode = $mfaTenant.organizationCode; email = $mfaAdmin; password = $oldPassword }
+$mfaAdminSession = ($(Send-Json '/api/v1/auth/login' $mfaLogin).Content | ConvertFrom-Json).result
+$mfaAdminAuth = @{ Authorization = "Bearer $($mfaAdminSession.accessToken)" }
+Expect-Status (Send-Json "/api/v1/auth/tenants/$($mfaTenant.tenantId)/invitations" @{
+    email = $mfaStaff; role = 'Employee' } 'Post' $mfaAdminAuth) 201 'MFA staff invitation'
+Expect-Status (Send-Json '/api/v1/invitations/accept' @{
+    code = (Get-Code $mfaStaff 'Your Aiyara Timesheet invitation') }) 200 'MFA staff invitation acceptance'
+Expect-Status (Send-Json '/api/v1/auth/activate' @{
+    code = (Get-Code $mfaStaff 'Activate your Aiyara Timesheet account'); password = $oldPassword
+}) 204 'MFA staff activation'
+$staffLoginBody = @{ organizationCode = $mfaTenant.organizationCode; email = $mfaStaff; password = $oldPassword }
+$staffBefore = ($(Send-Json '/api/v1/auth/login' $staffLoginBody).Content | ConvertFrom-Json).result
+
+# The admin must have an authenticator before requiring MFA (opt-in through the signed-in endpoints).
+Expect-ErrorCode (Send-Json '/api/v1/identity/organization/mfa' @{ required = $true } 'Put' $mfaAdminAuth) `
+    409 'MFA_NOT_ENROLLED' 'requirement without an enrolled admin'
+$adminOffer = Send-Json '/api/v1/identity/mfa/enrollment' $null 'Post' $mfaAdminAuth
+Expect-Status $adminOffer 200 'admin opt-in enrollment'
+$adminSecret = ($adminOffer.Content | ConvertFrom-Json).result.secret
+$adminConfirm = Send-Json '/api/v1/identity/mfa/enrollment/confirm' @{ totpCode = (Get-Totp $adminSecret) } 'Post' $mfaAdminAuth
+Expect-Status $adminConfirm 200 'admin enrollment confirmation'
+if (($adminConfirm.Content | ConvertFrom-Json).result.recoveryCodes.Count -ne 10) { throw 'Expected ten recovery codes.' }
+Expect-Status (Send-Json '/api/v1/identity/organization/mfa' @{ required = $true; reason = 'Smoke' } 'Put' $mfaAdminAuth) 200 'MFA requirement on'
+if (-not (($(Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/organization" -Headers $mfaAdminAuth -SkipHttpErrorCheck).Content |
+    ConvertFrom-Json).result.requireMfa)) { throw 'Organization did not report the MFA requirement.' }
+Expect-Status (Send-Json '/api/v1/auth/refresh' @{ refreshToken = $staffBefore.refreshToken }) 401 'unenrolled staff session ended by the requirement'
+
+# The member gets no session until the authenticator is confirmed, then answers a code or a recovery code.
+Expect-ErrorCode (Send-Json '/api/v1/auth/login' $staffLoginBody) 401 'MFA_ENROLLMENT_REQUIRED' 'staff login without an authenticator'
+$staffOffer = Send-Json '/api/v1/auth/mfa/enrollment' @{ email = $mfaStaff; password = $oldPassword }
+Expect-Status $staffOffer 200 'staff enrollment offer'
+$staffSecret = ($staffOffer.Content | ConvertFrom-Json).result.secret
+Expect-ErrorCode (Send-Json '/api/v1/auth/login' ($staffLoginBody + @{ totpCode = '000000' })) 401 'MFAINVALID' 'wrong enrollment code'
+$staffEnrolled = Send-Json '/api/v1/auth/login' ($staffLoginBody + @{ totpCode = (Get-Totp $staffSecret) })
+Expect-Status $staffEnrolled 200 'staff enrollment login'
+$staffCodes = ($staffEnrolled.Content | ConvertFrom-Json).result.recoveryCodes
+if ($staffCodes.Count -ne 10) { throw 'Enrollment login did not return ten recovery codes.' }
+Expect-ErrorCode (Send-Json '/api/v1/auth/login' $staffLoginBody) 401 'MFAREQUIRED' 'staff login without a code'
+Expect-Status (Send-Json '/api/v1/auth/login' ($staffLoginBody + @{ totpCode = (Get-Totp $staffSecret 1) })) 200 'staff login with a code'
+Expect-Status (Send-Json '/api/v1/auth/login' ($staffLoginBody + @{ recoveryCode = $staffCodes[0] })) 200 'staff login with a recovery code'
+Expect-ErrorCode (Send-Json '/api/v1/auth/login' ($staffLoginBody + @{ recoveryCode = $staffCodes[0] })) 401 'MFAINVALID' 'recovery code reuse'
+Expect-ErrorCode (Send-Json '/api/v1/auth/mfa/enrollment' @{ email = $mfaStaff; password = $oldPassword }) 409 'MFA_ALREADY_ENROLLED' 'second enrollment offer'
+
+# Logins are limited to ten a minute per email, so let the window pass before the next member sign-ins.
+Start-Sleep -Seconds 61
+
+# A lost device: the admin resets the member, who must enroll again; the admin cannot reset themselves.
+$mfaMembers = @(($(Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members" -Headers $mfaAdminAuth -SkipHttpErrorCheck).Content |
+    ConvertFrom-Json).result)
+$staffMember = $mfaMembers | Where-Object email -eq $mfaStaff
+$adminMember = $mfaMembers | Where-Object email -eq $mfaAdmin
+if (-not $staffMember.mfaEnabled -or -not $adminMember.mfaEnabled) { throw 'Member directory did not report MFA as enabled.' }
+Expect-ErrorCode (Send-Json "/api/v1/identity/members/$($adminMember.id)/mfa-reset" @{ reason = 'self' } 'Post' $mfaAdminAuth) `
+    409 'CANNOT_CHANGE_SELF' 'admin resetting their own MFA'
+Expect-Status (Send-Json "/api/v1/identity/members/$($staffMember.id)/mfa-reset" @{ reason = 'Lost phone' } 'Post' $mfaAdminAuth) 204 'member MFA reset'
+Expect-ErrorCode (Send-Json '/api/v1/auth/login' $staffLoginBody) 401 'MFA_ENROLLMENT_REQUIRED' 'staff login after reset'
+Expect-Status (Send-Json '/api/v1/identity/organization/mfa' @{ required = $false } 'Put' $mfaAdminAuth) 200 'MFA requirement off'
+Expect-Status (Send-Json '/api/v1/auth/login' $staffLoginBody) 200 'staff login once the requirement is off'
+
 $unknownEmail = "phase2-unknown-$suffix@example.test"
 for ($attempt = 0; $attempt -lt 10; $attempt++) {
     Expect-Status (Send-Json '/api/v1/auth/login' @{
@@ -253,4 +346,4 @@ Expect-Status (Send-Json '/api/v1/auth/login' @{
     password = 'Not-A-Password!'
 }) 401 'independent account remains under rate limit'
 
-Write-Output 'Phase 2 Gateway, SMTP, activation, invitation, session, policy and rate-limit smoke test passed.'
+Write-Output 'Phase 2 Gateway, SMTP, activation, invitation, session, policy, member MFA and rate-limit smoke test passed.'

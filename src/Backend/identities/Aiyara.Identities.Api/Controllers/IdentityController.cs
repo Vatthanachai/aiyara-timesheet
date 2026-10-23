@@ -80,6 +80,11 @@ public sealed class IdentityController(
     public Task<IActionResult> Activate([FromBody] CompleteCredentialChallenge request, CancellationToken ct) =>
         Auth(async () => { await authentication.CompleteActivationAsync(request, ct); return NoContentResponse(); });
 
+    /// <summary>Signs a member in. 401 <c>MFAREQUIRED</c>: the account has an authenticator, so repeat with
+    /// <c>totpCode</c> or <c>recoveryCode</c>. 401 <c>MFA_ENROLLMENT_REQUIRED</c>: the organization requires
+    /// MFA and the member has none; call <c>auth/mfa/enrollment</c>, then repeat with the first
+    /// <c>totpCode</c>, and the response carries <c>recoveryCodes</c>. 401 <c>MFAINVALID</c>: a wrong,
+    /// replayed, or spent code; five in a row lock the account for 15 minutes.</summary>
     [HttpPost("auth/login")]
     [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(ServiceOkResponse<AuthenticationResponse>), StatusCodes.Status200OK)]
@@ -90,7 +95,8 @@ public sealed class IdentityController(
         Auth(async () => { var result = await authentication.LoginAsync(new LoginRequest
             {
                 OrganizationCode = request.OrganizationCode, Email = request.Email,
-                Password = request.Password
+                Password = request.Password, TotpCode = request.TotpCode,
+                RecoveryCode = request.RecoveryCode
             }, ct);
             Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
 
@@ -102,6 +108,23 @@ public sealed class IdentityController(
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
     public Task<IActionResult> SignIn([FromBody] SignInRequest request, CancellationToken ct) =>
         Auth(async () => { var result = await authentication.SignInAsync(request, ct);
+            Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
+
+    /// <summary>For a member whose organization requires MFA and who has no authenticator: after the
+    /// password is checked, returns the secret to add to an authenticator app. The next
+    /// <c>auth/login</c> or <c>auth/sign-in</c> carries the first code and, if it is right, issues the
+    /// session and the one-time recovery codes.</summary>
+    [HttpPost("auth/mfa/enrollment")]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ServiceOkResponse<MfaEnrollment>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public Task<IActionResult> BeginRequiredMfaEnrollment([FromBody] MemberMfaEnrollmentRequest request,
+        CancellationToken ct) =>
+        Auth(async () => { var result = await authentication.BeginRequiredMfaEnrollmentAsync(request, ct);
             Response.Headers.CacheControl = "no-store"; return new ServiceOkResponse<object>(result); });
 
     [HttpPost("auth/platform-admin/login")]
@@ -209,18 +232,37 @@ public sealed class IdentityController(
         try { return ReturnResponseWithHttpStatus(await action()); }
         catch (AuthenticationException exception)
         {
-            var status = exception.Failure switch
-            {
-                AuthenticationFailure.InvalidCredentials => 401,
-                AuthenticationFailure.MfaRequired or AuthenticationFailure.MfaInvalid => 401,
-                AuthenticationFailure.Conflict => 409,
-                AuthenticationFailure.RateLimited => 429,
-                AuthenticationFailure.Unavailable => 503,
-                _ => 400
-            };
-            return ReturnResponseWithHttpStatus(new ServiceErrorResponse(status,
-                exception.Failure.ToString().ToUpperInvariant(), "The request could not be completed."));
+            return ReturnResponseWithHttpStatus(AuthError(exception));
         }
+    }
+
+    /// <summary>Maps an authentication failure to its status and code. The long-standing codes are the
+    /// upper-cased failure name (<c>MFAREQUIRED</c>, <c>MFAINVALID</c>, <c>RATELIMITED</c>, ...); the member MFA
+    /// codes are snake case. Shared with the signed-in MFA endpoints.</summary>
+    internal static ServiceErrorResponse AuthError(AuthenticationException exception)
+    {
+        var status = exception.Failure switch
+        {
+            AuthenticationFailure.InvalidCredentials => 401,
+            AuthenticationFailure.MfaRequired or AuthenticationFailure.MfaInvalid or
+                AuthenticationFailure.MfaEnrollmentRequired => 401,
+            AuthenticationFailure.Conflict or AuthenticationFailure.MfaAlreadyEnrolled or
+                AuthenticationFailure.MfaNotEnrolled or AuthenticationFailure.MfaNotRequired or
+                AuthenticationFailure.MfaRequiredByOrganization => 409,
+            AuthenticationFailure.RateLimited => 429,
+            AuthenticationFailure.Unavailable => 503,
+            _ => 400
+        };
+        var code = exception.Failure switch
+        {
+            AuthenticationFailure.MfaEnrollmentRequired => "MFA_ENROLLMENT_REQUIRED",
+            AuthenticationFailure.MfaAlreadyEnrolled => "MFA_ALREADY_ENROLLED",
+            AuthenticationFailure.MfaNotEnrolled => "MFA_NOT_ENROLLED",
+            AuthenticationFailure.MfaNotRequired => "MFA_NOT_REQUIRED",
+            AuthenticationFailure.MfaRequiredByOrganization => "MFA_REQUIRED_BY_ORGANIZATION",
+            _ => exception.Failure.ToString().ToUpperInvariant()
+        };
+        return new ServiceErrorResponse(status, code, "The request could not be completed.");
     }
 
     private async Task<IActionResult> Onboarding(Func<Task<ServiceResponse>> action)

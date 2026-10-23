@@ -1,14 +1,17 @@
 import { unwrapResponse, type ApiEnvelope } from '../../../shared/api-response'
 import { DEFAULT_FORMATS, readFormats, type Formats } from '../../../shared/date-format'
 
-type AuthResponse = {
+export type AuthResponse = {
   accessToken: string
   accessExpiresAtUtc: string
   refreshToken: string
   mustChangePassword: boolean
   tenantId: string
   role?: string
+  /** Present only on the response that completes a required enrollment; shown once. */
+  recoveryCodes?: string[] | null
 }
+export type SecondFactor = { totpCode?: string; recoveryCode?: string }
 
 export type SignInOrganization = { organizationCode: string; name: string }
 type SignInResponse = { session: AuthResponse | null; organizations: SignInOrganization[] }
@@ -62,21 +65,33 @@ export function useSession() {
     }
   }
 
-  async function login(organizationCode: string, email: string, password: string) {
+  /**
+   * Signs a member in. A second factor is repeated on the same call after MFAREQUIRED. A session that
+   * comes with first-time recovery codes is not saved here: the caller saves it with `acceptSession`
+   * once the codes have been shown.
+   */
+  async function login(organizationCode: string, email: string, password: string, factor: SecondFactor = {}) {
     const response = unwrapResponse(await $fetch<ApiEnvelope<AuthResponse>>(`${config.public.gatewayUrl}/api/v1/auth/login`, {
-      method: 'POST', body: { organizationCode, email, password }
+      method: 'POST', body: { organizationCode, email, password, ...factor }
     }))
-    save(response)
+    if (!response.recoveryCodes?.length) save(response)
     return response
   }
 
   /** Signs in by email alone; returns the organizations to choose from when there are several. */
-  async function signIn(email: string, password: string) {
+  async function signIn(email: string, password: string, factor: SecondFactor = {}) {
     const response = unwrapResponse(await $fetch<ApiEnvelope<SignInResponse>>(`${config.public.gatewayUrl}/api/v1/auth/sign-in`, {
+      method: 'POST', body: { email, password, ...factor }
+    }))
+    if (response.session && !response.session.recoveryCodes?.length) save(response.session)
+    return response
+  }
+
+  /** The authenticator secret for a member whose organization requires MFA (after MFA_ENROLLMENT_REQUIRED). */
+  async function beginMemberEnrollment(email: string, password: string) {
+    return unwrapResponse(await $fetch<ApiEnvelope<MfaEnrollment>>(`${config.public.gatewayUrl}/api/v1/auth/mfa/enrollment`, {
       method: 'POST', body: { email, password }
     }))
-    if (response.session) save(response.session)
-    return response
   }
 
   /**
@@ -147,5 +162,5 @@ export function useSession() {
     clear()
   }
 
-  return { token: readonly(token), tenantId: readonly(tenantId), role: readonly(role), login, signIn, loginPlatformAdmin, acceptSession: save, logout, renew, restore }
+  return { token: readonly(token), tenantId: readonly(tenantId), role: readonly(role), login, signIn, beginMemberEnrollment, loginPlatformAdmin, acceptSession: save, logout, renew, restore }
 }

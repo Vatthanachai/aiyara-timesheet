@@ -8,8 +8,11 @@ import AutoComplete from '../../../shared/components/AutoComplete.vue'
 import DateField from '../../../shared/components/DateField.vue'
 import TimeField from '../../../shared/components/TimeField.vue'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
+import MfaRequirement from './components/MfaRequirement.vue'
+import MemberMfa from './components/MemberMfa.vue'
+import MemberMfaReset from './components/MemberMfaReset.vue'
 import { DATE_FORMATS, TIME_FORMATS, formatDate as formatCalendarDate, formatTime, readFormats, type Formats } from '../../../shared/date-format'
-type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; isCurrentUser: boolean; groupId: string | null; groupName: string | null }
+type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; isCurrentUser: boolean; groupId: string | null; groupName: string | null; mfaEnabled?: boolean }
 type MemberGroup = { id: string; name: string; memberCount: number }
 type Invitation = { id: string; email: string; role: string; invitedByEmail: string | null; createdAtUtc: string; expiresAtUtc: string; groupName?: string | null }
 /** A project with its billing details; a catalog from an older API leaves them out. */
@@ -75,11 +78,13 @@ const groupName = ref('')
 // The member or invitation whose request is running, and the member awaiting deactivation confirmation.
 const busyId = ref('')
 const confirmingId = ref('')
+// The member whose MFA reset form is open.
+const mfaResettingId = ref('')
 const inviteEmail = ref('')
 const inviteRole = ref<'Employee' | 'TenantAdmin'>('Employee')
 const inviteGroup = ref('')
 const isInviting = ref(false)
-type Organization = { name: string; organizationCode: string; logoUrl: string | null; dateFormat?: string; timeFormat?: string }
+type Organization = { name: string; organizationCode: string; logoUrl: string | null; dateFormat?: string; timeFormat?: string; requireMfa?: boolean }
 const organization = ref<Organization | null>(null)
 const organizationName = ref('')
 const logoPreview = ref('')
@@ -489,6 +494,17 @@ const saveFormats = () => brandAction(() => identityApi<Organization>('/identity
   { method: 'PUT', body: { ...formatForm } }), copy.value.formatsSaved)
 const removeLogo = () => brandAction(() => identityApi<Organization>('/identity/organization/logo', { method: 'DELETE' }),
   copy.value.logoRemoved)
+function closeMfaReset(id: string) {
+  mfaResettingId.value = ''
+  void nextTick(() => document.getElementById(`mfa-reset-button-${id}`)?.focus())
+}
+async function mfaResetDone(member: Member) {
+  mfaResettingId.value = ''
+  error.value = ''
+  notice.value = locale.value === 'th' ? `รีเซ็ต MFA ของ ${member.email} แล้ว` : `Reset MFA for ${member.email}.`
+  try { await loadMembers() } catch { /* the notice stays */ }
+  void nextTick(() => document.getElementById(`mfa-reset-button-${member.id}`)?.focus())
+}
 async function loadMembers() {
   const [list, pending, groupList] = await Promise.all([
     identityApi<Member[]>('/identity/members'),
@@ -677,10 +693,10 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
               <colgroup><col class="col-member" /><col class="col-role" /><col class="col-status" /><col class="col-group" /><col class="col-actions" /></colgroup>
               <thead><tr><th scope="col">{{ copy.member }}</th><th scope="col">{{ copy.role }}</th><th scope="col">{{ copy.status }}</th><th scope="col">{{ copy.group }}</th><th scope="col"><span class="sr-only">{{ copy.actions }}</span></th></tr></thead>
               <tbody>
-                <tr v-for="member in members" :key="member.id">
+                <template v-for="member in members" :key="member.id"><tr>
                   <td><div class="member-identity"><strong>{{ memberName(member) || member.email }}<span v-if="member.isCurrentUser" class="badge badge-self">{{ copy.you }}</span></strong><span v-if="memberName(member)">{{ member.email }}</span></div></td>
                   <td>{{ roleLabel(member.role) }}</td>
-                  <td><span class="status" :class="`status-${member.status}`">{{ statusLabel(member.status) }}</span></td>
+                  <td><span class="status" :class="`status-${member.status}`">{{ statusLabel(member.status) }}</span><MemberMfa :id="member.id" :locale="locale" :email="member.email" :enabled="!!member.mfaEnabled" :can-reset="!member.isCurrentUser" @reset="mfaResettingId = member.id" /></td>
                   <td><label class="group-select"><span class="sr-only">{{ copy.group }}: {{ member.email }}</span><AutoComplete :model-value="member.groupId ?? ''" :disabled="busyId === member.id" :label="`${copy.group}: ${member.email}`" :options="groupChoices" @change="group => setGroup(member, String(group))" /></label></td>
                   <td>
                     <div v-if="!member.isCurrentUser" class="row-actions member-actions">
@@ -693,7 +709,8 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
                       </template>
                     </div>
                   </td>
-                </tr>
+                </tr><tr v-if="mfaResettingId === member.id"><td colspan="5"><MemberMfaReset :locale="locale" :account-id="member.id" :email="member.email" :api="identityApi"
+                  @close="closeMfaReset(member.id)" @reset="mfaResetDone(member)" /></td></tr></template>
               </tbody>
             </table>
           </div>
@@ -795,6 +812,7 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
 
       <!-- Security: the password policy. -->
       <div v-show="activeTab === 'security'" id="panel-security" class="tab-panel" role="tabpanel" aria-labelledby="tab-security" tabindex="0">
+        <MfaRequirement :locale="locale" :required="organization?.requireMfa ?? false" :api="identityApi" @changed="value => { if (organization) organization.requireMfa = value }" />
         <section class="panel policy-panel" aria-labelledby="policy-heading"><div class="panel-heading"><h2 id="policy-heading">{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="12" max="128" required /><span>{{ copy.lengthUnit }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" max="3650" required /><span>{{ copy.expiryUnit }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
       </div>
     </template>

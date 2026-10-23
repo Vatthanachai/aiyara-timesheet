@@ -98,6 +98,7 @@ app.Use(async (context, next) =>
             "password/forgot" => "password_reset_request",
             "password/reset" => "password_reset_complete",
             "password/change" => "password_change",
+            "mfa/enrollment" => "mfa_enrollment",
             _ => "other"
         };
         AuthenticationMetrics.Record(action,

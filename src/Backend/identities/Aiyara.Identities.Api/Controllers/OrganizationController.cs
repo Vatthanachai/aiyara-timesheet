@@ -132,7 +132,7 @@ public sealed class OrganizationController(IdentityDbContext db, AuthenticatedMe
 
     private static object View(Tenant tenant) => new
     {
-        tenant.Name, tenant.OrganizationCode, tenant.DateFormat, tenant.TimeFormat,
+        tenant.Name, tenant.OrganizationCode, tenant.DateFormat, tenant.TimeFormat, tenant.RequireMfa,
         LogoUrl = tenant.LogoKey is null ? null : $"{LogoPath}?v={tenant.LogoUpdatedAtUtc?.Ticks ?? 0}"
     };
 

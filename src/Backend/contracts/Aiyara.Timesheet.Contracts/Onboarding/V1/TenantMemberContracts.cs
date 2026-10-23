@@ -2,7 +2,7 @@ namespace Aiyara.Timesheet.Contracts.Onboarding.V1;
 
 /// <summary>One member of the caller's organization. Id is the account ID. Role is TenantAdmin or
 /// Employee; Status is Active, PendingActivation, or Deactivated. GroupId and GroupName are null
-/// for a member in no group.</summary>
+/// for a member in no group. MfaEnabled is true when the member has a confirmed authenticator.</summary>
 public sealed record TenantMemberEntry(
     Guid Id,
     string Email,
@@ -12,7 +12,8 @@ public sealed record TenantMemberEntry(
     string Status,
     bool IsCurrentUser,
     Guid? GroupId,
-    string? GroupName);
+    string? GroupName,
+    bool MfaEnabled = false);
 
 /// <summary>An invitation that has been neither accepted nor revoked and has not expired.
 /// GroupId and GroupName are the group the invitee joins, or null.</summary>
@@ -29,6 +30,14 @@ public sealed record TenantInvitationEntry(
 public sealed record ChangeTenantMemberRoleRequest(string Role);
 
 public sealed record SetTenantMemberStatusRequest(bool Active);
+
+/// <summary>Turns the organization's MFA requirement on or off. Reason (optional, at most 500
+/// characters) is kept in the audit log.</summary>
+public sealed record SetTenantMfaRequirementRequest(bool Required, string? Reason);
+
+/// <summary>Clears a member's authenticator and recovery codes (a lost device). Reason (optional, at
+/// most 500 characters) is kept in the audit log.</summary>
+public sealed record ResetTenantMemberMfaRequest(string? Reason);
 
 /// <summary>A member group of the caller's organization and how many members are in it.</summary>
 public sealed record TenantMemberGroupEntry(Guid Id, string Name, int MemberCount);
