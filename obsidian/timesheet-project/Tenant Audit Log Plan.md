@@ -1,6 +1,6 @@
 # Tenant Audit Log Plan
 
-> Drafted 23 October 2026 for backlog item 8. Lets an organization's Tenant Admin read the member-management history that [[Tenant Member Management Plan]] already writes to `platform_organization_audit`. The Platform Admin view is in [[Platform Admin Console Plan]].
+> Drafted 23 October 2026 for backlog item 8. Implemented 23 October 2026 on `feature/tenant-audit-log-ui`. Lets an organization's Tenant Admin read the member-management history that [[Tenant Member Management Plan]] already writes to `platform_organization_audit`. The Platform Admin view is in [[Platform Admin Console Plan]].
 
 ## Audit: What Exists On `develop`
 
@@ -27,8 +27,18 @@
 
 ## Phase B: UI
 
-- [ ] B1. An Audit log panel in the Administration remote (table with action label, actor, time in the organization's date format, filter by action and dates, paging).
-- [ ] B2. Human labels for the `member.*` actions, shared with the sys-admin audit labels where possible.
+- [x] B1. An Audit log panel in the Administration remote (table with action label, actor, time in the organization's date format, filter by action and dates, paging).
+- [x] B2. Human labels for the `member.*` actions, shared with the sys-admin audit labels where possible.
+
+## Status
+
+Implemented 23 October 2026 on `feature/tenant-audit-log-ui` (backend `64be0c0`, UI `bca7fdb`).
+
+- `GET /api/v1/identity/members/audit` (Tenant Admin only) reads `platform_organization_audit`, returns only `member.*` entries, filters by `action`, `fromUtc`, and `toUtc`, and pages newest first. No migration.
+- The Administration remote has a new **Audit log** tab (`MemberAuditLog.vue`) with action and date filters, paging, readable before/after summaries, and loading, empty, and error states. Labels are in Thai and English, including `member.mfa_reset`.
+- Validation: .NET build 0 warnings; tests Phase1 78, Phase2 36, Phase3 68, Phase4 68; Smoke phase 2 on a test stack; Playwright 100/100 (`--workers=2`); `nuxt build` of the Shell and administration remotes.
+- Known gap: no test sends an employee token to the audit route; the refusal is covered only by the shared `TenantAdmin` guard.
+- Not verified: the UI was not checked by hand on a live stack.
 
 ## Out Of Scope
 
