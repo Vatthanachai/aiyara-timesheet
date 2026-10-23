@@ -1,6 +1,6 @@
 # Project Status
 
-> Updated 22 October 2026. Phases 0–5 are implemented and validated on `develop`, and items 1–4 of [[Product Backlog]] (timesheet approval, leave types and balances, missing-entry reminders, copy and bulk entry) are merged, and item 5 (running timer) is merged. The report PDF was fixed (fonts, wrapping, language) and the main stack is deployed from `develop` with `scripts/deploy-main.ps1`. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
+> Updated 23 October 2026. Phases 0–5 are implemented and validated on `develop`, and items 1–4 of [[Product Backlog]] (timesheet approval, leave types and balances, missing-entry reminders, copy and bulk entry) are merged, and item 5 (running timer) is merged, and item 7 (member MFA) is implemented on `feature/member-mfa`. The report PDF was fixed (fonts, wrapping, language) and the main stack is deployed from `develop` with `scripts/deploy-main.ps1`. Organization-code login and UUIDv8 Identity ID allocation were merged in `3891440`. See [[Development Roadmap]].
 
 ## Recent Merges To `develop`
 
