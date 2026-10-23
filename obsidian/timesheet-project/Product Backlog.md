@@ -12,7 +12,8 @@
 - Tooling, outside the numbered order: a separate test stack and a deploy step for the main stack, on `feature/test-compose` (see [[Test Stack Plan]]).
 6. [[#6. Billable work and budgets|Billable work and budgets]] — `feature/billable-budgets` (done)
 7. [[#7. MFA for organization members|MFA for organization members]] — `feature/member-mfa` (done)
-8. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+8. [[#8. Tenant-facing audit log|Tenant-facing audit log]] — `feature/tenant-audit-log-ui` (done)
+9. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -89,6 +90,8 @@ TOTP and recovery codes exist for Platform Admins only. Let Tenant Admins requir
 
 ### 8. Tenant-facing audit log
 
+> Done 23 October 2026 on `feature/tenant-audit-log-ui`: see [[Tenant Audit Log Plan]]. Still open: auditing non-member tenant changes (projects, leave types, approvals), exporting the log, searching by actor, and a test that sends an employee token to the audit route.
+
 Out of scope in [[Tenant Member Management Plan]]. Member actions already land in `platform_organization_audit`; show the organization's own entries to its Tenant Admins.
 
 ### 9. Session management
@@ -111,7 +114,7 @@ Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with
 
 ### 13. Broader end-to-end tests
 
-Playwright now runs 85 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
+Playwright now runs 100 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
 
 ### 14. Mobile and offline
 

@@ -95,6 +95,38 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
         await transaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>The organization's member-management history, newest first. Only <c>member.*</c>
+    /// actions are shown: Platform Admin actions and their reasons stay on the platform side. The
+    /// tenant query filter keeps every row to the actor's own organization.</summary>
+    public async Task<TenantAuditListResponse> ListAuditAsync(Guid tenantId, Guid actorAccountId,
+        long actorSessionVersion, string? action, DateTime? fromUtc, DateTime? toUtc, int page,
+        int pageSize, CancellationToken cancellationToken)
+    {
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+        action = action?.Trim();
+        if (action?.Length > 60 || fromUtc > toUtc ||
+            (!string.IsNullOrEmpty(action) && !action.StartsWith("member.", StringComparison.Ordinal)))
+            throw new TenantMemberException(TenantMemberFailure.InvalidInput);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var query = db.PlatformOrganizationAudits.AsNoTracking()
+            .Where(entry => entry.TenantId == tenantId && entry.Action.StartsWith("member."));
+        if (!string.IsNullOrEmpty(action)) query = query.Where(entry => entry.Action == action);
+        if (fromUtc is { } from) query = query.Where(entry => entry.CreatedAtUtc >= from);
+        if (toUtc is { } to) query = query.Where(entry => entry.CreatedAtUtc <= to);
+        var totalCount = await query.CountAsync(cancellationToken);
+        page = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize)));
+        var items = await query.OrderByDescending(entry => entry.CreatedAtUtc)
+            .ThenByDescending(entry => entry.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(entry => new TenantAuditEntry(entry.Id, entry.CreatedAtUtc, entry.Action,
+                db.Accounts.Where(account => account.Id == entry.ActorAccountId)
+                    .Select(account => account.Email).FirstOrDefault(),
+                entry.BeforeJson, entry.AfterJson))
+            .ToListAsync(cancellationToken);
+        return new TenantAuditListResponse(totalCount, page, pageSize, items);
+    }
+
     public async Task<IReadOnlyList<TenantMemberGroupEntry>> ListGroupsAsync(Guid tenantId,
         Guid actorAccountId, long actorSessionVersion, CancellationToken cancellationToken)
     {
