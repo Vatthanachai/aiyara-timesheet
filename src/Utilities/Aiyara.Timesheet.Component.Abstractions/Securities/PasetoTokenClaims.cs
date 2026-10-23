@@ -16,6 +16,10 @@ public class PasetoTokenClaims
     public bool MustChangePassword { get; set; }
 
     public string Role { get; set; } = string.Empty;
+
+    /// <summary>The refresh session this token was issued for; absent on tokens issued before
+    /// session management, which therefore cannot be marked as the current session.</summary>
+    public Guid? SessionId { get; set; }
 }
 
 /// <summary>

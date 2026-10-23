@@ -142,6 +142,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             entity.HasKey(x => x.Id);
             entity.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
             entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.Property(x => x.UserAgent).HasMaxLength(300);
             entity.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
             entity.HasQueryFilter(x => CurrentTenantId != null && x.TenantId == CurrentTenantId);

@@ -399,6 +399,9 @@ namespace Aiyara.Identities.Databases.Migrations
                     b.Property<long>("SessionVersion")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("SignedInAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -406,6 +409,10 @@ namespace Aiyara.Identities.Databases.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
 
                     b.HasKey("Id");
 

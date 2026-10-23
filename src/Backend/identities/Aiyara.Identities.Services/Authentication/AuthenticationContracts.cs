@@ -59,6 +59,11 @@ public sealed record SignInOrganization(string OrganizationCode, string Name);
 /// pick one of <see cref="Organizations"/> and log in with its organization code.</summary>
 public sealed record SignInResponse(AuthenticationResponse? Session,
     IReadOnlyList<SignInOrganization> Organizations);
+/// <summary>One active sign-in of the caller's own account. <see cref="LastUsedAtUtc"/> is when its
+/// refresh token was last issued (a session renews about as often as the access token expires);
+/// <see cref="Current"/> marks the session of the access token used for the call.</summary>
+public sealed record MemberSession(Guid Id, string Device, DateTime SignedInAtUtc, DateTime LastUsedAtUtc,
+    DateTime ExpiresAtUtc, bool Current);
 public sealed record RefreshRequest(string RefreshToken);
 public sealed record LogoutRequest(string RefreshToken);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
@@ -93,11 +98,14 @@ public interface ISessionRevocationPublisher
 /// <summary><see cref="MfaRequired"/>: the password was right but a second factor must follow.
 /// <see cref="MfaInvalid"/>: the second factor was wrong, already used, or the enrollment expired.
 /// <see cref="MfaEnrollmentRequired"/>: the member's organization requires MFA and they have no
-/// authenticator yet. The remaining MFA values are conflicts on the member's own MFA settings.</summary>
+/// authenticator yet. The remaining MFA values are conflicts on the member's own MFA settings.
+/// <see cref="NotFound"/>, <see cref="CurrentSession"/> and <see cref="SessionUnknown"/> belong to
+/// session management.</summary>
 public enum AuthenticationFailure
 {
     InvalidInput, InvalidCredentials, Conflict, RateLimited, Unavailable, MfaRequired, MfaInvalid,
-    MfaEnrollmentRequired, MfaAlreadyEnrolled, MfaNotEnrolled, MfaNotRequired, MfaRequiredByOrganization
+    MfaEnrollmentRequired, MfaAlreadyEnrolled, MfaNotEnrolled, MfaNotRequired, MfaRequiredByOrganization,
+    NotFound, CurrentSession, SessionUnknown
 }
 
 public sealed class AuthenticationException(AuthenticationFailure failure, string message)

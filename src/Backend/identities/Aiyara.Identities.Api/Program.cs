@@ -16,6 +16,7 @@ builder.AddTcpDependencyHealthCheck("Postgres", 5432);
 builder.AddTcpDependencyHealthCheck("Redis", 6379);
 builder.AddTcpDependencyHealthCheck("RustFs", 9000);
 builder.Services.AddScoped<TenantScope>();
+builder.Services.AddScoped<SessionDeviceContext>();
 builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("IdentityDb")
     ?? throw new InvalidOperationException("ConnectionStrings:IdentityDb is required.")));
@@ -72,6 +73,14 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 app.UseExceptionHandler();
+
+// A new refresh session remembers the User-Agent of the request that created it.
+app.Use(async (context, next) =>
+{
+    context.RequestServices.GetRequiredService<SessionDeviceContext>().UserAgent =
+        context.Request.Headers.UserAgent.ToString();
+    await next(context);
+});
 
 app.Use(async (context, next) =>
 {

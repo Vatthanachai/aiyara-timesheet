@@ -248,7 +248,9 @@ public sealed class IdentityController(
                 AuthenticationFailure.MfaEnrollmentRequired => 401,
             AuthenticationFailure.Conflict or AuthenticationFailure.MfaAlreadyEnrolled or
                 AuthenticationFailure.MfaNotEnrolled or AuthenticationFailure.MfaNotRequired or
-                AuthenticationFailure.MfaRequiredByOrganization => 409,
+                AuthenticationFailure.MfaRequiredByOrganization or AuthenticationFailure.CurrentSession or
+                AuthenticationFailure.SessionUnknown => 409,
+            AuthenticationFailure.NotFound => 404,
             AuthenticationFailure.RateLimited => 429,
             AuthenticationFailure.Unavailable => 503,
             _ => 400
@@ -260,6 +262,9 @@ public sealed class IdentityController(
             AuthenticationFailure.MfaNotEnrolled => "MFA_NOT_ENROLLED",
             AuthenticationFailure.MfaNotRequired => "MFA_NOT_REQUIRED",
             AuthenticationFailure.MfaRequiredByOrganization => "MFA_REQUIRED_BY_ORGANIZATION",
+            AuthenticationFailure.NotFound => "NOT_FOUND",
+            AuthenticationFailure.CurrentSession => "CURRENT_SESSION",
+            AuthenticationFailure.SessionUnknown => "SESSION_UNKNOWN",
             _ => exception.Failure.ToString().ToUpperInvariant()
         };
         return new ServiceErrorResponse(status, code, "The request could not be completed.");
