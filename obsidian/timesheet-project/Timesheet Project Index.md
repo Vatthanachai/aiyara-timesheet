@@ -26,6 +26,7 @@
 - [[Backup And Restore Plan]] — scripted backup and restore of the PostgreSQL databases and RustFS buckets, with a runbook section (phases A–B).
 - [[Real Stack E2E Plan]] — Playwright browser flows against the real Compose test stack: Platform Admin and organization creation, project and time entry, bulk invitations with the audit log, and member MFA (phases A–B).
 - [[Bulk Invitations Plan]] — a Tenant Admin invites up to 100 members at once, pasted or from a CSV, with a per-row result (phases A–B).
+- [[Mobile And Offline Plan]] — an installable app that records time without a connection: the Timesheet outbox, idempotent create by client id, service workers, and sign-out clearing the device (phases A–C).
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
 - [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (phases A–D, complete).

@@ -5,11 +5,17 @@ import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { formatDate, formatMonth, formatTime, readFormats } from '../../../shared/date-format'
+import SyncStatus from './components/SyncStatus.vue'
+import { entryOf, isNetworkFailure, offlineError, purge, type EntryBody, type ItemError, type OutboxItem } from './utils/offline'
 import { closedDatesOf, daysFrom, decimalHours, defaultWorkHours, errorCodeOf, readDroppedTrayItem, standardMinutes, timesheetDatesKey, timesheetTextKey, useTimesheetText, type BulkDay, type Catalog, type CopyResult, type Entry, type EntryForm, type EntryTemplate, type Leave, type LeaveAmount, type LeaveBalance, type MonthState, type SkipReason, type Task, type TaskStatus, type TrayItem } from './utils/timesheet'
 
 const token = ref('')
+const tenantId = ref('')
 const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
+// The Shell opens this page in a hidden frame at sign-out to delete what this device holds (decision 13). The
+// address alone never deletes anything: the page asks its parent, and deletes only on the Shell's own message.
+const purgeRequested = import.meta.client && new URLSearchParams(location.search).has('aiyara-purge')
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
 provide(fieldLocaleKey, locale)
@@ -18,7 +24,9 @@ const pad = (value: number) => String(value).padStart(2, '0')
 const now = new Date()
 const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 const month = ref(today.slice(0, 7))
-const entries = ref<Entry[]>([])
+/** The server's entries for the month; `entries` lays the changes still waiting on this device over them. */
+const serverEntries = ref<Entry[]>([])
+const entries = computed(() => queue.overlay(serverEntries.value, month.value))
 const tasks = ref<Task[]>([])
 const leaves = ref<Leave[]>([])
 const catalog = ref<Catalog>({ projects: [], categories: [], holidays: [], leaveTypes: [], workingDays: [1, 2, 3, 4, 5], workHours: defaultWorkHours })
@@ -111,36 +119,58 @@ provide(timesheetDatesKey, computed(() => ({
 function onSessionMessage(event: MessageEvent) {
   if (event.source !== window.parent || event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.session') return
   token.value = event.data.token || ''
+  tenantId.value = event.data.tenantId || ''
   gateway.value = event.data.gatewayUrl || gateway.value
   locale.value = readSessionLocale(event.data)
   applyTheme(readSessionTheme(event.data))
   formats.value = readFormats(event.data)
   if (token.value) load()
 }
+async function onPurgeMessage(event: MessageEvent) {
+  if (event.source !== window.parent || event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.purge') return
+  // Everything this device holds, for any account; then the Shell is told it is done.
+  try { await purge(null); sessionStorage.removeItem('aiyara.offline.identity') } catch { /* nothing was stored */ }
+  window.parent.postMessage({ type: 'aiyara.offline-cleared' }, config.public.shellOrigin)
+}
 onMounted(() => {
+  if (purgeRequested && window.parent !== window) {
+    window.addEventListener('message', onPurgeMessage)
+    window.parent.postMessage({ type: 'aiyara.purge-ready' }, config.public.shellOrigin)
+  }
   window.addEventListener('message', onSessionMessage)
+  queue.start()
   if (window.parent !== window) window.parent.postMessage({ type: 'aiyara.ready' }, config.public.shellOrigin)
 })
-onBeforeUnmount(() => window.removeEventListener('message', onSessionMessage))
+onBeforeUnmount(() => { window.removeEventListener('message', onSessionMessage); window.removeEventListener('message', onPurgeMessage); queue.stop() })
+/** A call to the Timesheet API. A request that gets no answer at all is reported as `OFFLINE`, never as a server error. */
 async function api<T>(path: string, options: { method?: string; body?: object } = {}) {
-  return unwrapResponse(await withRemoteRefresh(accessToken =>
-    $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/timesheets${path}`, {
-      ...options, headers: { Authorization: `Bearer ${accessToken}` }
-    }), token, config.public.shellOrigin))
+  try {
+    return unwrapResponse(await withRemoteRefresh(accessToken =>
+      $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/timesheets${path}`, {
+        ...options, timeout: 20_000, headers: { Authorization: `Bearer ${accessToken}` }
+      }), token, config.public.shellOrigin))
+  } catch (cause) { throw isNetworkFailure(cause) ? offlineError() : cause }
 }
+const queue = useOfflineQueue({ api, tenantId, shellOrigin: config.public.shellOrigin, workHours: () => catalog.value.workHours, refresh: () => load() })
+// Tell the Shell how many changes the device holds that the server does not, so sign-out can warn first.
+watch(() => queue.pending.value.length + queue.failed.value.length, count => {
+  if (window.parent !== window) window.parent.postMessage({ type: 'aiyara.offline-pending', count }, config.public.shellOrigin)
+}, { immediate: import.meta.client })
+const explain = (error: ItemError) => error.status === 404 ? labels.value.entryGone : failureOf(error.code, error.dates, error.status)
 async function load() {
   if (!token.value) return
   try {
-    const [e, t, l, c, context, state, balance] = await Promise.all([
-      api<Entry[]>(`/entries?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
-      api<Task[]>('/tasks'),
-      api<Leave[]>(`/leave?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`),
-      api<Catalog>('/catalog'),
-      api<{ currentMonth: string }>('/context'),
-      api<MonthState>(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}`),
-      api<{ balances: LeaveBalance[] }>(`/me/leave-balance?year=${month.value.slice(0, 4)}`)
+    const context = await queue.readContext(() => api<{ currentMonth: string; userId?: string; timeZoneId?: string }>('/context'))
+    const read = queue.readThrough
+    const [e, t, l, c, state, balance] = await Promise.all([
+      read(`entries:${month.value}`, () => api<Entry[]>(`/entries?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`)),
+      read('tasks', () => api<Task[]>('/tasks')),
+      read(`leave:${month.value}`, () => api<Leave[]>(`/leave?year=${month.value.slice(0, 4)}&month=${Number(month.value.slice(5))}`)),
+      read('catalog', () => api<Catalog>('/catalog')),
+      read(`state:${month.value}`, () => api<MonthState>(`/me/months/${month.value.slice(0, 4)}/${Number(month.value.slice(5))}`)),
+      read(`balance:${month.value.slice(0, 4)}`, () => api<{ balances: LeaveBalance[] }>(`/me/leave-balance?year=${month.value.slice(0, 4)}`))
     ])
-    entries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, leaveTypes: c.leaveTypes ?? [], workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
+    serverEntries.value = e; tasks.value = t; leaves.value = l; catalog.value = { ...c, leaveTypes: c.leaveTypes ?? [], workingDays: c.workingDays ?? [1, 2, 3, 4, 5], workHours: c.workHours ?? defaultWorkHours }
     balances.value = balance.balances
     // With leave types the kind is a type's id; keep a valid choice as the types change.
     const types = catalog.value.leaveTypes
@@ -154,12 +184,12 @@ async function load() {
     if (!entries.value.length && month.value === new Date().toISOString().slice(0, 7) &&
         month.value !== context.currentMonth) month.value = context.currentMonth
     error.value = ''
-  } catch (cause) { error.value = safeError(cause, locale.value) }
+  } catch (cause) { error.value = queue.identityUnknown.value ? labels.value.noAccount : safeError(cause, locale.value) }
   await loadTemplates()
 }
 // Templates are an extra: a failed request leaves the rest of the page as it was.
 async function loadTemplates() {
-  try { templates.value = (await api<EntryTemplate[]>('/entry-templates')) ?? [] } catch { /* the panel keeps its last list */ }
+  try { templates.value = (await queue.readThrough('templates', () => api<EntryTemplate[]>('/entry-templates'))) ?? [] } catch { /* the panel keeps its last list */ }
 }
 watch(month, load)
 watch(() => form.date, day => { if (day.startsWith(month.value)) leaveDate.value = day })
@@ -219,15 +249,17 @@ function announce(message: string, details: string[] = []) {
 }
 /** What a refused change says: a closed month names its days, and the entry rules have their own words. */
 function failure(cause: unknown) {
-  const code = errorCodeOf(cause)
+  return failureOf(errorCodeOf(cause), closedDatesOf(cause), undefined, cause)
+}
+/** The same words for a live refusal and for one a queued change got when it synced (stored as code, status, and days). */
+function failureOf(code: string | undefined, days: string[], status?: number, cause?: unknown) {
   if (code === 'MONTH_CLOSED') {
-    const days = closedDatesOf(cause)
     return days.length ? labels.value.monthClosedDays.replace('{dates}', days.map(day => formatDate(day, formats.value, locale.value)).join(', '))
       : labels.value.monthClosed
   }
   if (code === 'ENTRY_IN_BREAK') return labels.value.entryInBreak
   if (code === 'INVALID_TIME_RANGE') return labels.value.invalidTimeRange
-  return safeError(cause, locale.value)
+  return safeError(cause ?? { data: { errorCode: code, statusCode: status } }, locale.value)
 }
 const entryBody = () => ({ startTime: `${form.startTime}:00`, endTime: `${form.endTime}:00`, taskName: form.taskName, detail: form.detail,
   notes: form.notes, projectId: form.projectId || null, categoryId: form.categoryId || null, includesBreak: form.includesBreak })
@@ -244,10 +276,15 @@ async function saveEntry() {
       announce(labels.value.addedToDays.replace('{count}', String(count)))
       several.value = false; bulkDates.value = []
     } else {
-      await api(`/entries${editingId.value ? `/${editingId.value}` : ''}`, { method: editingId.value ? 'PUT' : 'POST',
-        body: { ...form, startTime: `${form.startTime}:00`, endTime: `${form.endTime}:00`,
-          projectId: form.projectId || null, categoryId: form.categoryId || null, personalTaskId: form.personalTaskId || null } })
-      announce(text.value.saved)
+      const body = { ...form, startTime: `${form.startTime}:00`, endTime: `${form.endTime}:00`,
+        projectId: form.projectId || null, categoryId: form.categoryId || null, personalTaskId: form.personalTaskId || null }
+      // A create names its entry, so a request replayed from the outbox cannot write twice; an update of an entry the
+      // server no longer has is made again as a new entry.
+      const entryId = (editingId.value ? await queue.fixAsNew(editingId.value) : null) ?? editingId.value ?? crypto.randomUUID()
+      const updating = Boolean(editingId.value) && entryId === editingId.value
+      const queued = await queue.submit({ kind: updating ? 'update' : 'create', entryId, body: body as EntryBody },
+        () => updating ? api(`/entries/${entryId}`, { method: 'PUT', body }) : api('/entries', { method: 'POST', body: { ...body, id: entryId } }))
+      announce(queued === 'queued' ? labels.value.savedOffline : text.value.saved)
     }
     resetForm(savedDate); await load()
   } catch (cause) { error.value = failure(cause) }
@@ -306,8 +343,23 @@ async function removeTemplate(template: EntryTemplate) {
 }
 async function removeEntry(id: string) {
   if (!canEdit.value || !confirm(text.value.confirmDeleteEntry)) return
-  try { await api(`/entries/${id}`, { method: 'DELETE' }); await load() }
+  const gone = entries.value.find(entry => entry.id === id)
+  try {
+    const queued = await queue.submit({ kind: 'delete', entryId: id, summary: { taskName: gone?.taskName ?? '', date: gone?.date ?? '',
+      startTime: gone?.startTime ?? '', endTime: gone?.endTime ?? '' } }, () => api(`/entries/${id}`, { method: 'DELETE' }))
+    if (queued === 'queued') announce(labels.value.savedOffline)
+    await load()
+  }
   catch (cause) { error.value = safeError(cause, locale.value) }
+}
+/** Fix opens the refused entry in the form; saving it queues it again. A refused delete has nothing to fix. */
+async function fixItem(item: OutboxItem) {
+  if (!item.body) return
+  if (!item.body.date.startsWith(month.value)) { month.value = item.body.date.slice(0, 7); await nextTick() }
+  edit(entryOf(item, catalog.value.workHours))
+}
+function discardItem(item: OutboxItem) {
+  if (item.seq !== undefined && confirm(labels.value.confirmDiscardItem)) void queue.discard(item.seq)
 }
 async function submitMonth() {
   if (!canSubmit.value || !confirm(labels.value.confirmSubmit.replace('{month}', monthLabel.value))) return
@@ -377,13 +429,16 @@ async function updateLeave(leave: Leave) {
         </div>
       </header>
 
+      <SyncStatus :online="queue.online.value" :stale="queue.stale.value" :pending="queue.pending.value.length" :failed="queue.failed.value" :syncing="queue.syncing.value"
+        :retrying="queue.retrying.value" :explain="explain" @sync="queue.sync(true)" @fix="fixItem"
+        @discard="discardItem" />
       <ApprovalBar v-if="currentMonth && month <= currentMonth" :state="monthState" :can-submit="canSubmit" :busy="submitting" @submit="submitMonth" />
       <p v-if="!canEdit && monthState.status === 'open' && !monthState.locked" class="notice" role="status">{{ text.readOnly }}</p>
       <p v-if="error" role="alert" class="feedback error">{{ error }}</p>
       <div v-if="notice" role="status" class="feedback success"><p>{{ notice }}</p><template v-if="noticeDetails.length">
         <p class="notice-subhead">{{ labels.skipped }}</p><ul class="notice-details"><li v-for="line in noticeDetails" :key="line">{{ line }}</li></ul></template></div>
 
-      <TimerPanel class="timer-section" :api="api" :locale="locale" :formats="formats" :today="today" :can-edit="canEdit || month !== currentMonth"
+      <TimerPanel class="timer-section" :api="queue.timerApi":locale="locale" :formats="formats" :today="today" :can-edit="canEdit || month !== currentMonth"
         :default-times="{ startTime: catalog.workHours.startTime.slice(0, 5), endTime: catalog.workHours.endTime.slice(0, 5) }" @stopped="load" />
 
       <div class="view-switch" role="group" :aria-label="text.view">

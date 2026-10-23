@@ -235,8 +235,11 @@ public sealed class TimesheetController(TimesheetOperations operations) : BaseCo
     public Task<IActionResult> Entries([FromQuery] int year, [FromQuery] int month, CancellationToken ct) =>
         Execute(actor => operations.Entries(actor, year, month, ct));
 
+    /// <summary>Creates an entry. With <c>id</c> the create is idempotent: a repeat answers <c>200</c> with the
+    /// entry already written; an id that is not the member's is <c>409 ID_IN_USE</c>.</summary>
     [HttpPost("entries", Name = "CreateTimeEntryV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<TimeEntry>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ServiceOkResponse<TimeEntry>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status409Conflict)]

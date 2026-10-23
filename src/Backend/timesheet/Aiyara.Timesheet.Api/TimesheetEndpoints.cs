@@ -25,9 +25,12 @@ public sealed record WorkWeekRequest(int[] WorkingDays, TimeOnly? StartTime = nu
 /// <summary>Whether the daily and month-end reminders are sent, and at what local time (HH:mm).</summary>
 public sealed record ReminderSettingsRequest(bool DailyEnabled, bool MonthEndEnabled, TimeOnly SendAt);
 public sealed record TaskRequest(string Name, string Status, Guid? ProjectId, Guid? CategoryId);
+/// <summary><c>Id</c> is read only when creating: a client that may send the same create twice (an offline
+/// queue replaying after a lost answer) names the entry itself, and a repeat of that id answers with the
+/// entry already written instead of writing another. It is ignored on update.</summary>
 public sealed record EntryRequest(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,
-    Guid? PersonalTaskId, string? Reason, bool IncludesBreak = false);
+    Guid? PersonalTaskId, string? Reason, bool IncludesBreak = false, Guid? Id = null);
 /// <summary>One entry written on each of 1–31 distinct dates, all or none.</summary>
 public sealed record BulkEntryRequest(DateOnly[] Dates, TimeOnly StartTime, TimeOnly EndTime,
     string TaskName, string? Detail, string? Notes, Guid? ProjectId, Guid? CategoryId,

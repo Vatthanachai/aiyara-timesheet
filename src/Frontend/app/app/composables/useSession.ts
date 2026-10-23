@@ -40,6 +40,7 @@ export function useSession() {
   const tenantId = useState<string>('tenant-id', () => '')
   const role = useState<string>('account-role', () => '')
   const config = useRuntimeConfig()
+  const offlineData = useOfflineData()
 
   function restore() {
     if (!import.meta.client) return
@@ -159,6 +160,8 @@ export function useSession() {
         })
       } catch { /* Clear local state even if the network is unavailable. */ }
     }
+    // Time kept on this device for offline use goes with the session (decision 13 of the Mobile And Offline Plan).
+    if (role.value !== 'PlatformAdmin') await offlineData.clear()
     clear()
   }
 

@@ -26,7 +26,7 @@ const nameOf = (items: Catalog['projects'], id: string | null) => items.find(ite
         <tr class="day-row"><th colspan="4" scope="rowgroup"><time :datetime="group.day">{{ dates.date(group.day) }}</time></th><td class="number-cell">{{ decimalHours(group.total) }} {{ labels.hoursUnit }}</td><td /></tr>
         <tr v-for="entry in group.items" :key="entry.id" :class="{ editing: editingId === entry.id }">
           <td class="time-cell">{{ dates.time(entry.startTime) }}–{{ dates.time(entry.endTime) }}</td>
-          <td class="task-name-cell">{{ entry.taskName }}</td>
+          <td class="task-name-cell">{{ entry.taskName }}<span v-if="entry.sync" class="sync-badge" :class="entry.sync">{{ entry.sync === 'failed' ? labels.syncFailed : labels.notSynced }}</span></td>
           <td class="optional-column">{{ nameOf(catalog.projects, entry.projectId) }}</td>
           <td class="optional-column">{{ nameOf(catalog.categories, entry.categoryId) }}</td>
           <td class="number-cell"><strong>{{ (entry.durationMinutes / 60).toFixed(2) }}</strong></td>

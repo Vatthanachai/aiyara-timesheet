@@ -19,7 +19,7 @@ public sealed partial class TimesheetOperations(TimesheetDbContext db, IMonthRet
             TimeZoneInfo.FindSystemTimeZoneById(actor.TimeZoneId));
         var locked = await db.MonthLocks.AnyAsync(x => x.Year == local.Year && x.Month == local.Month, ct);
         return Ok(new { currentMonth = $"{local.Year:D4}-{local.Month:D2}",
-            timeZoneId = actor.TimeZoneId, locked, isAdmin = actor.IsAdmin });
+            timeZoneId = actor.TimeZoneId, locked, isAdmin = actor.IsAdmin, userId = actor.UserId });
     }
 
     public async Task<ServiceResponse> Catalog(Actor actor, CancellationToken ct)
@@ -322,6 +322,16 @@ public sealed partial class TimesheetOperations(TimesheetDbContext db, IMonthRet
         CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        if (id is null && body.Id is { } clientId)
+        {
+            // A client-named create is idempotent: a repeat answers with what the first call wrote, before any
+            // other check, so a replay after the month closed is still a success.
+            if (clientId == Guid.Empty) return Error(400, "VALIDATION_FAILED");
+            var written = await db.TimeEntries.AsNoTracking().SingleOrDefaultAsync(x => x.Id == clientId, ct);
+            if (written is not null)
+                return written.OwnerId == actor.UserId ? Ok(written) : Error(409, "ID_IN_USE");
+            // Another tenant's entry is invisible to the query filter; the key catches it on insert below.
+        }
         var entry = id is null ? null : await db.TimeEntries.SingleOrDefaultAsync(x =>
             x.Id == id && x.OwnerId == actor.UserId && !x.IsDeleted, ct);
         if (id is not null && entry is null) return Error(404, "NOT_FOUND");
@@ -334,6 +344,7 @@ public sealed partial class TimesheetOperations(TimesheetDbContext db, IMonthRet
         var before = entry is null ? null : JsonSerializer.Serialize(entry);
         entry ??= new TimeEntry { TenantId = actor.TenantId, OwnerId = actor.UserId,
             TaskName = body.TaskName.Trim() };
+        if (id is null && body.Id is { } named) entry.Id = named;
         if (id is null) db.TimeEntries.Add(entry);
         entry.Date = body.Date; entry.StartTime = body.StartTime; entry.EndTime = body.EndTime;
         entry.DurationMinutes = duration; entry.TaskName = body.TaskName.Trim();
@@ -343,7 +354,20 @@ public sealed partial class TimesheetOperations(TimesheetDbContext db, IMonthRet
         entry.UpdatedAtUtc = DateTime.UtcNow;
         Audit(actor, "entry", entry.Id, id is null ? "created" : "updated", before, entry, body.Reason);
         Changed(actor, body.Date);
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        // The key refused the id: the same member's other request won the race (a replay: answer with its entry),
+        // or the id exists in another tenant, hidden from the query above (refused without saying whose).
+        catch (DbUpdateException) when (id is null && body.Id is not null)
+        {
+            db.ChangeTracker.Clear();
+            await transaction.RollbackAsync(ct);
+            // Only a row that really holds the id explains the refusal; any other database failure is not ours to hide.
+            var holder = await db.TimeEntries.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => x.Id == body.Id).Select(x => new { x.OwnerId, x.TenantId }).SingleOrDefaultAsync(ct);
+            if (holder is null) throw;
+            if (holder.TenantId != actor.TenantId || holder.OwnerId != actor.UserId) return Error(409, "ID_IN_USE");
+            return Ok(await db.TimeEntries.AsNoTracking().SingleAsync(x => x.Id == body.Id, ct));
+        }
         await transaction.CommitAsync(ct);
         return id is null ? Created(entry, $"/api/v1/entries/{entry.Id}") : Ok(entry);
     }

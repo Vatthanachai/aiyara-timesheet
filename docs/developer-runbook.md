@@ -165,6 +165,21 @@ To run the specs against a stack you started by hand, set the four variables
 `bun run --cwd src/frontend/app test:e2e:real`. Each spec creates its own organization with
 unique names, so specs and repeated runs do not depend on one another.
 
+### Installable app and offline Timesheet
+
+The Shell and the Timesheet remote ship a service worker (`@vite-pwa/nuxt`), and the Shell a web app manifest.
+They exist only in a production build, so `nuxt dev` shows neither. Playwright builds production copies of the Shell
+(`127.0.0.1:3106`) and the Timesheet remote (`127.0.0.1:3107`) for `tests/e2e/pwa.spec.ts`; the first run of the suite
+therefore takes a minute longer. To try the app by hand, build and start both (`bun run build` then
+`bun .output/server/index.mjs` with `NITRO_PORT` set), open the Shell in Chrome, reload once so the worker controls the
+page, then use DevTools → Network → Offline.
+
+`sw.js` and `manifest.webmanifest` are served `Cache-Control: no-cache` by Nitro route rules; hashed `_nuxt` files keep
+their long cache. A new version waits until the page is reloaded (`registerType: 'prompt'`): the Shell shows a banner.
+What the device keeps for offline use (IndexedDB `aiyara-timesheet-offline` on the Timesheet remote's origin) is deleted
+at sign-out; to inspect or remove it by hand use DevTools → Application → IndexedDB. See the Mobile And Offline Plan note
+in the Obsidian vault.
+
 ## Backup and restore
 
 `scripts/backup-main.ps1` and `scripts/restore-main.ps1` back up and restore the PostgreSQL

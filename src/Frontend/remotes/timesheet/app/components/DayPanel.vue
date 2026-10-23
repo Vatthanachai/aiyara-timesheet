@@ -47,7 +47,7 @@ const projectName = (entry: Entry) => props.catalog.projects.find(project => pro
     <ol v-if="entries.length" class="day-entries">
       <li v-for="entry in entries" :key="entry.id" :class="{ editing: editingId === entry.id }">
         <span class="day-entry-time">{{ dates.time(entry.startTime) }}–{{ dates.time(entry.endTime) }}</span>
-        <span class="day-entry-task"><strong>{{ entry.taskName }}</strong><small v-if="projectName(entry)">{{ projectName(entry) }}</small></span>
+        <span class="day-entry-task"><strong>{{ entry.taskName }}<span v-if="entry.sync" class="sync-badge" :class="entry.sync">{{ entry.sync === 'failed' ? labels.syncFailed : labels.notSynced }}</span></strong><small v-if="projectName(entry)">{{ projectName(entry) }}</small></span>
         <span class="day-entry-hours">{{ decimalHours(entry.durationMinutes) }} {{ labels.hoursUnit }}</span>
         <span v-if="canEdit" class="row-actions">
           <button class="quiet-button" type="button" :aria-label="`${text.edit} ${entry.taskName}`" @click="emit('edit', entry)">{{ text.edit }}</button>
