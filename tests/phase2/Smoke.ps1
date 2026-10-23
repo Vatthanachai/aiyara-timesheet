@@ -137,6 +137,22 @@ if ((Get-Members '' | Where-Object email -eq $employeeEmail).role -ne 'TenantAdm
     throw 'Reactivation did not keep the promoted role.'
 }
 
+# Tenant Admin audit log: member actions only, newest first, filterable.
+$auditResponse = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members/audit?pageSize=50" -Headers $authorization -SkipHttpErrorCheck
+Expect-Status $auditResponse 200 'GET members/audit'
+$audit = ($auditResponse.Content | ConvertFrom-Json).result
+$auditActions = @($audit.items | ForEach-Object action)
+if ($audit.totalCount -lt 3 -or $auditActions -notcontains 'member.role_changed' -or
+    ($auditActions | Where-Object { -not $_.StartsWith('member.') }) -or
+    $audit.items[0].actorEmail -ne $adminEmail) {
+    throw 'Tenant audit log did not list the admin member actions.'
+}
+$filtered = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members/audit?action=member.deactivated" -Headers $authorization -SkipHttpErrorCheck
+Expect-Status $filtered 200 'GET members/audit filtered'
+if (@(($filtered.Content | ConvertFrom-Json).result.items).Count -ne 1) { throw 'Audit action filter failed.' }
+Expect-Status (Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members/audit?action=organization.created" -Headers $authorization -SkipHttpErrorCheck) 400 'audit non-member action'
+Expect-Status (Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members/audit" -SkipHttpErrorCheck) 401 'audit without token'
+
 $refreshed = Send-Json '/api/v1/auth/refresh' @{
     refreshToken = $session.refreshToken
 }

@@ -48,3 +48,20 @@ public sealed record SaveTenantMemberGroupRequest(string Name);
 
 /// <summary>Puts a member in a group, or in no group when GroupId is null.</summary>
 public sealed record SetTenantMemberGroupRequest(Guid? GroupId);
+
+/// <summary>One member-management action in the caller's organization. Action is a
+/// <c>member.*</c> code; Before/After hold the changed fields as JSON and never contain
+/// credentials, codes, or keys. Platform Admin actions on the organization are not included.</summary>
+public sealed record TenantAuditEntry(
+    Guid Id,
+    DateTime CreatedAtUtc,
+    string Action,
+    string? ActorEmail,
+    string? BeforeJson,
+    string? AfterJson);
+
+public sealed record TenantAuditListResponse(
+    int TotalCount,
+    int Page,
+    int PageSize,
+    IReadOnlyList<TenantAuditEntry> Items);
