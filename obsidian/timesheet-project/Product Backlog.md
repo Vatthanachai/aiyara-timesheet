@@ -16,7 +16,8 @@
 9. [[#9. Session management|Session management]] — `feature/session-management-ui` (done)
 10. [[#10. Bulk invitations|Bulk invitations]] — `feature/bulk-invitations-ui` (done)
 11. [[#12. Backup and restore|Backup and restore]] — `feature/backup-restore` (done)
-12. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+12. [[#14. Mobile and offline|Mobile and offline]] — `feature/pwa-offline` (done)
+13. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -127,7 +128,13 @@ Playwright now runs 109 tests against mocked APIs, covering sign-in, invitations
 
 ### 14. Mobile and offline
 
+> Done 23 October 2026 on `feature/pwa-offline`: see [[Mobile And Offline Plan]]. Still open: opening the app offline after it was closed (needs a stored credential), offline leave, tasks, templates, bulk and copy, Background Sync and push, encrypting the local store, merging two devices' edits, offline Reporting and Administration, and a check on a real phone.
+
 An installable PWA that lets members record time without a connection and syncs when back online.
+
+- The Shell is installable (manifest, icons, service worker); the Shell and the Timesheet remote open offline after one online visit.
+- In Timesheet, entries are created, edited, and deleted, and the timer started and stopped, without a connection; changes wait in a local outbox, show as not synced, and are sent once when the connection returns, with a client id so a replay never writes twice.
+- A change the server refuses (closed or approved month, entry rules) is shown with its reason and can be fixed or discarded; sign-out and a change of account delete what the device holds.
 
 ## Related
 

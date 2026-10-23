@@ -58,7 +58,7 @@
 
 - [x] A1. `EntryRequest.Id`; `SaveEntry` replays by id (`200`), refuses a foreign id (`409 ID_IN_USE`), settles a race on the key; the OpenAPI response lists `200`.
 - [x] A2. `GET context` returns `userId`.
-- [x] A3. Tests (`OfflineSyncTests`): replay returns the same entry and writes once (one entry, one audit, one outbox event), replay after the month closed, replay after delete, foreign member and tenant ids refused, two creates at once, `context.userId`.
+- [x] A3. Tests (`OfflineSyncTests`, SQLite like the other Phase 3 tests): replay returns the same entry and writes once (one entry, one audit, one outbox event), a replay with a different body changes nothing, replay after the month closed, replay after delete, foreign member and tenant ids refused, an empty id is invalid, update ignores a body id, `context.userId`. Two simultaneous creates are not tested: the tests share one in-memory SQLite connection, which cannot run requests at once, so the race path (the key refusing the id, answered with the winner's entry) is covered only through the other-tenant case.
 - [x] A4. Smoke phase 3 step on a test stack: create with a client id twice.
 
 ## Phase B: Installable Shell
@@ -74,6 +74,15 @@
 - [x] C3. Page: offline-aware reads, queued entry writes and timer, sync on reconnect, on return to the tab, every minute, and **Sync now**; **Not synced** marks; status bar with **N changes waiting to sync**; failed items with **Fix** and **Discard**; the offline message for online-only actions.
 - [x] C4. Playwright: manifest served and linked, service workers register and the remotes open offline from a production build, entry created offline then synced once with its id, failed item surfaced and fixed or discarded, timer offline, sign-out clears the store, account switch clears it; 375 and 320 px.
 - [x] C5. Docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+
+## Known Limits
+
+- Nothing was checked on a real phone or in Safari. The service worker, IndexedDB, install prompt, and offline reload were exercised in desktop Chromium (Playwright) only.
+- iOS Safari may evict a site's IndexedDB and service worker caches after about seven days without use, and has no Background Sync: queued changes sync only while the app is open, and an unsynced queue on an unused iPhone can be lost.
+- When the Shell and the remotes are on different sites, browsers that partition third-party storage keep a separate store per top-level site; it works, but a store made in one site is not seen from another.
+- A reload or a second tab: the queue is one per account on the device, and each tab reads and sends from it, so two tabs open at once can send an item twice. The id makes the repeat harmless for creates and updates.
+- A running remote can write to the store after sign-out starts clearing it (a sync already in flight); the leftovers belong to the same account and are deleted when another account signs in or at the next sign-out.
+- Entry duration shown for a not-yet-synced entry is an estimate from the cached working hours; the server's figure replaces it.
 
 ## Out Of Scope
 
