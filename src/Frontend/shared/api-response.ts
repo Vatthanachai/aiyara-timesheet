@@ -45,6 +45,8 @@ export function safeError(error: unknown, locale: Locale): string {
     return thai ? 'ทำรายการนี้กับบัญชีของคุณเองไม่ได้' : 'You cannot do this to your own account.'
   if (code === 'SESSION_REVOCATION_UNAVAILABLE')
     return thai ? 'ยังไม่ได้บันทึกการเปลี่ยนแปลง เพราะออกจากระบบอุปกรณ์อื่นไม่สำเร็จ กรุณาลองใหม่' : 'The change was not saved because sessions could not be ended. Please try again.'
+  if (code === 'OFFLINE')
+    return thai ? 'ไม่มีการเชื่อมต่ออินเทอร์เน็ต ต้องออนไลน์จึงจะทำรายการนี้ได้' : 'You are offline. This needs a connection.'
   if (code === 'RATELIMITED' || status === 429)
     return thai ? 'ลองถี่เกินไปหรือบัญชีถูกล็อกชั่วคราว กรุณารอสักครู่แล้วลองใหม่' : 'Too many attempts, or the account is temporarily locked. Please wait a few minutes and try again.'
   if (code === 'UNAVAILABLE' || status === 503)

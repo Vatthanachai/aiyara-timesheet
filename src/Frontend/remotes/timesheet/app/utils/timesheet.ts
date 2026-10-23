@@ -1,7 +1,9 @@
 import { inject, type ComputedRef, type InjectionKey, type Ref } from 'vue'
 import { useLocaleText, type Locale } from '../../../../shared/i18n'
 
-export type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null; includesBreak?: boolean }
+export type Entry = { id: string; date: string; startTime: string; endTime: string; durationMinutes: number; taskName: string; detail: string | null; notes: string | null; projectId: string | null; categoryId: string | null; personalTaskId: string | null; includesBreak?: boolean
+  /** Set on an entry that exists only on this device so far (`pending`), or that the server refused (`failed`). */
+  sync?: 'pending' | 'failed' }
 /** Kanban columns in board order; the Timesheet API accepts exactly these task statuses. */
 export const taskStatuses = ['todo', 'doing', 'done'] as const
 export type TaskStatus = typeof taskStatuses[number]
@@ -145,7 +147,13 @@ export function useTimesheetText(locale: Ref<Locale>) {
     templates: 'แม่แบบรายการ', templatesHint: 'กรอกแบบฟอร์มจากรายการที่บันทึกไว้', noTemplates: 'บันทึกรายการเป็นแม่แบบ เพื่อใช้ซ้ำ',
     templateSaved: 'บันทึกแม่แบบแล้ว', templateDeleted: 'ลบแม่แบบแล้ว', templateExists: 'มีแม่แบบชื่อ "{name}" อยู่แล้ว',
     saveName: 'บันทึกชื่อ', replaceWithForm: 'แทนที่ด้วยแบบฟอร์ม', confirmDeleteTemplate: 'ลบแม่แบบ "{name}"?', templateTaskFirst: 'กรอกชื่องานก่อน',
-    templateMore: 'เพิ่มเติมสำหรับ {name}', useTemplate: 'ใช้ {name}'
+    templateMore: 'เพิ่มเติมสำหรับ {name}', useTemplate: 'ใช้ {name}',
+    offlineNow: 'ไม่มีการเชื่อมต่อ การเปลี่ยนแปลงจะเก็บไว้ในเครื่องนี้และซิงก์เมื่อกลับมาออนไลน์', savedCopy: 'กำลังแสดงข้อมูลที่เก็บไว้ในเครื่องนี้',
+    waiting: 'รอซิงก์ {count} รายการ', waitingOne: 'รอซิงก์ 1 รายการ', syncNow: 'ซิงก์ตอนนี้', syncing: 'กำลังซิงก์…', syncRetry: 'ติดต่อเซิร์ฟเวอร์ไม่ได้ จะลองอีกครั้ง',
+    notSynced: 'ยังไม่ซิงก์', syncFailed: 'ไม่ถูกรับ', needsAttention: '{count} รายการต้องตรวจสอบ', needsAttentionOne: '1 รายการต้องตรวจสอบ',
+    fixItem: 'แก้ไข', discardItem: 'ทิ้ง', confirmDiscardItem: 'ทิ้งการเปลี่ยนแปลงนี้?', synced: 'ซิงก์แล้ว {count} รายการ', syncedOne: 'ซิงก์แล้ว 1 รายการ',
+    savedOffline: 'เก็บไว้ในเครื่องนี้แล้ว จะซิงก์เมื่อกลับมาออนไลน์', itemCreate: 'รายการใหม่', itemUpdate: 'แก้ไข', itemDelete: 'ลบ', itemTimer: 'ทิ้งตัวจับเวลา',
+    noAccount: 'ต้องเชื่อมต่ออินเทอร์เน็ตอย่างน้อยหนึ่งครั้งจึงจะเปิดเวลาของคุณในเครื่องนี้ได้', entryGone: 'ไม่มีรายการนี้แล้ว', syncStatus: 'สถานะการซิงก์'
   }, en: {
     hoursLogged: 'Hours logged', daysTracked: 'Days with entries', leaveDays: 'Leave days',
     previousMonth: 'Previous month', nextMonth: 'Next month', selectedDate: 'Selected date',
@@ -178,7 +186,13 @@ export function useTimesheetText(locale: Ref<Locale>) {
     templates: 'Entry templates', templatesHint: 'Fill the entry form from a saved entry.', noTemplates: 'Save an entry as a template to reuse it.',
     templateSaved: 'Template saved.', templateDeleted: 'Template deleted.', templateExists: 'You already have a template called "{name}".',
     saveName: 'Save name', replaceWithForm: 'Replace with the form', confirmDeleteTemplate: 'Delete the template "{name}"?', templateTaskFirst: 'Enter the task first.',
-    templateMore: 'More for {name}', useTemplate: 'Use {name}'
+    templateMore: 'More for {name}', useTemplate: 'Use {name}',
+    offlineNow: 'You are offline. Changes are saved on this device and sync when you reconnect.', savedCopy: 'Showing the copy saved on this device.',
+    waiting: '{count} changes waiting to sync', waitingOne: '1 change waiting to sync', syncNow: 'Sync now', syncing: 'Syncing…', syncRetry: 'The server could not be reached. Trying again soon.',
+    notSynced: 'Not synced', syncFailed: 'Not accepted', needsAttention: '{count} changes need your attention', needsAttentionOne: '1 change needs your attention',
+    fixItem: 'Fix', discardItem: 'Discard', confirmDiscardItem: 'Discard this change?', synced: 'Synced {count} changes.', syncedOne: 'Synced 1 change.',
+    savedOffline: 'Saved on this device. It will sync when you are back online.', itemCreate: 'New entry', itemUpdate: 'Change', itemDelete: 'Delete', itemTimer: 'Discard timer',
+    noAccount: 'Connect once to open your time on this device.', entryGone: 'The entry no longer exists.', syncStatus: 'Sync status'
   } })
   return { text, labels }
 }

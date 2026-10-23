@@ -210,6 +210,19 @@ Expect (Request Post '/api/v1/timesheets/timer/start' @{} $admin) 201 'timer res
 Expect (Request Delete '/api/v1/timesheets/timer' $null $admin) 204 'timer discard' | Out-Null
 Expect (Request Delete '/api/v1/timesheets/timer' $null $admin) 404 'discard without a timer' | Out-Null
 
+# Offline sync: a create that names its id is idempotent, so an outbox replaying after a lost answer never writes twice;
+# an id that belongs to another member is refused; the context names the account the offline store is keyed by.
+$clientId = [guid]::NewGuid().ToString()
+$offlineBody = @{ id = $clientId; date = "$year-$month-16"; startTime = '07:00:00'; endTime = '07:45:00'; taskName = 'Offline replay' }
+$offlineFirst = Expect (Request Post '/api/v1/timesheets/entries' $offlineBody $admin) 201 'offline create'
+$offlineAgain = Expect (Request Post '/api/v1/timesheets/entries' $offlineBody $admin) 200 'offline create replay'
+if ($offlineFirst.id -ne $clientId -or $offlineAgain.id -ne $clientId) { throw 'The create did not keep the client id.' }
+Expect (Request Post '/api/v1/timesheets/entries' $offlineBody $employee) 409 'offline create with another member id' | Out-Null
+$offlineEntries = Expect (Request Get "/api/v1/timesheets/entries?year=$([int]$year)&month=$([int]$month)" $null $admin) 200 'offline entries'
+if (@($offlineEntries | Where-Object taskName -eq 'Offline replay').Count -ne 1) { throw 'A replayed create wrote the entry more than once.' }
+if (-not (Expect (Request Get '/api/v1/timesheets/context' $null $admin) 200 'context').userId) { throw 'The context does not name the account.' }
+Expect (Request Delete "/api/v1/timesheets/entries/$clientId" $null $admin) 204 'offline entry cleanup' | Out-Null
+
 # Reminders: off until a Tenant Admin turns them on; only a Tenant Admin may change them.
 $reminders = Expect (Request Get '/api/v1/timesheets/reminders' $null $admin) 200 'reminder settings'
 if ($reminders.dailyEnabled -or $reminders.monthEndEnabled -or $reminders.sendAt -ne '09:00') { throw 'Reminders are not off by default.' }
@@ -248,4 +261,4 @@ Expect (Request Get "/api/v1/timesheets/months/$year/$month/snapshot" $null $emp
 Expect (Request Put "/api/v1/timesheets/entries/$($entry.id)" $entryBody $employee) 409 'locked entry' | Out-Null
 Expect (Request Delete "/api/v1/timesheets/leave/$($leave.id)" $null $employee) 409 'locked leave' | Out-Null
 
-Write-Output 'Phase 3 profile, catalog, task, overnight time entry, templates, bulk and copied entries, running timer, leave, isolation, approval, month lock and snapshot smoke test passed.'
+Write-Output 'Phase 3 profile, catalog, task, overnight time entry, templates, bulk and copied entries, running timer, offline replay, leave, isolation, approval, month lock and snapshot smoke test passed.'

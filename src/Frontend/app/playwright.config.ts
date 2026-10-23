@@ -44,6 +44,22 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000
     },
+    // Production copies of the Shell and the Timesheet remote, for the service worker specs (pwa.spec.ts): the
+    // worker and its precache exist only in a production build.
+    {
+      command: 'bun run --cwd ../remotes/timesheet build && bun ../remotes/timesheet/.output/server/index.mjs',
+      url: 'http://127.0.0.1:3107/sw.js',
+      env: { NITRO_HOST: '127.0.0.1', NITRO_PORT: '3107', NUXT_PUBLIC_SHELL_ORIGIN: 'http://127.0.0.1:3106' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000
+    },
+    {
+      command: 'bun run build && bun .output/server/index.mjs',
+      url: 'http://127.0.0.1:3106/sw.js',
+      env: { NITRO_HOST: '127.0.0.1', NITRO_PORT: '3106', NUXT_PUBLIC_TIMESHEET_REMOTE_URL: 'http://127.0.0.1:3107' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000
+    },
     {
       command: 'bun run --cwd ../remotes/timesheet nuxt dev --host 127.0.0.1 --port 3102',
       url: 'http://127.0.0.1:3102',

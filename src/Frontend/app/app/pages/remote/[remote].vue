@@ -15,13 +15,19 @@ const remoteUrl = computed(() => {
   return config.public.remotes[remote.value.id]
 })
 const { token, tenantId, renew, restore, logout } = useSession()
+const { report } = useOfflineData()
+const online = useOnline()
+// Only Timesheet keeps working without a connection; the other pages say so instead of showing an empty frame.
+const needsConnection = computed(() => !online.value && remote.value?.id !== 'timesheet')
 const { locale } = useLocale()
 const { theme } = useTheme()
 // Set by the layout from the signed-in organization.
 const formats = useState<Formats>('organization-formats', () => DEFAULT_FORMATS)
 const text = useLocaleText(locale, {
-  th: { signIn: 'กรุณาเข้าสู่ระบบ', goHome: 'กลับหน้าแรก', accessRestrictedTitle: 'ไม่มีสิทธิ์เข้าถึง', accessRestrictedBody: 'บัญชีของคุณไม่มีสิทธิ์ใช้งานส่วนนี้' },
-  en: { signIn: 'Please sign in', goHome: 'Go home', accessRestrictedTitle: 'Access restricted', accessRestrictedBody: 'Your account does not have access to this area.' }
+  th: { signIn: 'กรุณาเข้าสู่ระบบ', goHome: 'กลับหน้าแรก', accessRestrictedTitle: 'ไม่มีสิทธิ์เข้าถึง', accessRestrictedBody: 'บัญชีของคุณไม่มีสิทธิ์ใช้งานส่วนนี้',
+    offlineTitle: 'ต้องเชื่อมต่ออินเทอร์เน็ต', offlineBody: 'ส่วนนี้ใช้งานได้เมื่อออนไลน์เท่านั้น หน้าบันทึกเวลายังใช้งานได้และจะซิงก์เมื่อกลับมาออนไลน์', openTimesheet: 'เปิดบันทึกเวลา' },
+  en: { signIn: 'Please sign in', goHome: 'Go home', accessRestrictedTitle: 'Access restricted', accessRestrictedBody: 'Your account does not have access to this area.',
+    offlineTitle: 'This needs a connection', offlineBody: 'This area works only online. Record time still works and will sync when you are back online.', openTimesheet: 'Open Record time' }
 })
 const frame = ref<HTMLIFrameElement | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | undefined
@@ -30,6 +36,10 @@ function onRemoteMessage(event: MessageEvent) {
       event.origin !== new URL(remoteUrl.value).origin) return
   if (event.data?.type === 'aiyara.ready') {
     void sendSession()
+    return
+  }
+  if (event.data?.type === 'aiyara.offline-pending' && Number.isFinite(event.data.count)) {
+    report(Math.max(0, Math.floor(event.data.count)))
     return
   }
   if (event.data?.type === 'aiyara.sign-in-required') {
@@ -81,6 +91,11 @@ if (!remote.value) {
     <h1>{{ text.accessRestrictedTitle }}</h1>
     <p>{{ text.accessRestrictedBody }}</p>
     <NuxtLink to="/">{{ text.goHome }}</NuxtLink>
+  </section>
+  <section v-else-if="remote && token && needsConnection" class="remote-delegation" role="status" data-testid="needs-connection">
+    <h1>{{ text.offlineTitle }}</h1>
+    <p>{{ text.offlineBody }}</p>
+    <NuxtLink to="/remote/timesheet">{{ text.openTimesheet }}</NuxtLink>
   </section>
   <section v-else-if="remote && token" class="remote-workspace" :data-remote="remote.id">
     <h1>{{ remote.label[locale] }}</h1>

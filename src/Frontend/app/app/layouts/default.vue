@@ -20,9 +20,19 @@ const { token, role, logout, restore } = useSession()
 const authorizedFetch = useAuthorizedFetch()
 const config = useRuntimeConfig()
 const text = useLocaleText(locale, {
-  th: { profile: 'โปรไฟล์', organizations: 'ผู้ดูแลระบบ', profileSettings: 'ตั้งค่าโปรไฟล์', signOut: 'ออกจากระบบ' },
-  en: { profile: 'Profile', organizations: 'System admin', profileSettings: 'Profile settings', signOut: 'Sign out' }
+  th: { profile: 'โปรไฟล์', organizations: 'ผู้ดูแลระบบ', profileSettings: 'ตั้งค่าโปรไฟล์', signOut: 'ออกจากระบบ',
+    offline: 'ไม่มีการเชื่อมต่อ หน้าบันทึกเวลายังใช้งานได้ ส่วนอื่นต้องออนไลน์', update: 'มีเวอร์ชันใหม่', reload: 'โหลดใหม่',
+    signOutPending: 'รายการที่รอซิงก์ ({count}) จะหายไปเมื่อออกจากระบบ ออกจากระบบต่อหรือไม่?' },
+  en: { profile: 'Profile', organizations: 'System admin', profileSettings: 'Profile settings', signOut: 'Sign out',
+    offline: 'You are offline. Record time still works; the rest needs a connection.', update: 'A new version is ready.', reload: 'Reload',
+    signOutPending: 'Changes waiting to sync ({count}) will be lost if you sign out. Sign out anyway?' }
 })
+const online = useOnline()
+const { pending: pendingChanges } = useOfflineData()
+// The installed app's service worker (absent in development): a new version waits until the member chooses to reload.
+const pwa = useNuxtApp().$pwa as { needRefresh?: Ref<boolean>; updateServiceWorker?: (reload?: boolean) => Promise<void> } | undefined
+const updateReady = computed(() => Boolean(pwa?.needRefresh?.value))
+function setOnline() { online.value = navigator.onLine }
 // Shared with the home page, which greets the member by name.
 const profile = useState<ProfileSummary | null>('profile-summary', () => null)
 const profileMenu = ref<HTMLDetailsElement | null>(null)
@@ -112,6 +122,7 @@ function closeProfileMenu() {
 
 async function signOut() {
   closeProfileMenu()
+  if (pendingChanges.value > 0 && !confirm(text.value.signOutPending.replace('{count}', String(pendingChanges.value)))) return
   profile.value = null
   await logout()
   await navigateTo('/signed-out')
@@ -121,6 +132,9 @@ onMounted(() => {
   stopTheme = startTheme()
   restore()
   window.addEventListener('message', onProfileUpdated)
+  setOnline()
+  window.addEventListener('online', setOnline)
+  window.addEventListener('offline', setOnline)
 })
 
 watch(token, (value) => {
@@ -136,6 +150,8 @@ watch(token, (value) => {
 onUnmounted(() => {
   stopTheme?.()
   window.removeEventListener('message', onProfileUpdated)
+  window.removeEventListener('online', setOnline)
+  window.removeEventListener('offline', setOnline)
   if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
   clearOrganization()
 })
@@ -177,6 +193,9 @@ onUnmounted(() => {
         </details>
       </div>
     </header>
+    <p v-if="!online" class="shell-banner shell-offline" role="status">{{ text.offline }}</p>
+    <p v-if="updateReady" class="shell-banner" role="status">{{ text.update }}
+      <button type="button" class="banner-button" @click="pwa?.updateServiceWorker?.(true)">{{ text.reload }}</button></p>
     <main class="shell-main">
       <slot />
     </main>
@@ -184,6 +203,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.shell-banner { background: var(--color-warn-soft); border-bottom: 1px solid var(--color-warn-line); color: var(--color-warn); margin: 0; padding: .6rem clamp(var(--space-4), 4vw, var(--space-8)); text-align: center; }
+.banner-button { background: transparent; border: 1px solid currentColor; border-radius: .45rem; color: inherit; cursor: pointer; font: inherit; margin-left: .5rem; padding: .15rem .6rem; }
 /* Sticky on wider screens (main.css); on phones the two-line header scrolls away with the page. */
 .shell-header { position: sticky; }
 .brand { align-items: center; color: inherit; display: inline-flex; gap: .6rem; min-width: 0; }
