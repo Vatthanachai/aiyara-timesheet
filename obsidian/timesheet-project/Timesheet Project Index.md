@@ -24,6 +24,7 @@
 - [[Billable Work And Budgets Plan]] — project client, billable flag, hourly rate, and hours budget, with hours used and the billable amount by project and client (phases A–B).
 - [[Test Stack Plan]] — a separate Compose stack for validation, with its own ports and database, and the deploy step that rebuilds the main stack after merge (phases A–B).
 - [[Backup And Restore Plan]] — scripted backup and restore of the PostgreSQL databases and RustFS buckets, with a runbook section (phases A–B).
+- [[Bulk Invitations Plan]] — a Tenant Admin invites up to 100 members at once, pasted or from a CSV, with a per-row result (phases A–B).
 - [[Full Api Controllers Plan]] — agreed controller, response, client, and validation changes.
 - [[Platform Organization Management Plan]] — approved Platform Admin organization lifecycle and UI work.
 - [[Platform Admin Console Plan]] — sys admin permission audit and the phased console plan (phases A–D, complete).

@@ -153,6 +153,34 @@ if (@(($filtered.Content | ConvertFrom-Json).result.items).Count -ne 1) { throw 
 Expect-Status (Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members/audit?action=organization.created" -Headers $authorization -SkipHttpErrorCheck) 400 'audit non-member action'
 Expect-Status (Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/members/audit" -SkipHttpErrorCheck) 401 'audit without token'
 
+# Bulk invitations: partial success per row, emails only for created rows.
+$bulkOne = "phase2-bulk1-$suffix@example.test"
+$bulkTwo = "phase2-bulk2-$suffix@example.test"
+$bulk = Send-Json '/api/v1/identity/members/invitations/bulk' @{ rows = @(
+    @{ email = $bulkOne; role = 'Employee' },
+    @{ email = $bulkTwo; role = 'TenantAdmin' },
+    @{ email = $bulkOne; role = 'Employee' },
+    @{ email = $employeeEmail; role = 'Employee' },
+    @{ email = 'not-an-email'; role = 'Employee' },
+    @{ email = "phase2-bulk3-$suffix@example.test"; role = 'Employee'; groupName = 'No such group' }
+) } 'Post' $authorization
+Expect-Status $bulk 200 'bulk invitation'
+$bulkResult = ($bulk.Content | ConvertFrom-Json).result
+$bulkReasons = @($bulkResult.rows | ForEach-Object { if ($_.reason) { $_.reason } else { 'Created' } })
+if ($bulkResult.createdCount -ne 2 -or $bulkResult.skippedCount -ne 4 -or
+    ($bulkReasons -join ',') -ne 'Created,Created,DuplicateInBatch,AlreadyMember,InvalidEmail,UnknownGroup') {
+    throw "Bulk invitation reported unexpected rows: $($bulkReasons -join ',')."
+}
+Get-Code $bulkOne 'Your Aiyara Timesheet invitation' | Out-Null
+Get-Code $bulkTwo 'Your Aiyara Timesheet invitation' | Out-Null
+if ($bulk.Content -match '"code"') { throw 'Bulk invitation response leaked an invitation code.' }
+$bulkPending = Get-Members '/invitations' | Where-Object { $_.email -in @($bulkOne, $bulkTwo) }
+if (@($bulkPending).Count -ne 2) { throw 'Bulk invitations were not listed as pending.' }
+Expect-Status (Send-Json '/api/v1/identity/members/invitations/bulk' @{ rows = @() } 'Post' $authorization) 400 'empty bulk invitation'
+Expect-Status (Send-Json '/api/v1/identity/members/invitations/bulk' @{ rows = @(1..101 | ForEach-Object {
+    @{ email = "phase2-many$_-$suffix@example.test"; role = 'Employee' } }) } 'Post' $authorization) 400 'oversized bulk invitation'
+Expect-Status (Send-Json '/api/v1/identity/members/invitations/bulk' @{ rows = @(@{ email = $bulkOne; role = 'Employee' }) }) 401 'bulk invitation without token'
+
 $refreshed = Send-Json '/api/v1/auth/refresh' @{
     refreshToken = $session.refreshToken
 }
