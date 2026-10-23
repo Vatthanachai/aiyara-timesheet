@@ -379,3 +379,36 @@ test('the entry screens fit at 375 and 320 px while offline with waiting and ref
   }
   await goOnline(page, server)
 })
+
+test('the purge address alone deletes nothing: opened top-level or framed by a foreign page it is ignored', async ({ page }) => {
+  const server = new Server()
+  server.refuse = (method, path) => method === 'POST' && path === '/entries' ? { status: 503, error: { errorCode: 'UNAVAILABLE' } } : undefined
+  const frame = await openTimesheet(page, server)
+  await goOffline(page, server)
+  await addEntry(frame, 'Must survive')
+  await goOnline(page, server)
+  await expect(status(frame)).toContainText('Trying again soon')
+  expect(await stored(page)).toMatchObject({ outbox: 1 })
+
+  // Opened by itself (a link anyone can send).
+  const top = await page.context().newPage()
+  await top.goto('http://127.0.0.1:3102/?aiyara-purge=1')
+  await top.waitForTimeout(1000)
+  await top.close()
+  expect(await stored(page)).toMatchObject({ outbox: 1 })
+
+  // Framed by another site, which also answers the page's question with its own message.
+  const foreign = await page.context().newPage()
+  await foreign.route('http://foreign.test/**', route => route.fulfill({ contentType: 'text/html',
+    body: `<iframe id="f" src="http://127.0.0.1:3102/?aiyara-purge=1"></iframe><script>
+      addEventListener('message', event => { if (event.data && event.data.type === 'aiyara.purge-ready') document.getElementById('f').contentWindow.postMessage({ type: 'aiyara.purge' }, '*') })</script>` }))
+  await foreign.goto('http://foreign.test/')
+  await foreign.waitForTimeout(1500)
+  await foreign.close()
+  expect(await stored(page)).toMatchObject({ outbox: 1 })
+})
+
+test('the Timesheet remote may be framed only by the Shell', async ({ request }) => {
+  const response = await request.get('http://127.0.0.1:3102/')
+  expect(response.headers()['content-security-policy']).toBe("frame-ancestors 'self' http://127.0.0.1:3100")
+})

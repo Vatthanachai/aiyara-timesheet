@@ -361,8 +361,12 @@ public sealed partial class TimesheetOperations(TimesheetDbContext db, IMonthRet
         {
             db.ChangeTracker.Clear();
             await transaction.RollbackAsync(ct);
-            var winner = await db.TimeEntries.AsNoTracking().SingleOrDefaultAsync(x => x.Id == body.Id, ct);
-            return winner is not null && winner.OwnerId == actor.UserId ? Ok(winner) : Error(409, "ID_IN_USE");
+            // Only a row that really holds the id explains the refusal; any other database failure is not ours to hide.
+            var holder = await db.TimeEntries.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => x.Id == body.Id).Select(x => new { x.OwnerId, x.TenantId }).SingleOrDefaultAsync(ct);
+            if (holder is null) throw;
+            if (holder.TenantId != actor.TenantId || holder.OwnerId != actor.UserId) return Error(409, "ID_IN_USE");
+            return Ok(await db.TimeEntries.AsNoTracking().SingleAsync(x => x.Id == body.Id, ct));
         }
         await transaction.CommitAsync(ct);
         return id is null ? Created(entry, $"/api/v1/entries/{entry.Id}") : Ok(entry);

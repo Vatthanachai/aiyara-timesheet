@@ -36,7 +36,10 @@ export function useOfflineData() {
       const finish = () => { window.clearTimeout(timeout); window.removeEventListener('message', receive); frame.remove(); resolve() }
       const timeout = window.setTimeout(finish, 3000)
       function receive(event: MessageEvent) {
-        if (event.origin === url.origin && event.source === frame.contentWindow && event.data?.type === 'aiyara.offline-cleared') finish()
+        if (event.origin !== url.origin || event.source !== frame.contentWindow) return
+        // The frame asks first; only this answer makes it delete anything.
+        if (event.data?.type === 'aiyara.purge-ready') frame.contentWindow?.postMessage({ type: 'aiyara.purge' }, url.origin)
+        else if (event.data?.type === 'aiyara.offline-cleared') finish()
       }
       window.addEventListener('message', receive)
       frame.src = url.toString()

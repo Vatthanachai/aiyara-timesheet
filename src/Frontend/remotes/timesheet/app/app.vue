@@ -13,8 +13,9 @@ const token = ref('')
 const tenantId = ref('')
 const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
-// The Shell opens this page in a hidden frame at sign-out to delete what this device holds (decision 13).
-const purging = import.meta.client && new URLSearchParams(location.search).has('aiyara-purge')
+// The Shell opens this page in a hidden frame at sign-out to delete what this device holds (decision 13). The
+// address alone never deletes anything: the page asks its parent, and deletes only on the Shell's own message.
+const purgeRequested = import.meta.client && new URLSearchParams(location.search).has('aiyara-purge')
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
 provide(fieldLocaleKey, locale)
@@ -125,18 +126,22 @@ function onSessionMessage(event: MessageEvent) {
   formats.value = readFormats(event.data)
   if (token.value) load()
 }
-onMounted(async () => {
-  if (purging) {
-    // Sign-out: delete everything this device holds for any account, then tell the Shell it is done.
-    try { await purge(null); sessionStorage.removeItem('aiyara.offline.identity') } catch { /* nothing was stored */ }
-    window.parent.postMessage({ type: 'aiyara.offline-cleared' }, config.public.shellOrigin)
-    return
+async function onPurgeMessage(event: MessageEvent) {
+  if (event.source !== window.parent || event.origin !== config.public.shellOrigin || event.data?.type !== 'aiyara.purge') return
+  // Everything this device holds, for any account; then the Shell is told it is done.
+  try { await purge(null); sessionStorage.removeItem('aiyara.offline.identity') } catch { /* nothing was stored */ }
+  window.parent.postMessage({ type: 'aiyara.offline-cleared' }, config.public.shellOrigin)
+}
+onMounted(() => {
+  if (purgeRequested && window.parent !== window) {
+    window.addEventListener('message', onPurgeMessage)
+    window.parent.postMessage({ type: 'aiyara.purge-ready' }, config.public.shellOrigin)
   }
   window.addEventListener('message', onSessionMessage)
   queue.start()
   if (window.parent !== window) window.parent.postMessage({ type: 'aiyara.ready' }, config.public.shellOrigin)
 })
-onBeforeUnmount(() => { window.removeEventListener('message', onSessionMessage); queue.stop() })
+onBeforeUnmount(() => { window.removeEventListener('message', onSessionMessage); window.removeEventListener('message', onPurgeMessage); queue.stop() })
 /** A call to the Timesheet API. A request that gets no answer at all is reported as `OFFLINE`, never as a server error. */
 async function api<T>(path: string, options: { method?: string; body?: object } = {}) {
   try {
@@ -149,7 +154,7 @@ async function api<T>(path: string, options: { method?: string; body?: object } 
 const queue = useOfflineQueue({ api, tenantId, shellOrigin: config.public.shellOrigin, workHours: () => catalog.value.workHours, refresh: () => load() })
 // Tell the Shell how many changes the device holds that the server does not, so sign-out can warn first.
 watch(() => queue.pending.value.length + queue.failed.value.length, count => {
-  if (!purging && window.parent !== window) window.parent.postMessage({ type: 'aiyara.offline-pending', count }, config.public.shellOrigin)
+  if (window.parent !== window) window.parent.postMessage({ type: 'aiyara.offline-pending', count }, config.public.shellOrigin)
 }, { immediate: import.meta.client })
 const explain = (error: ItemError) => error.status === 404 ? labels.value.entryGone : failureOf(error.code, error.dates, error.status)
 async function load() {
