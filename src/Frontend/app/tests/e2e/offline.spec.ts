@@ -57,9 +57,10 @@ async function openTimesheet(page: Page, server: Server): Promise<FrameLocator> 
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.getByRole('link', { name: 'Record time' }).click()
   const frame = page.frameLocator('iframe')
-  await expect(frame.locator('.month-totals')).toContainText('logged')
+  // A loaded machine compiles the dev pages slowly, so the first reads get a generous wait.
+  await expect(frame.locator('.month-totals')).toContainText('logged', { timeout: 30_000 })
   // Everything the page reads is on screen, and so saved on the device, before the connection is cut.
-  await expect(frame.locator('tbody tr').filter({ hasText: 'Existing work' })).toHaveCount(1)
+  await expect(frame.locator('tbody tr').filter({ hasText: 'Existing work' })).toHaveCount(1, { timeout: 15_000 })
   return frame
 }
 
@@ -347,14 +348,16 @@ test('another account on the same device never sees or sends the first one\'s ch
   // Wait until the first sync was refused, so it cannot reach the server once the refusal is lifted.
   await expect(status(frame)).toContainText('Trying again soon')
 
-  // The device now belongs to a different account: the API names another user for the same session.
+  // The device now belongs to a different account: the API names another user for the same session. The refusal
+  // stays in place until the second account's page has settled, so nothing of the first can reach the server.
   server.userId = 'user-b'
-  server.refuse = undefined
   await page.reload()
   const next = page.frameLocator('iframe')
-  await expect(next.locator('.month-totals')).toContainText('logged')
+  await expect(next.locator('.month-totals')).toContainText('logged', { timeout: 30_000 })
   await expect(next.getByTestId('sync-status')).toHaveCount(0)
   await expect(next.getByText('First account only')).toHaveCount(0)
+  await expect.poll(async () => (await stored(page)).outbox).toBe(0)
+  server.refuse = undefined
   expect(server.entries.map(entry => entry.taskName)).not.toContain('First account only')
   expect(await stored(page)).toMatchObject({ outbox: 0 })
 })

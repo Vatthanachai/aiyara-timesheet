@@ -51,6 +51,8 @@ export function useOfflineQueue(deps: { api: Api; tenantId: Ref<string>; shellOr
     const next = `${deps.tenantId.value}:${userId}`
     try { sessionStorage.setItem(identityKey, next) } catch { /* the tab keeps no memory of it */ }
     if (next === identity.value) return
+    // Nothing of the previous account may be sent under the new session while its data is being deleted.
+    items.value = []
     identity.value = next
     identityUnknown.value = false
     if (!supported) return
@@ -152,12 +154,14 @@ export function useOfflineQueue(deps: { api: Api; tenantId: Ref<string>; shellOr
   async function sync(retryFailed = false) {
     if (syncing.value || !identity.value || !navigator.onLine) return
     syncing.value = true; retrying.value = false
+    const startedFor = identity.value
     let done = 0
     try {
       if (retryFailed) for (const item of failed.value) await replace({ ...item, status: 'pending', error: null })
       const tried = new Set<number>()
       for (;;) {
-        const next = items.value.find(item => item.status === 'pending' && item.seq !== undefined && !tried.has(item.seq))
+        if (identity.value !== startedFor) break
+        const next = items.value.find(item => item.status === 'pending' && item.identity === startedFor && item.seq !== undefined && !tried.has(item.seq))
         if (!next) break
         tried.add(next.seq!)
         sendingSeq = next.seq!
