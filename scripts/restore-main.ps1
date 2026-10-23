@@ -64,6 +64,11 @@ foreach ($file in $manifest.files) {
 }
 Write-Host 'Checksums OK.'
 
+# The manifest is not signed, so its names are checked before they reach SQL, paths or mc arguments.
+foreach ($name in @($manifest.databases) + @($manifest.buckets | ForEach-Object { $_.name })) {
+    if ($name -notmatch '^[A-Za-z0-9_-]+$') { throw "Manifest has an unexpected database or bucket name '$name'." }
+}
+
 $postgres = Get-ServiceContainer $Project 'postgres'
 $rustfs = Get-ServiceContainer $Project 'rustfs'
 $pgUser = Get-ContainerEnv $postgres 'POSTGRES_USER'
