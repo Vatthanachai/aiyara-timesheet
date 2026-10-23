@@ -494,3 +494,6 @@ $RECYCLE.BIN/
 
 # Exported report samples kept in docs
 docs/*.pdf
+
+# Backups written by scripts/backup-main.ps1 (contain live data)
+backups/

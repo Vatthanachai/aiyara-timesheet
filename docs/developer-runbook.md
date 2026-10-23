@@ -136,6 +136,91 @@ The phase smoke scripts create test tenants, accounts, timesheets, and reports
 in the configured local databases. Use disposable local data when repeating
 the complete sequence.
 
+## Backup and restore
+
+`scripts/backup-main.ps1` and `scripts/restore-main.ps1` back up and restore the PostgreSQL
+databases and the RustFS buckets of a Compose stack. They default to the main stack (project
+`aiyara-timesheet`); `-Project <name>` points them at a test stack instead
+(`aiyara-test-xxxxxx`, see `scripts/test-stack.ps1 status`). They find the containers by their
+Compose labels and take credentials from the containers' own environment, so they read no
+`.env` and need no compose file.
+
+### What is backed up
+
+- Every application database in the `postgres` container (found by query, not hard-coded:
+  today `identity_db`, `notification_db`, `reporting_db`, `timesheet_db`), one `pg_dump` custom
+  format file each, plus `globals.sql` (roles, without passwords).
+- Every RustFS bucket (`aiyara-reports`, and `aiyara-profile-photos` once a photo exists),
+  copied object by object through the S3 API with a throwaway `minio/mc` container on the stack
+  network. This was chosen over copying the `rustfs-data` volume because a volume copy of a
+  running RustFS is not guaranteed consistent and depends on RustFS's on-disk format.
+- `manifest.json` with the project, time, databases, buckets, and a SHA-256 of every file.
+
+Not backed up: `.env` (database passwords, PASETO signing seed, MFA encryption key, internal
+keys). Keep a copy somewhere safe. Without the same `PASETO_SIGNING_SEED` and
+`MFA_ENCRYPTION_KEY`, restored sessions and enrolled authenticators do not work. Redis
+(session cache, rate limits), RabbitMQ queues, Prometheus, and Grafana are also not backed up;
+none holds the system of record.
+
+### Back up
+
+```powershell
+pwsh -NoProfile -File scripts/backup-main.ps1 -DryRun   # list databases and buckets, write nothing
+pwsh -NoProfile -File scripts/backup-main.ps1
+```
+
+The stack keeps running; the script only reads. Output goes to the git-ignored
+`backups/<yyyyMMdd-HHmmss>/` (`-OutputRoot` changes the parent folder). Databases are dumped one
+after another, so run it when the application is quiet if you need a cross-service snapshot.
+Copy the folder off the machine; a backup next to the volume it protects does not survive
+losing the disk.
+
+### Restore
+
+Restore overwrites data: every database in the backup is dropped and recreated, and every
+bucket is made identical to the backup (objects added since are deleted).
+
+1. Bring the stack up (`docker compose up -d`) with the `.env` the backup was taken under. A
+   fresh volume is fine: the empty databases are replaced.
+2. Check the backup and see the plan, without changing anything:
+
+   ```powershell
+   pwsh -NoProfile -File scripts/restore-main.ps1 -Backup backups/20261023-120000 -DryRun
+   ```
+
+3. Restore (`latest` is the default for `-Backup`). It refuses without `-Yes`:
+
+   ```powershell
+   pwsh -NoProfile -File scripts/restore-main.ps1 -Backup backups/20261023-120000 -Yes
+   ```
+
+   The script verifies every checksum first, stops the application containers (not postgres or
+   rustfs), restores roles, databases, and buckets, starts the containers again, and waits
+   until they are healthy.
+
+### Verify
+
+- The script ends with "Restore complete; N application containers are running and healthy."
+- `docker compose ps` shows every service healthy and the gateway answers on
+  `http://localhost:8081/health`.
+- Sign in and open a known timesheet month and a previously exported report.
+- Optional spot check:
+  `docker compose exec postgres psql -U $POSTGRES_USER -d identity_db -c "select count(*) from refresh_sessions"`.
+
+### Caveats
+
+- Rehearse on a test stack first: `scripts/test-stack.ps1 up`, `smoke -Phase 2` to seed, back up
+  with `-Project`, `reset`, `up`, restore with `-Yes`, then `reset`. Never test against the main
+  stack.
+- Roles are only created if missing; passwords stay as `db-provisioner` set them from `.env`.
+- The restore restarts the application containers with `docker start`; it does not rebuild
+  images. After restoring an old backup onto newer code, the services apply any newer
+  migrations on start.
+- Object keys are written to the backup folder as files, so a key that is not a valid file name
+  on the host file system (for example containing `:` on Windows) would fail the backup.
+  Current keys are plain paths.
+- Backups contain real data (members, hours, reports); protect and delete them accordingly.
+
 ## Troubleshooting
 
 1. Check `docker compose ps --all` and `docker compose logs --tail 100 <service>`.

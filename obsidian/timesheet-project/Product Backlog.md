@@ -13,7 +13,8 @@
 6. [[#6. Billable work and budgets|Billable work and budgets]] — `feature/billable-budgets` (done)
 7. [[#7. MFA for organization members|MFA for organization members]] — `feature/member-mfa` (done)
 8. [[#8. Tenant-facing audit log|Tenant-facing audit log]] — `feature/tenant-audit-log-ui` (done)
-9. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+9. [[#12. Backup and restore|Backup and restore]] — `feature/backup-restore` (done)
+10. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -111,6 +112,8 @@ The repository has no CI pipeline; the `develop` validation gate in `AGENTS.md` 
 ### 12. Backup and restore
 
 Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with a runbook section in `docs/developer-runbook.md`.
+
+> Done 23 October 2026 on `feature/backup-restore`: see [[Backup And Restore Plan]]. Still open: scheduled backups, retention, off-machine copies, and a cross-database snapshot.
 
 ### 13. Broader end-to-end tests
 
