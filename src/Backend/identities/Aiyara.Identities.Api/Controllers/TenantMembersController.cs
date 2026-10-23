@@ -32,6 +32,19 @@ public sealed class TenantMembersController(TenantMemberService members,
         new ServiceOkResponse<IReadOnlyList<TenantInvitationEntry>>(await members.ListInvitationsAsync(
             actor.TenantId, actor.UserId, actor.SessionVersion, ct)));
 
+    /// <summary>The organization's member-management history, newest first, <c>member.*</c>
+    /// actions only. Optional filters: exact action code, fromUtc, toUtc. Page size is 1-100.</summary>
+    [HttpGet("audit", Name = "ListTenantAuditV1")]
+    [ProducesResponseType(typeof(ServiceOkResponse<TenantAuditListResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    public Task<IActionResult> Audit(string? action, DateTime? fromUtc, DateTime? toUtc, int page = 1,
+        int pageSize = 25, CancellationToken ct = default) => Run(async actor =>
+        new ServiceOkResponse<TenantAuditListResponse>(await members.ListAuditAsync(actor.TenantId,
+            actor.UserId, actor.SessionVersion, action, fromUtc?.ToUniversalTime(),
+            toUtc?.ToUniversalTime(), page, pageSize, ct)));
+
     /// <summary>Emails a new code for a pending invitation; the old code stops working.</summary>
     [HttpPost("invitations/{invitationId:guid}/resend", Name = "ResendTenantInvitationV1")]
     [ProducesResponseType(typeof(ServiceOkResponse<object>), StatusCodes.Status202Accepted)]

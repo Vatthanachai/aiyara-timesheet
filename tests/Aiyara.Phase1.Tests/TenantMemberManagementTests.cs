@@ -477,6 +477,81 @@ public sealed class TenantMemberManagementTests
         Assert.Equal("hash", (await fixture.Db.Accounts.SingleAsync(x => x.Email == "owner@globex.test")).PasswordHash);
     }
 
+    [Fact]
+    public async Task The_audit_log_lists_only_the_organizations_member_actions_newest_first_in_pages()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var employee = await fixture.AddMemberAsync(fixture.TenantId, "zoe@acme.test", TenantRole.Employee);
+        var other = await fixture.CreateTenantAsync("Globex", "globex", "owner@globex.test");
+        var otherAdmin = await fixture.ActivateOwnerAsync(other.TenantId);
+        await fixture.Members.CreateGroupAsync(other.TenantId, otherAdmin, 0, new SaveTenantMemberGroupRequest("Secret"), default);
+        await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0, new SaveTenantMemberGroupRequest("Outsource"), default);
+        await fixture.Members.ChangeRoleAsync(fixture.TenantId, fixture.AdminId, 0, employee,
+            new ChangeTenantMemberRoleRequest("TenantAdmin"), default);
+        // Platform-side actions on the organization carry internal reasons and stay hidden.
+        fixture.Db.PlatformOrganizationAudits.Add(new PlatformOrganizationAudit
+        {
+            Id = Guid.NewGuid(), TenantId = fixture.TenantId, ActorAccountId = Guid.NewGuid(),
+            Action = "organization.suspended", Reason = "internal", CreatedAtUtc = DateTime.UtcNow
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var all = await fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0, null, null, null, 1, 25, default);
+
+        Assert.Equal(2, all.TotalCount);
+        Assert.Equal(["member.role_changed", "member.group_created"], all.Items.Select(x => x.Action));
+        Assert.All(all.Items, x => Assert.Equal("owner@acme.test", x.ActorEmail));
+        Assert.DoesNotContain(all.Items, x => x.AfterJson!.Contains("Secret"));
+
+        var second = await fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0, null, null, null, 2, 1, default);
+        Assert.Equal(("member.group_created", 2, 1), (Assert.Single(second.Items).Action, second.Page, second.PageSize));
+        var clamped = await fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0, null, null, null, 99, 1, default);
+        Assert.Equal(2, clamped.Page);
+    }
+
+    [Fact]
+    public async Task The_audit_log_filters_by_action_and_date_and_rejects_bad_filters()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0, new SaveTenantMemberGroupRequest("Outsource"), default);
+
+        var byAction = await fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0,
+            "member.group_created", null, null, 1, 25, default);
+        var otherAction = await fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0,
+            "member.deactivated", null, null, 1, 25, default);
+        var future = await fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0,
+            null, DateTime.UtcNow.AddDays(1), null, 1, 25, default);
+
+        Assert.Equal(1, byAction.TotalCount);
+        Assert.Equal(0, otherAction.TotalCount);
+        Assert.Equal(0, future.TotalCount);
+        foreach (var action in new[] { "organization.suspended", new string('x', 61) })
+            Assert.Equal(TenantMemberFailure.InvalidInput, (await Assert.ThrowsAsync<TenantMemberException>(() =>
+                fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0, action, null, null, 1, 25, default))).Failure);
+        Assert.Equal(TenantMemberFailure.InvalidInput, (await Assert.ThrowsAsync<TenantMemberException>(() =>
+            fixture.Members.ListAuditAsync(fixture.TenantId, fixture.AdminId, 0, null,
+                DateTime.UtcNow, DateTime.UtcNow.AddDays(-1), 1, 25, default))).Failure);
+    }
+
+    [Fact]
+    public async Task Only_an_active_admin_of_the_organization_may_read_its_audit_log()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var employee = await fixture.AddMemberAsync(fixture.TenantId, "zoe@acme.test", TenantRole.Employee);
+        var other = await fixture.CreateTenantAsync("Globex", "globex", "owner@globex.test");
+        await fixture.ActivateOwnerAsync(other.TenantId);
+
+        async Task<TenantMemberFailure> Failure(Guid tenantId, Guid actor, long version) =>
+            (await Assert.ThrowsAsync<TenantMemberException>(() => fixture.Members.ListAuditAsync(
+                tenantId, actor, version, null, null, null, 1, 25, default))).Failure;
+
+        Assert.Equal(TenantMemberFailure.Unauthorized, await Failure(fixture.TenantId, employee, 0));
+        Assert.Equal(TenantMemberFailure.Unauthorized, await Failure(fixture.TenantId, fixture.AdminId, 1));
+        Assert.Equal(TenantMemberFailure.Unauthorized, await Failure(other.TenantId, fixture.AdminId, 0));
+        Assert.Equal(TenantMemberFailure.Unauthorized,
+            await Failure(PlatformAdminBootstrap.PlatformTenantId, fixture.AdminId, 0));
+    }
+
     private sealed class RecordingRevocations : ISessionRevocationPublisher
     {
         public List<(Guid TenantId, Guid AccountId, long Version)> Accounts { get; } = [];
