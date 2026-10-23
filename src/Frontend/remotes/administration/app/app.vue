@@ -12,6 +12,7 @@ import MfaRequirement from './components/MfaRequirement.vue'
 import MemberMfa from './components/MemberMfa.vue'
 import MemberMfaReset from './components/MemberMfaReset.vue'
 import MemberAuditLog from './components/MemberAuditLog.vue'
+import BulkInvite from './components/BulkInvite.vue'
 import { DATE_FORMATS, TIME_FORMATS, formatDate as formatCalendarDate, formatTime, readFormats, type Formats } from '../../../shared/date-format'
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; isCurrentUser: boolean; groupId: string | null; groupName: string | null; mfaEnabled?: boolean }
 type MemberGroup = { id: string; name: string; memberCount: number }
@@ -85,6 +86,8 @@ const inviteEmail = ref('')
 const inviteRole = ref<'Employee' | 'TenantAdmin'>('Employee')
 const inviteGroup = ref('')
 const isInviting = ref(false)
+// The "Invite several" panel.
+const bulkOpen = ref(false)
 type Organization = { name: string; organizationCode: string; logoUrl: string | null; dateFormat?: string; timeFormat?: string; requireMfa?: boolean }
 const organization = ref<Organization | null>(null)
 const organizationName = ref('')
@@ -124,7 +127,7 @@ const copy = useLocaleText(locale, { th: {
   nameSaved: 'บันทึกชื่อองค์กรแล้ว', logoSaved: 'อัปเดตโลโก้แล้ว', logoRemoved: 'ลบโลโก้แล้ว',
   invalidLogo: 'ไฟล์โลโก้ต้องเป็น PNG, JPEG หรือ WebP ขนาดไม่เกิน 2 MB',
   members: 'สมาชิก', memberHint: 'ดูสมาชิกขององค์กรและเชิญคนใหม่ด้วยอีเมล', inviteEmail: 'อีเมลผู้ได้รับเชิญ',
-  role: 'บทบาท', roleEmployee: 'พนักงาน', roleTenantAdmin: 'ผู้ดูแลองค์กร', invite: 'ส่งคำเชิญ', inviting: 'กำลังส่ง…',
+  role: 'บทบาท', roleEmployee: 'พนักงาน', roleTenantAdmin: 'ผู้ดูแลองค์กร', inviteSeveral: 'เชิญหลายคน', invite: 'ส่งคำเชิญ', inviting: 'กำลังส่ง…',
   invited: 'ส่งคำเชิญถึง {email} แล้ว',
   makeAdmin: 'ตั้งเป็นผู้ดูแล', makeEmployee: 'ตั้งเป็นพนักงาน', deactivate: 'ปิดการใช้งาน', confirmDeactivate: 'ยืนยันปิดการใช้งาน',
   cancel: 'ยกเลิก', reactivate: 'เปิดใช้งานอีกครั้ง', resendActivation: 'ส่งรหัสเปิดใช้งานอีกครั้ง',
@@ -194,7 +197,7 @@ const copy = useLocaleText(locale, { th: {
   nameSaved: 'Organization name saved.', logoSaved: 'Logo updated.', logoRemoved: 'Logo removed.',
   invalidLogo: 'The logo must be a PNG, JPEG, or WebP file of at most 2 MB.',
   members: 'Members', memberHint: 'See who belongs to this organization and invite people by email.', inviteEmail: 'Invitee email',
-  role: 'Role', roleEmployee: 'Employee', roleTenantAdmin: 'Organization admin', invite: 'Send invitation', inviting: 'Sending…',
+  role: 'Role', roleEmployee: 'Employee', roleTenantAdmin: 'Organization admin', inviteSeveral: 'Invite several', invite: 'Send invitation', inviting: 'Sending…',
   invited: 'Invitation sent to {email}.',
   makeAdmin: 'Make admin', makeEmployee: 'Make employee', deactivate: 'Deactivate', confirmDeactivate: 'Confirm deactivation',
   cancel: 'Cancel', reactivate: 'Reactivate', resendActivation: 'Resend activation',
@@ -578,6 +581,14 @@ const memberName = (member: Member) => [member.firstName, member.lastName].filte
 const roleLabel = (role: string) => role === 'TenantAdmin' ? copy.value.roleTenantAdmin : copy.value.roleEmployee
 const statusLabel = (status: string) => status === 'Active' ? copy.value.statusActive
   : status === 'Deactivated' ? copy.value.statusDeactivated : copy.value.statusPendingActivation
+/** Invitations were created in bulk: show them under pending invitations. */
+async function bulkSent() {
+  try { invitations.value = await identityApi<Invitation[]>('/identity/members/invitations') } catch { /* the results stay */ }
+}
+function closeBulk() {
+  bulkOpen.value = false
+  void nextTick(() => document.getElementById('bulk-invite-button')?.focus())
+}
 async function invite() {
   isInviting.value = true
   error.value = ''
@@ -689,7 +700,9 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
             <label><span>{{ copy.role }}</span><AutoComplete v-model="inviteRole" :label="copy.role" :options="roleChoices" required /></label>
             <label v-if="groups.length"><span>{{ copy.group }}</span><AutoComplete v-model="inviteGroup" :label="copy.group" :options="groupChoices" /></label>
             <button class="button button-primary" :disabled="isInviting">{{ isInviting ? copy.inviting : copy.invite }}</button>
+            <button id="bulk-invite-button" class="button button-subtle" type="button" :aria-expanded="bulkOpen" @click="bulkOpen = !bulkOpen">{{ copy.inviteSeveral }}</button>
           </form>
+          <BulkInvite v-if="bulkOpen" :locale="locale" :groups="groups" :api="identityApi" @sent="bulkSent" @close="closeBulk" />
           <div v-if="members.length" class="table-wrap">
             <table class="member-table" :aria-label="copy.members">
               <colgroup><col class="col-member" /><col class="col-role" /><col class="col-status" /><col class="col-group" /><col class="col-actions" /></colgroup>
