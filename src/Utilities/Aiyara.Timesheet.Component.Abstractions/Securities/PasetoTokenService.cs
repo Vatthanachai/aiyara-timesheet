@@ -18,7 +18,7 @@ public sealed class PasetoTokenService(IOptions<PasetoSetting> settings) : IPase
         var keyPair = CreateKeyPair(options);
         var issuedAt = DateTimeOffset.UtcNow;
         var expiresAt = issuedAt.AddMinutes(options.ExpireMinutes);
-        var token = new PasetoBuilder()
+        var builder = new PasetoBuilder()
             .Use(ProtocolVersion.V4, Purpose.Public)
             .WithKey(keyPair.SecretKey)
             .Issuer(options.Issuer)
@@ -31,8 +31,9 @@ public sealed class PasetoTokenService(IOptions<PasetoSetting> settings) : IPase
             .AddClaim("email", claims.Email)
             .AddClaim("role", claims.Role)
             .AddClaim("session_version", claims.SessionVersion)
-            .AddClaim("must_change_password", claims.MustChangePassword)
-            .Encode();
+            .AddClaim("must_change_password", claims.MustChangePassword);
+        if (claims.SessionId is { } sessionId) builder.AddClaim("sid", sessionId.ToString());
+        var token = builder.Encode();
         return new PasetoToken(token, expiresAt);
     }
 
@@ -69,7 +70,8 @@ public sealed class PasetoTokenService(IOptions<PasetoSetting> settings) : IPase
                 Role = Get(payload, "role") ?? string.Empty,
                 SessionVersion = version,
                 ExpiresAtUtc = expiresAt,
-                MustChangePassword = bool.TryParse(Get(payload, "must_change_password"), out var mustChange) && mustChange
+                MustChangePassword = bool.TryParse(Get(payload, "must_change_password"), out var mustChange) && mustChange,
+                SessionId = Guid.TryParse(Get(payload, "sid"), out var sessionId) ? sessionId : null
             };
         }
         catch (Exception exception) when (exception is FormatException or ArgumentException or

@@ -330,7 +330,32 @@ Expect-ErrorCode (Send-Json "/api/v1/identity/members/$($adminMember.id)/mfa-res
 Expect-Status (Send-Json "/api/v1/identity/members/$($staffMember.id)/mfa-reset" @{ reason = 'Lost phone' } 'Post' $mfaAdminAuth) 204 'member MFA reset'
 Expect-ErrorCode (Send-Json '/api/v1/auth/login' $staffLoginBody) 401 'MFA_ENROLLMENT_REQUIRED' 'staff login after reset'
 Expect-Status (Send-Json '/api/v1/identity/organization/mfa' @{ required = $false } 'Put' $mfaAdminAuth) 200 'MFA requirement off'
-Expect-Status (Send-Json '/api/v1/auth/login' $staffLoginBody) 200 'staff login once the requirement is off'
+$sessionDesktop = Send-Json '/api/v1/auth/login' $staffLoginBody 'Post' @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36' }
+Expect-Status $sessionDesktop 200 'staff login once the requirement is off'
+
+# Session management: list own sessions, end one, then all the others, then sign out everywhere.
+$sessionPhone = Send-Json '/api/v1/auth/login' $staffLoginBody 'Post' @{ 'User-Agent' = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' }
+Expect-Status $sessionPhone 200 'staff second login'
+$desktopSession = ($sessionDesktop.Content | ConvertFrom-Json).result
+$phoneSession = ($sessionPhone.Content | ConvertFrom-Json).result
+$desktopAuth = @{ Authorization = "Bearer $($desktopSession.accessToken)" }
+$sessionList = Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/sessions" -Headers $desktopAuth -SkipHttpErrorCheck
+Expect-Status $sessionList 200 'list own sessions'
+$sessions = @(($sessionList.Content | ConvertFrom-Json).result)
+if ($sessions.Count -lt 2) { throw 'Expected at least two sessions.' }
+$currentSessions = @($sessions | Where-Object current)
+if ($currentSessions.Count -ne 1 -or $currentSessions[0].device -ne 'Chrome on Windows') { throw 'Current session not marked or device not recognised.' }
+$phoneRow = $sessions | Where-Object { $_.device -eq 'Safari on iOS' } | Select-Object -First 1
+if (-not $phoneRow) { throw 'Phone session was not listed.' }
+Expect-ErrorCode (Send-Json "/api/v1/identity/sessions/$($currentSessions[0].id)" $null 'Delete' $desktopAuth) 409 'CURRENT_SESSION' 'ending the current session'
+Expect-ErrorCode (Send-Json "/api/v1/identity/sessions/$([guid]::NewGuid())" $null 'Delete' $desktopAuth) 404 'NOT_FOUND' 'ending an unknown session'
+Expect-ErrorCode (Send-Json "/api/v1/identity/sessions/$($mfaMembers[0].id)" $null 'Delete' $desktopAuth) 404 'NOT_FOUND' 'ending a session id of another account'
+Expect-Status (Send-Json "/api/v1/identity/sessions/$($phoneRow.id)" $null 'Delete' $desktopAuth) 204 'ending the phone session'
+Expect-Status (Send-Json '/api/v1/auth/refresh' @{ refreshToken = $phoneSession.refreshToken }) 401 'refresh of an ended session'
+Expect-Status (Send-Json '/api/v1/identity/sessions/revoke-others' $null 'Post' $desktopAuth) 204 'ending the other sessions'
+Expect-Status (Send-Json '/api/v1/identity/sessions/revoke-all' $null 'Post' $desktopAuth) 204 'signing out everywhere'
+Expect-Status (Invoke-WebRequest -Uri "$GatewayUrl/api/v1/identity/sessions" -Headers $desktopAuth -SkipHttpErrorCheck) 401 'sessions with a signed-out token'
+Expect-Status (Send-Json '/api/v1/auth/refresh' @{ refreshToken = $desktopSession.refreshToken }) 401 'refresh after signing out everywhere'
 
 $unknownEmail = "phase2-unknown-$suffix@example.test"
 for ($attempt = 0; $attempt -lt 10; $attempt++) {

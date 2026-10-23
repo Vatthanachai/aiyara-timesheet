@@ -10,7 +10,7 @@ public sealed partial class AuthenticationService(
     IdentityDbContext db, TenantScope tenantScope, IEncryptionService passwords,
     IPasetoTokenService tokens, ICredentialNotificationSender notifications,
     ISessionRevocationPublisher revocations, ICredentialAttemptLimiter attempts,
-    IMfaSecretProtector mfaSecrets)
+    IMfaSecretProtector mfaSecrets, SessionDeviceContext? device = null)
 {
     private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromHours(24);
     private static readonly TimeSpan RefreshLifetime = TimeSpan.FromDays(14);
@@ -512,6 +512,9 @@ public sealed partial class AuthenticationService(
             cancellationToken);
         if (session.SessionVersion != account.SessionVersion)
             throw InvalidCredentials();
+        // Revoked and never rotated: the member (or a policy change) ended it. That is not a stolen
+        // token being replayed, so it fails alone instead of signing the account out everywhere.
+        if (session.RevokedAtUtc is not null && session.ReplacedById is null) throw InvalidCredentials();
         if (session.RevokedAtUtc is not null)
         {
             account.SessionVersion++;
@@ -535,7 +538,8 @@ public sealed partial class AuthenticationService(
                 s => s.RevokedAtUtc, DateTime.UtcNow), cancellationToken);
         if (rotated != 1) throw InvalidCredentials();
         var mustChange = RequiresPasswordChange(account, membership, tenant);
-        var response = await CreateSessionAsync(account, membership, mustChange, cancellationToken);
+        var response = await CreateSessionAsync(account, membership, mustChange, cancellationToken,
+            session.SignedInAtUtc ?? session.CreatedAtUtc, session.UserAgent);
         var replacementId = await db.RefreshSessions.Where(x => x.TokenHash ==
             InvitationCode.Hash(response.RefreshToken)).Select(x => x.Id)
             .SingleAsync(cancellationToken);
@@ -697,13 +701,16 @@ public sealed partial class AuthenticationService(
     });
 
     private async Task<AuthenticationResponse> CreateSessionAsync(Account account,
-        Membership membership, bool mustChange, CancellationToken cancellationToken)
+        Membership membership, bool mustChange, CancellationToken cancellationToken,
+        DateTime? signedInAtUtc = null, string? inheritedUserAgent = null)
     {
         var now = DateTime.UtcNow;
         var refresh = InvitationCode.Generate();
+        var sessionId = IdentityGuid.New();
         db.RefreshSessions.Add(new RefreshSession
         {
-            Id = IdentityGuid.New(), TenantId = membership.TenantId, AccountId = account.Id,
+            Id = sessionId, SignedInAtUtc = signedInAtUtc ?? now,
+            UserAgent = device?.UserAgent ?? inheritedUserAgent, TenantId = membership.TenantId, AccountId = account.Id,
             TokenHash = InvitationCode.Hash(refresh), CreatedAtUtc = now,
             SessionVersion = account.SessionVersion,
             ExpiresAtUtc = now.Add(RefreshLifetime)
@@ -714,7 +721,7 @@ public sealed partial class AuthenticationService(
             UserId = account.Id, TenantId = membership.TenantId,
             TokenId = IdentityGuid.New().ToString(), Email = account.Email,
             Role = membership.Role.ToString(), SessionVersion = account.SessionVersion,
-            MustChangePassword = mustChange
+            MustChangePassword = mustChange, SessionId = sessionId
         });
         return new AuthenticationResponse(access.Value, access.ExpiresAt, refresh,
             new DateTimeOffset(now.Add(RefreshLifetime), TimeSpan.Zero), mustChange,

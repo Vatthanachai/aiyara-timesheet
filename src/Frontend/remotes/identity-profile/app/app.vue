@@ -4,7 +4,9 @@ import { useIframeAutoHeight } from '../../../shared/iframe-auto-height'
 import { readSessionLocale, useLocaleText, type Locale, fieldLocaleKey } from '../../../shared/i18n'
 import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import { nameInitials } from '../../../shared/initials'
+import { readFormats, type Formats } from '../../../shared/date-format'
 import MfaSection from './components/MfaSection.vue'
+import SessionsSection from './components/SessionsSection.vue'
 
 type Profile = {
   id: string
@@ -20,6 +22,7 @@ const config = useRuntimeConfig()
 useIframeAutoHeight(config.public.shellOrigin)
 const gateway = ref('http://localhost:8081')
 const locale = ref<Locale>('en')
+const formats = ref<Formats>(readFormats(null))
 provide(fieldLocaleKey, locale)
 const profile = reactive({ firstName: '', lastName: '', photoUrl: '' as string | null, jobTitle: '' })
 const email = ref('')
@@ -106,6 +109,19 @@ async function mfaApi<T>(path: string, options: { method?: string; body?: object
     }), token, config.public.shellOrigin)) as T
 }
 
+/** The member's own signed-in devices; the answer is unwrapped, and 204 gives undefined. */
+async function sessionsApi<T>(path: string, options: { method?: string; body?: object } = {}) {
+  return unwrapResponse(await withRemoteRefresh(accessToken =>
+    $fetch<ApiEnvelope<T>>(`${gateway.value}/api/v1/identity/sessions${path}`, {
+      ...options, headers: { Authorization: `Bearer ${accessToken}` }
+    }), token, config.public.shellOrigin)) as T
+}
+
+/** Every session is ended, this one too: the Shell clears its own session and shows the sign-in. */
+function signedOutEverywhere() {
+  if (window.parent !== window) window.parent.postMessage({ type: 'aiyara.sign-out' }, config.public.shellOrigin)
+}
+
 function notifyShell() {
   if (window.parent !== window) {
     window.parent.postMessage({ type: 'aiyara.profile.updated' }, config.public.shellOrigin)
@@ -141,6 +157,7 @@ function onMessage(event: MessageEvent) {
   token.value = nextToken
   gateway.value = event.data.gatewayUrl || gateway.value
   locale.value = readSessionLocale(event.data)
+  formats.value = readFormats(event.data)
   applyTheme(readSessionTheme(event.data))
   if (sessionChanged && token.value) void load()
   if (!token.value) {
@@ -368,6 +385,7 @@ onBeforeUnmount(() => {
       </form>
 
       <MfaSection class="mfa-section" :token="token" :locale="locale" :api="mfaApi" />
+      <SessionsSection class="mfa-section" :token="token" :locale="locale" :formats="formats" :api="sessionsApi" @signed-out-everywhere="signedOutEverywhere" />
     </div>
   </main>
 </template>
