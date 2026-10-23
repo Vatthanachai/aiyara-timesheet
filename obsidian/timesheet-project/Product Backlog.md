@@ -14,7 +14,8 @@
 7. [[#7. MFA for organization members|MFA for organization members]] — `feature/member-mfa` (done)
 8. [[#8. Tenant-facing audit log|Tenant-facing audit log]] — `feature/tenant-audit-log-ui` (done)
 9. [[#12. Backup and restore|Backup and restore]] — `feature/backup-restore` (done)
-10. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+10. [[#10. Bulk invitations|Bulk invitations]] — `feature/bulk-invitations-ui` (done)
+11. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -103,6 +104,8 @@ A page listing the account's active sessions (device, last used) with a sign-out
 
 Out of scope in [[Tenant Member Management Plan]]. Invite several members at once or import them from CSV, each with a group.
 
+> Done 23 October 2026 on `feature/bulk-invitations` and `feature/bulk-invitations-ui`: see [[Bulk Invitations Plan]]. Still open: bulk resend or revoke, creating missing groups from an import, and server-side CSV parsing.
+
 ## Engineering And Operations
 
 ### 11. Continuous integration
@@ -117,7 +120,7 @@ Scripted backup and restore of the PostgreSQL databases and RustFS buckets, with
 
 ### 13. Broader end-to-end tests
 
-Playwright now runs 100 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
+Playwright now runs 109 tests against mocked APIs, covering sign-in, invitations and activation, time entry, leave, approval, reports and exports, and Administration settings. What is missing is browser flows against the real Compose stack; today only the PowerShell smoke scripts reach it.
 
 ### 14. Mobile and offline
 

@@ -1,6 +1,6 @@
 # Bulk Invitations Plan
 
-> Drafted 23 October 2026 from item 10 of [[Product Backlog]] and a code audit of `develop` at `79a627c`. Phase A (API) implemented the same day on `feature/bulk-invitations`; Phase B (UI) is open. Lets a Tenant Admin invite several members at once, or import them from a CSV, which [[Tenant Member Management Plan]] listed as out of scope.
+> Drafted 23 October 2026 from item 10 of [[Product Backlog]] and a code audit of `develop` at `79a627c`. Phase A (API) implemented the same day on `feature/bulk-invitations`; Phase B (UI) implemented 23 October 2026 on `feature/bulk-invitations-ui`. Lets a Tenant Admin invite several members at once, or import them from a CSV, which [[Tenant Member Management Plan]] listed as out of scope.
 
 ## Audit: What Exists On `develop`
 
@@ -34,10 +34,14 @@
 
 ## Phase B: UI
 
-- [ ] B1. An **Invite several** dialog in the Administration remote: paste or edit rows (email, role, group) in a table, up to 100.
-- [ ] B2. CSV import in the browser (columns `email`, `role`, `group`; header optional; role defaults to Employee), previewed before sending.
-- [ ] B3. A per-row result list after sending (created, or the skip reason in plain words), with the skipped rows downloadable or re-editable, and `emailSent: false` rows pointing to the invitation list.
-- [ ] B4. Playwright and docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+- [x] B1. An **Invite several** panel (`BulkInvite.vue`, helpers in `utils/bulkInvite.ts`) in the Administration remote: paste rows, up to 100.
+- [x] B2. CSV import in the browser (BOM and delimiters handled, header optional, role defaults to Employee, group by name), previewed with per-row checks before sending; more than 100 rows is blocked.
+- [x] B3. A per-row result list after sending (created, or the skip reason in plain words), with the skipped rows retried in the panel or downloaded as CSV (formula-neutralised), and `emailSent: false` rows pointing to the invitation list.
+- [x] B4. Playwright and docs: [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+
+## Status
+
+Implemented 23 October 2026 on `feature/bulk-invitations` (backend `fde8441`) and `feature/bulk-invitations-ui` (UI `3b511c1`). No migration. An existing pending invitation is skipped as `AlreadyInvited`, whereas the single invite replaces it. Emails are sent after the save, only for created rows; `emailSent` is false when Notification is unavailable. Validation: .NET build 0 warnings, tests Phase1 84 / Phase2 48 / Phase3 68 / Phase4 68, Smoke phase 2 on a test stack, Playwright 109/109, `nuxt build` of the Shell and administration remotes. Not verified: the 429 path was not tested at the backend, tests ran on SQLite and not PostgreSQL, and the UI was not checked by hand on a live stack.
 
 ## Out Of Scope
 
