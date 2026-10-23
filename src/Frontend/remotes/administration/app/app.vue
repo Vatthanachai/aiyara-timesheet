@@ -11,6 +11,7 @@ import { applyTheme, readSessionTheme } from '../../../shared/theme'
 import MfaRequirement from './components/MfaRequirement.vue'
 import MemberMfa from './components/MemberMfa.vue'
 import MemberMfaReset from './components/MemberMfaReset.vue'
+import MemberAuditLog from './components/MemberAuditLog.vue'
 import { DATE_FORMATS, TIME_FORMATS, formatDate as formatCalendarDate, formatTime, readFormats, type Formats } from '../../../shared/date-format'
 type Member = { id: string; firstName: string; lastName: string; email: string; role: string; status: string; isCurrentUser: boolean; groupId: string | null; groupName: string | null; mfaEnabled?: boolean }
 type MemberGroup = { id: string; name: string; memberCount: number }
@@ -99,7 +100,7 @@ const formatPreview = computed(() => {
 })
 const copy = useLocaleText(locale, { th: {
   title: 'จัดการองค์กร', subtitle: 'จัดระเบียบโครงการ หมวดหมู่ วันหยุด และข้อกำหนดการใช้งานในที่เดียว', signIn: 'กรุณาเข้าสู่ระบบผ่าน Aiyara Shell',
-  settingsTabs: 'หมวดการตั้งค่า', tabOrganization: 'องค์กร', tabPeople: 'สมาชิก', tabTime: 'เวลาทำงาน', tabCatalog: 'โครงการ|และหมวดหมู่', tabSecurity: 'ความปลอดภัย',
+  settingsTabs: 'หมวดการตั้งค่า', tabOrganization: 'องค์กร', tabPeople: 'สมาชิก', tabTime: 'เวลาทำงาน', tabCatalog: 'โครงการ|และหมวดหมู่', tabSecurity: 'ความปลอดภัย', tabAudit: 'ประวัติ|การเปลี่ยนแปลง',
   organizationCode: 'รหัสองค์กร {code}', dayOff: 'วันหยุด', member: 'สมาชิก', status: 'สถานะ', actions: 'การดำเนินการ',
   projects: 'โครงการ', projectName: 'ชื่อโครงการ', categories: 'หมวดหมู่',
   categoryName: 'ชื่อหมวดหมู่', holidays: 'วันหยุด', holidayName: 'ชื่อวันหยุด',
@@ -169,7 +170,7 @@ const copy = useLocaleText(locale, { th: {
   billingForbidden: 'เฉพาะผู้ดูแลองค์กรเท่านั้นที่แก้ข้อมูลการเรียกเก็บเงินได้', billingGone: 'ไม่พบโครงการนี้ อาจถูกลบไปแล้ว รายการถูกโหลดใหม่'
 }, en: {
   title: 'Administration', subtitle: 'Manage projects, categories, holidays and access requirements in one place.', signIn: 'Please sign in through Aiyara Shell',
-  settingsTabs: 'Settings', tabOrganization: 'Organization', tabPeople: 'People', tabTime: 'Working time', tabCatalog: 'Projects and categories', tabSecurity: 'Security',
+  settingsTabs: 'Settings', tabOrganization: 'Organization', tabPeople: 'People', tabTime: 'Working time', tabCatalog: 'Projects and categories', tabSecurity: 'Security', tabAudit: 'Audit log',
   organizationCode: 'Organization code {code}', dayOff: 'Day off', member: 'Member', status: 'Status', actions: 'Actions',
   projects: 'Projects', projectName: 'Project name', categories: 'Categories',
   categoryName: 'Category name', holidays: 'Holidays', holidayName: 'Holiday name',
@@ -239,8 +240,8 @@ const copy = useLocaleText(locale, { th: {
   billingForbidden: 'Only organization admins can change billing details.', billingGone: 'This project no longer exists. The list was reloaded.'
 } })
 // ---- Tabs: one subject at a time, remembered for the session ----------------------------------
-type TabId = 'organization' | 'people' | 'time' | 'catalog' | 'security'
-const tabIds: TabId[] = ['organization', 'people', 'time', 'catalog', 'security']
+type TabId = 'organization' | 'people' | 'time' | 'catalog' | 'security' | 'audit'
+const tabIds: TabId[] = ['organization', 'people', 'time', 'catalog', 'security', 'audit']
 const TAB_KEY = 'aiyara.administration.tab'
 const activeTab = ref<TabId>('organization')
 const tabButtons = ref<HTMLButtonElement[]>([])
@@ -249,7 +250,8 @@ const tabs = computed(() => [
   { id: 'people' as const, label: copy.value.tabPeople, count: members.value.length || null },
   { id: 'time' as const, label: copy.value.tabTime },
   { id: 'catalog' as const, label: copy.value.tabCatalog },
-  { id: 'security' as const, label: copy.value.tabSecurity }
+  { id: 'security' as const, label: copy.value.tabSecurity },
+  { id: 'audit' as const, label: copy.value.tabAudit }
 ])
 function selectTab(id: TabId, focus = false) {
   activeTab.value = id
@@ -814,6 +816,11 @@ const groupChoices = computed(() => [{ value: '', label: copy.value.noGroup }, .
       <div v-show="activeTab === 'security'" id="panel-security" class="tab-panel" role="tabpanel" aria-labelledby="tab-security" tabindex="0">
         <MfaRequirement :locale="locale" :required="organization?.requireMfa ?? false" :api="identityApi" @changed="value => { if (organization) organization.requireMfa = value }" />
         <section class="panel policy-panel" aria-labelledby="policy-heading"><div class="panel-heading"><h2 id="policy-heading">{{ copy.policy }}</h2><p>{{ copy.policyHint }}</p></div><form class="policy-form" @submit.prevent="savePolicy"><div class="policy-fields"><label>{{ copy.minimumLength }}<span class="input-suffix"><input v-model.number="policy.minimumLength" type="number" min="12" max="128" required /><span>{{ copy.lengthUnit }}</span></span></label><label>{{ copy.expiryDays }}<span class="input-suffix"><input v-model.number="policy.expiryDays" type="number" min="1" max="3650" required /><span>{{ copy.expiryUnit }}</span></span></label></div><fieldset><legend>{{ copy.passwordRequirements }}</legend><label class="check-card"><input v-model="policy.requireUppercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.uppercase }}</span></label><label class="check-card"><input v-model="policy.requireLowercase" type="checkbox" /><span class="check-mark"></span><span>{{ copy.lowercase }}</span></label><label class="check-card"><input v-model="policy.requireDigit" type="checkbox" /><span class="check-mark"></span><span>{{ copy.digit }}</span></label><label class="check-card"><input v-model="policy.requireSymbol" type="checkbox" /><span class="check-mark"></span><span>{{ copy.symbol }}</span></label></fieldset><button class="button button-primary" :disabled="isSavingPolicy">{{ isSavingPolicy ? copy.loading : copy.savePolicy }}</button></form></section>
+      </div>
+
+      <!-- Audit log: the member-management history, read when the tab is first opened. -->
+      <div v-show="activeTab === 'audit'" id="panel-audit" class="tab-panel" role="tabpanel" aria-labelledby="tab-audit" tabindex="0">
+        <MemberAuditLog :locale="locale" :formats="formats" :active="activeTab === 'audit'" :api="identityApi" />
       </div>
     </template>
   </main>
