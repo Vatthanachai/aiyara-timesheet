@@ -139,6 +139,10 @@ An installable PWA that lets members record time without a connection and syncs 
 - In Timesheet, entries are created, edited, and deleted, and the timer started and stopped, without a connection; changes wait in a local outbox, show as not synced, and are sent once when the connection returns, with a client id so a replay never writes twice.
 - A change the server refuses (closed or approved month, entry rules) is shown with its reason and can be fixed or discarded; sign-out and a change of account delete what the device holds.
 
+## Next
+
+Items 1–10 and 12–14 are done; continuous integration (11) stays deferred. What to build next, with tasks, is in [[Next Features Plan]].
+
 ## Related
 
 - [[Development Roadmap]]
