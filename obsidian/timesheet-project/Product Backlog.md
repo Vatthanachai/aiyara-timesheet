@@ -13,7 +13,8 @@
 6. [[#6. Billable work and budgets|Billable work and budgets]] — `feature/billable-budgets` (done)
 7. [[#7. MFA for organization members|MFA for organization members]] — `feature/member-mfa` (done)
 8. [[#8. Tenant-facing audit log|Tenant-facing audit log]] — `feature/tenant-audit-log-ui` (done)
-9. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+9. [[#9. Session management|Session management]] — `feature/session-management-ui` (done)
+10. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
@@ -95,6 +96,8 @@ TOTP and recovery codes exist for Platform Admins only. Let Tenant Admins requir
 Out of scope in [[Tenant Member Management Plan]]. Member actions already land in `platform_organization_audit`; show the organization's own entries to its Tenant Admins.
 
 ### 9. Session management
+
+> Done 23 October 2026 on `feature/session-management-ui`: see [[Session Management Plan]]. Still open: alerts on a new sign-in, IP address or location of a session, per-session access-token revocation (an ended session keeps a valid access token for up to 15 minutes, except after sign out everywhere), listing sessions of the account's other organizations, and a check of the UI by hand on a live stack.
 
 A page listing the account's active sessions (device, last used) with a sign-out per session and "sign out everywhere", built on the existing refresh-session revocation.
 

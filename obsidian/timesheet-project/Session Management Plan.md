@@ -1,6 +1,6 @@
 # Session Management Plan
 
-> Drafted 23 October 2026 from item 9 of [[Product Backlog]] and a code audit of `develop` at `4273789`. Phase A (API) is implemented on `feature/session-management`; Phase B (UI) is open. Covers how a signed-in member sees where their account is signed in and ends those sessions.
+> Drafted 23 October 2026 from item 9 of [[Product Backlog]] and a code audit of `develop` at `4273789`. Implemented 23 October 2026 on `feature/session-management-ui` (Phase A API and Phase B UI). Covers how a signed-in member sees where their account is signed in and ends those sessions.
 
 ## Audit: What Exists On `develop`
 
@@ -38,9 +38,13 @@
 
 ## Phase B — UI
 
-- [ ] B1. Sessions card in the Profile page (identity-profile remote): device, signed in, last used, "This device" badge, **Sign out** per other session with a confirm.
-- [ ] B2. **Sign out other devices** and **Sign out everywhere** (the latter returns to the sign-in page); handle `404` (already gone) by refreshing the list and `409 SESSION_UNKNOWN` by asking to sign in again.
-- [ ] B3. Playwright for list, one, others, and everywhere; docs-keeper updates [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+- [x] B1. Sessions card in the Profile page (identity-profile remote): device, signed in, last used, "This device" badge, **Sign out** per other session with a confirm.
+- [x] B2. **Sign out other devices** and **Sign out everywhere** (the latter returns to the sign-in page); handle `404` (already gone) by refreshing the list and `409 SESSION_UNKNOWN` by asking to sign in again.
+- [x] B3. Playwright for list, one, others, and everywhere; docs-keeper updates [[Project Status]], [[Product Backlog]], [[Timesheet Project Index]].
+
+## Status
+
+Implemented 23 October 2026 on `feature/session-management-ui`. Validated: .NET build with 0 warnings; tests Phase 1 87, Phase 2 48, Phase 3 68, Phase 4 68; Smoke phase 2 on a test stack; Playwright 102/102; production builds of the Shell and the identity-profile remote. Not verified: the UI was not checked by hand on a live stack.
 
 ## Known Limits
 

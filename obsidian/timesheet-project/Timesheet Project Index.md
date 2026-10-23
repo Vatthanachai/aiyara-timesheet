@@ -30,6 +30,7 @@
 - [[Tenant Member Management Plan]] — how a Tenant Admin invites and manages members (phases A–C).
 - [[Tenant Audit Log Plan]] — a Tenant Admin reads the organization's own member-management audit entries, filtered and paged, in an Administration Audit log tab (phases A–B).
 - [[Member MFA Plan]] — Tenant Admins require an authenticator of their members: enroll at the next sign-in, recovery codes, and an audited admin reset (phases A–B).
+- [[Session Management Plan]] — a member sees the devices signed in to their account and ends one, the others, or all of them, in a Signed-in devices card on the profile page (phases A–B).
 - [[Working Days Plan]] — how a Tenant Admin sets the organization's working weekdays (phases A–B).
 - [[Date And Time Format Plan]] — how a Tenant Admin chooses how dates and times appear everywhere (phases A–C).
 - [[Home Page Plan]] — the Shell's signed-out welcome and the signed-in Today page (phases A–C).
