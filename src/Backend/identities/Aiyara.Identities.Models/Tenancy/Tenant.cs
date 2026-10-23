@@ -18,6 +18,9 @@ public sealed class Tenant
     public bool PasswordRequireDigit { get; set; } = true;
     public bool PasswordRequireSymbol { get; set; } = true;
     public DateTime PasswordPolicyUpdatedAtUtc { get; set; }
+    /// <summary>When true, every member signs in with a second factor and enrolls an authenticator at
+    /// their next sign-in if they have none. Set by a Tenant Admin; never applies to Platform Admins.</summary>
+    public bool RequireMfa { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     /// <summary>Object-storage key of the organization's logo, shown in the Shell header.</summary>
     public string? LogoKey { get; set; }

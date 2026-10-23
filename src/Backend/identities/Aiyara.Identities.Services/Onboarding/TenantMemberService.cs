@@ -25,7 +25,8 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
         var members = await db.Memberships.AsNoTracking()
             .Join(db.Accounts.AsNoTracking(), member => member.AccountId, person => person.Id,
                 (member, person) => new { person.Id, person.FirstName, person.LastName, person.Email,
-                    member.Role, member.Status, member.MemberGroupId })
+                    member.Role, member.Status, member.MemberGroupId,
+                    MfaEnabled = person.MfaEnabledAtUtc != null })
             // Members who have not set a name yet (pending invitations) sort after named ones.
             .OrderBy(x => x.FirstName == "").ThenBy(x => x.FirstName).ThenBy(x => x.LastName)
             .ThenBy(x => x.Email)
@@ -34,7 +35,64 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
             cancellationToken);
         return members.Select(x => new TenantMemberEntry(x.Id, x.Email, x.FirstName, x.LastName,
             x.Role.ToString(), x.Status.ToString(), x.Id == actorAccountId, x.MemberGroupId,
-            x.MemberGroupId is { } groupId ? groups[groupId] : null)).ToArray();
+            x.MemberGroupId is { } groupId ? groups[groupId] : null, x.MfaEnabled)).ToArray();
+    }
+
+    /// <summary>Turns the organization's MFA requirement on or off. Turning it on needs the admin to
+    /// be enrolled already (so the admin has seen the flow and cannot lock themselves out), and ends
+    /// the sessions of every active member without an authenticator, who then enroll at their next
+    /// sign-in; members who are enrolled keep their sessions, which already passed a second factor.
+    /// Turning it off unenrolls nobody. Both are audited.</summary>
+    public async Task SetMfaRequirementAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
+        SetTenantMfaRequirementRequest request, CancellationToken cancellationToken)
+    {
+        var reason = AuditReason(request.Reason);
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var tenant = await db.Tenants.SingleAsync(cancellationToken);
+        if (tenant.RequireMfa == request.Required) return;
+        if (request.Required && !await db.Accounts.AnyAsync(x => x.Id == actorAccountId &&
+                x.MfaSecretProtected != null, cancellationToken))
+            throw new TenantMemberException(TenantMemberFailure.MfaNotEnrolled);
+
+        tenant.RequireMfa = request.Required;
+        organizations.AddAudit(tenantId, actorAccountId, "organization.mfa_requirement_changed", reason,
+            JsonSerializer.Serialize(new { RequireMfa = !request.Required }),
+            JsonSerializer.Serialize(new { tenant.RequireMfa }));
+        await db.SaveChangesAsync(cancellationToken);
+        if (request.Required)
+        {
+            var unenrolled = await db.Memberships.Where(x => x.Status == MembershipStatus.Active &&
+                    x.Role != TenantRole.PlatformAdmin)
+                .Join(db.Accounts.Where(x => x.MfaSecretProtected == null), member => member.AccountId,
+                    account => account.Id, (member, account) => account)
+                .ToListAsync(cancellationToken);
+            foreach (var account in unenrolled)
+                await organizations.EndSessionsAsync(account, cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>Clears another member's authenticator, pending enrollment, and recovery codes (a lost
+    /// device) and ends their sessions. Admins cannot reset their own, so a stolen admin session cannot
+    /// remove it. The account is global, so the reset applies in every organization the member belongs
+    /// to; an organization that requires MFA makes them enroll again at their next sign-in.</summary>
+    public async Task ResetMemberMfaAsync(Guid tenantId, Guid actorAccountId, long actorSessionVersion,
+        Guid accountId, ResetTenantMemberMfaRequest request, CancellationToken cancellationToken)
+    {
+        var reason = AuditReason(request.Reason);
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var (account, _) = await OtherMemberAsync(actorAccountId, accountId, cancellationToken);
+        var before = JsonSerializer.Serialize(new { account.Email, MfaEnabled = account.MfaEnabledAtUtc != null });
+        AuthenticationService.ClearMfa(account);
+        await db.MfaRecoveryCodes.Where(x => x.AccountId == account.Id).ExecuteDeleteAsync(cancellationToken);
+        organizations.AddAudit(tenantId, actorAccountId, "member.mfa_reset", reason, before,
+            JsonSerializer.Serialize(new { account.Email, MfaEnabled = false }));
+        await organizations.EndSessionsAsync(account, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<TenantMemberGroupEntry>> ListGroupsAsync(Guid tenantId,
@@ -255,6 +313,10 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
             throw new TenantMemberException(TenantMemberFailure.Unauthorized);
     }
 
+    private static string? AuditReason(string? reason) =>
+        reason?.Trim() is { Length: > 500 } ? throw new TenantMemberException(TenantMemberFailure.InvalidInput)
+            : string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+
     private static string GroupName(SaveTenantMemberGroupRequest request) =>
         request.Name?.Trim() is { Length: > 0 and <= 100 } name
             ? name : throw new TenantMemberException(TenantMemberFailure.InvalidInput);
@@ -335,7 +397,7 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
 public enum TenantMemberFailure
 {
     Unauthorized, NotFound, InvalidInput, Conflict, LastAdministrator, SelfChange, Unavailable, RateLimited,
-    GroupNameTaken, GroupInUse
+    GroupNameTaken, GroupInUse, MfaNotEnrolled
 }
 
 public sealed class TenantMemberException(TenantMemberFailure failure) : Exception(failure.ToString())

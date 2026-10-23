@@ -130,6 +130,57 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
     }
 
+    [Fact]
+    public async Task Mfa_requirement_and_reset_answer_with_the_documented_status_codes()
+    {
+        var admin = Token(adminId, acme, "TenantAdmin");
+        var employee = Token(employeeId, acme, "Employee");
+        var requirement = "/api/v1/organization/mfa";
+
+        using var byEmployee = await Send(HttpMethod.Put, requirement, employee, new { required = true });
+        using var anonymous = await Send(HttpMethod.Put, requirement, "not-a-token", new { required = true });
+        using var notEnrolled = await Send(HttpMethod.Put, requirement, admin, new { required = true });
+        using var tooLong = await Send(HttpMethod.Put, requirement, admin, new { required = true, reason = new string('x', 501) });
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            await db.Accounts.Where(x => x.Id == adminId || x.Id == employeeId).ExecuteUpdateAsync(x =>
+                x.SetProperty(a => a.MfaSecretProtected, "sealed").SetProperty(a => a.MfaEnabledAtUtc, DateTime.UtcNow));
+        }
+        using var directory = await Get(admin);
+        using var enabled = await Send(HttpMethod.Put, requirement, admin, new { required = true, reason = "Policy" });
+        using var resetByEmployee = await Send(HttpMethod.Post, $"/api/v1/members/{adminId}/mfa-reset", employee, new { });
+        using var resetSelf = await Send(HttpMethod.Post, $"/api/v1/members/{adminId}/mfa-reset", admin, new { });
+        using var resetOutsider = await Send(HttpMethod.Post, $"/api/v1/members/{outsiderId}/mfa-reset", admin, new { });
+        using var resetBadReason = await Send(HttpMethod.Post, $"/api/v1/members/{employeeId}/mfa-reset", admin,
+            new { reason = new string('x', 501) });
+        using var reset = await Send(HttpMethod.Post, $"/api/v1/members/{employeeId}/mfa-reset", admin, new { reason = "Lost phone" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, byEmployee.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal((HttpStatusCode.Conflict, "MFA_NOT_ENROLLED"), (notEnrolled.StatusCode, await ErrorCode(notEnrolled)));
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        using var directoryJson = JsonDocument.Parse(await directory.Content.ReadAsStringAsync());
+        Assert.Equal([true, true, false], directoryJson.RootElement.GetProperty("result").EnumerateArray()
+            .Select(x => x.GetProperty("mfaEnabled").GetBoolean()));
+        Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        Assert.True((await Result(enabled)).GetProperty("requireMfa").GetBoolean());
+        Assert.Equal(HttpStatusCode.Forbidden, resetByEmployee.StatusCode);
+        Assert.Equal((HttpStatusCode.Conflict, "CANNOT_CHANGE_SELF"), (resetSelf.StatusCode, await ErrorCode(resetSelf)));
+        Assert.Equal(HttpStatusCode.NotFound, resetOutsider.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, resetBadReason.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        await using var check = app.Services.CreateAsyncScope();
+        var checkDb = check.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        Assert.Null((await checkDb.Accounts.SingleAsync(x => x.Id == employeeId)).MfaSecretProtected);
+        Assert.NotNull((await checkDb.Accounts.SingleAsync(x => x.Id == adminId)).MfaSecretProtected);
+        var audits = await checkDb.PlatformOrganizationAudits.IgnoreQueryFilters().Select(x => x.Action).ToListAsync();
+        Assert.Equal(["member.mfa_reset", "organization.mfa_requirement_changed"], audits.Order());
+    }
+
+    private static async Task<JsonElement> Result(HttpResponseMessage response) =>
+        (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("result");
+
     public async Task InitializeAsync()
     {
         await connection.OpenAsync();

@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { fieldErrors, safeError } from '../../../shared/api-response'
 import { useLocaleText } from '../../../shared/i18n'
-import type { SignInOrganization } from '../composables/useSession'
+import type { AuthResponse, MfaEnrollment, SecondFactor, SignInOrganization } from '../composables/useSession'
+import MfaCodeForm from '../../../shared/components/MfaCodeForm.vue'
+import MfaSetup from '../../../shared/components/MfaSetup.vue'
+import RecoveryCodes from '../../../shared/components/RecoveryCodes.vue'
+import { renderSVG } from 'uqr'
 import DayRuler, { type RulerBand } from '../../../shared/components/DayRuler.vue'
 import { DEFAULT_FORMATS, formatDate } from '../../../shared/date-format'
-const { token, role, login, signIn } = useSession()
+const { token, role, login, signIn, beginMemberEnrollment, acceptSession } = useSession()
 const { locale } = useLocale()
 const text = useLocaleText(locale, {
   th: {
@@ -12,6 +16,9 @@ const text = useLocaleText(locale, {
     heroSubtitle: 'บันทึกเวลาตามโครงการ วางแผนวันลา และรับรายงานประจำเดือนที่องค์กรลงนามได้',
     signIn: 'เข้าสู่ระบบ', email: 'อีเมล', password: 'รหัสผ่าน', forgotPassword: 'ลืมรหัสผ่าน?',
     chooseOrganization: 'เลือกองค์กร', chooseOrganizationHint: 'บัญชีนี้อยู่ในหลายองค์กร เลือกองค์กรที่ต้องการเข้าใช้งาน',
+    mfaTitle: 'ยืนยันตัวตน', startOver: 'เริ่มใหม่', continue: 'ดำเนินการต่อ',
+    mfaEnrollTitle: 'ตั้งค่าแอปยืนยันตัวตนเพื่อเข้าสู่ระบบ',
+    mfaLocked: 'ไม่สามารถเข้าสู่ระบบได้ในขณะนี้ บัญชีอาจถูกล็อกชั่วคราวจากการกรอกรหัสผิดหลายครั้ง หรือรหัสผ่านเปลี่ยนไป กรุณารอ 15 นาทีแล้วเริ่มใหม่',
     back: 'ย้อนกลับ', newHere: 'เพิ่งเริ่มใช้งาน?', signUp: 'สมัครใช้งานให้องค์กรของคุณ',
     acceptInvitation: 'เข้าร่วมด้วยรหัสคำเชิญ', activateAccount: 'เปิดใช้งานบัญชีที่ได้รับทางอีเมล',
     signUpHint: 'ตั้งค่า Aiyara Timesheet ให้ทีมของคุณ', acceptInvitationHint: 'ผู้ดูแลส่งรหัสคำเชิญให้คุณแล้ว',
@@ -25,6 +32,9 @@ const text = useLocaleText(locale, {
     heroSubtitle: 'Record time against projects, plan leave, and get monthly reports your organization can sign.',
     signIn: 'Sign in', email: 'Email', password: 'Password', forgotPassword: 'Forgot password?',
     chooseOrganization: 'Choose an organization', chooseOrganizationHint: 'This account belongs to several organizations. Choose the one to open.',
+    mfaTitle: 'Verify it is you', startOver: 'Start over', continue: 'Continue',
+    mfaEnrollTitle: 'Set up an authenticator to sign in',
+    mfaLocked: 'Sign-in is not possible right now. The account may be locked for a while after several wrong codes, or the password has changed. Wait 15 minutes, then start over.',
     back: 'Back', newHere: 'New here?', signUp: 'Sign up your organization',
     acceptInvitation: 'Join with an invitation code', activateAccount: 'Activate an account from your email',
     signUpHint: 'Set up Aiyara Timesheet for your team.', acceptInvitationHint: 'Your administrator sent you a code.',
@@ -57,6 +67,20 @@ const organizations = ref<SignInOrganization[]>([])
 const error = ref('')
 const validation = ref<Record<string, string[]>>({})
 const pending = ref(false)
+type MfaStep = '' | 'code' | 'enroll' | 'codes'
+// After a password check the server may ask for a second factor, or for the member to set one up.
+// The same request is then repeated with the code, so the password stays in memory only until the
+// sign-in ends; the codes and the secret are never stored, logged, or put in a URL.
+const mfaStep = ref<MfaStep>('')
+const enrollment = ref<MfaEnrollment | null>(null)
+const issued = ref<AuthResponse | null>(null)
+const mfaForm = ref<{ clear: () => void } | null>(null)
+let attempt: ((factor: SecondFactor) => Promise<void>) | null = null
+// Drawn in the browser so the secret never reaches a third-party QR service.
+const enrollmentQr = computed(() => enrollment.value
+  ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderSVG(enrollment.value.provisioningUri, { pixelSize: 6 }))}`
+  : '')
+const errorCodeOf = (cause: unknown) => (cause as { data?: { errorCode?: string } })?.data?.errorCode
 
 async function submit(action: () => Promise<unknown>) {
   pending.value = true
@@ -64,26 +88,71 @@ async function submit(action: () => Promise<unknown>) {
   validation.value = {}
   try { await action() }
   catch (cause) {
-    error.value = safeError(cause, locale.value)
-    validation.value = fieldErrors(cause, locale.value)
+    const code = errorCodeOf(cause)
+    if (code === 'MFAREQUIRED' && mfaStep.value !== 'code') mfaStep.value = 'code'
+    else if (code === 'MFA_ENROLLMENT_REQUIRED' && mfaStep.value !== 'enroll') {
+      try { enrollment.value = await beginMemberEnrollment(email.value, password.value); mfaStep.value = 'enroll' }
+      catch (enrollCause) { error.value = safeError(enrollCause, locale.value) }
+    } else {
+      error.value = mfaStep.value && code === 'INVALIDCREDENTIALS' ? text.value.mfaLocked : safeError(cause, locale.value)
+      validation.value = fieldErrors(cause, locale.value)
+      if (mfaStep.value) { await nextTick(); mfaForm.value?.clear() }
+    }
   }
   finally { pending.value = false }
 }
 
+/** The sign-in is over: the password and any challenge state are dropped. */
+function finishSignIn() {
+  password.value = ''
+  mfaStep.value = ''
+  enrollment.value = null
+  attempt = null
+}
+
+function showCodes(session: AuthResponse) {
+  issued.value = session
+  enrollment.value = null
+  password.value = ''
+  mfaStep.value = 'codes'
+}
+
+function acknowledgeCodes() {
+  if (issued.value) acceptSession(issued.value)
+  issued.value = null
+  finishSignIn()
+}
+
 function signInByEmail() {
-  return submit(async () => {
-    const result = await signIn(email.value, password.value)
+  attempt = async factor => {
+    const result = await signIn(email.value, password.value, factor)
     organizations.value = result.session ? [] : result.organizations
-    if (result.session) password.value = ''
-  })
+    if (result.session?.recoveryCodes?.length) showCodes(result.session)
+    else if (result.session) finishSignIn()
+  }
+  return submit(() => attempt!({}))
 }
 
 function chooseOrganization(organization: SignInOrganization) {
-  return submit(async () => {
-    await login(organization.organizationCode, email.value, password.value)
-    password.value = ''
+  attempt = async factor => {
+    const result = await login(organization.organizationCode, email.value, password.value, factor)
     organizations.value = []
-  })
+    if (result.recoveryCodes?.length) showCodes(result)
+    else finishSignIn()
+  }
+  return submit(() => attempt!({}))
+}
+
+const submitFactor = (factor: SecondFactor) => submit(() => attempt!(factor))
+
+async function startOver() {
+  finishSignIn()
+  issued.value = null
+  organizations.value = []
+  error.value = ''
+  validation.value = {}
+  await nextTick()
+  document.getElementById('sign-in-email')?.focus()
 }
 
 function backToSignIn() {
@@ -115,7 +184,18 @@ function backToSignIn() {
       :bands="sampleBands" :hour-label="sampleHour" animate />
 
     <div class="welcome-access">
-      <section v-if="organizations.length" class="login-card punch-card" aria-labelledby="choose-organization">
+      <section v-if="mfaStep" class="login-card punch-card mfa-card" :aria-label="text.mfaTitle">
+        <MfaCodeForm v-if="mfaStep === 'code'" ref="mfaForm" id-prefix="signin" :locale="locale" :heading="text.mfaTitle" allow-recovery
+          :pending="pending" :error="error" :submit-label="text.continue" @submit="submitFactor" />
+        <MfaSetup v-else-if="mfaStep === 'enroll' && enrollment" ref="mfaForm" id-prefix="signin-setup" :locale="locale"
+          :heading="text.mfaEnrollTitle" :secret="enrollment.secret" :provisioning-uri="enrollment.provisioningUri" :qr="enrollmentQr"
+          :pending="pending" :error="error" :submit-label="text.continue" @submit="submitFactor" />
+        <RecoveryCodes v-else-if="mfaStep === 'codes' && issued?.recoveryCodes" id-prefix="signin" :locale="locale"
+          :codes="issued.recoveryCodes" :continue-label="text.continue" @done="acknowledgeCodes" />
+        <button v-if="mfaStep !== 'codes'" type="button" class="link-button" @click="startOver">{{ text.startOver }}</button>
+      </section>
+
+      <section v-else-if="organizations.length" class="login-card punch-card" aria-labelledby="choose-organization">
         <div class="card-head">
           <h2 id="choose-organization">{{ text.chooseOrganization }}</h2>
           <time v-if="today" :datetime="today">{{ todayText }}</time>

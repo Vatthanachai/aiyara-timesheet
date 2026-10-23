@@ -27,9 +27,28 @@ export function safeError(error: unknown, locale: Locale): string {
   if (code === 'INVALIDCREDENTIALS')
     return thai ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : 'Incorrect email or password.'
   if (code === 'MFAREQUIRED')
-    return thai ? 'บัญชีนี้ต้องเข้าสู่ระบบที่หน้าผู้ดูแลระบบ' : 'This account signs in on the system administrator page.'
+    return thai ? 'กรอกรหัส 6 หลักจากแอปยืนยันตัวตน หรือใช้รหัสกู้คืน' : 'Enter the code from your authenticator app, or use a recovery code.'
   if (code === 'MFAINVALID')
-    return thai ? 'รหัสยืนยันไม่ถูกต้องหรือถูกใช้ไปแล้ว' : 'That code is not valid or has already been used.'
+    return thai ? 'รหัสไม่ถูกต้อง หมดอายุ หรือถูกใช้ไปแล้ว ลองรหัสใหม่จากแอป หากกรอกผิดติดกัน 5 ครั้ง บัญชีจะถูกล็อก 15 นาที'
+      : 'That code is not valid, has expired, or was already used. Try the current code from your app. Five wrong codes in a row lock the account for 15 minutes.'
+  if (code === 'MFA_ENROLLMENT_REQUIRED')
+    return thai ? 'องค์กรของคุณกำหนดให้ใช้แอปยืนยันตัวตน กรุณาตั้งค่าก่อนเข้าสู่ระบบ' : 'Your organization requires an authenticator app. Set one up to sign in.'
+  if (code === 'MFA_NOT_REQUIRED')
+    return thai ? 'องค์กรของคุณไม่ได้กำหนดให้ใช้แอปยืนยันตัวตน' : 'Your organization does not require an authenticator app.'
+  if (code === 'MFA_ALREADY_ENROLLED')
+    return thai ? 'บัญชีนี้ตั้งค่าแอปยืนยันตัวตนไว้แล้ว' : 'An authenticator app is already set up for this account.'
+  if (code === 'MFA_NOT_ENROLLED')
+    return thai ? 'บัญชีนี้ยังไม่ได้ตั้งค่าแอปยืนยันตัวตน กรุณาตั้งค่าก่อน' : 'No authenticator app is set up for this account yet. Set one up first.'
+  if (code === 'MFA_REQUIRED_BY_ORGANIZATION')
+    return thai ? 'องค์กรของคุณกำหนดให้ใช้แอปยืนยันตัวตน จึงปิดการใช้งานไม่ได้' : 'Your organization requires an authenticator app, so it cannot be turned off.'
+  if (code === 'CANNOT_CHANGE_SELF')
+    return thai ? 'ทำรายการนี้กับบัญชีของคุณเองไม่ได้' : 'You cannot do this to your own account.'
+  if (code === 'SESSION_REVOCATION_UNAVAILABLE')
+    return thai ? 'ยังไม่ได้บันทึกการเปลี่ยนแปลง เพราะออกจากระบบอุปกรณ์อื่นไม่สำเร็จ กรุณาลองใหม่' : 'The change was not saved because sessions could not be ended. Please try again.'
+  if (code === 'RATELIMITED' || status === 429)
+    return thai ? 'ลองถี่เกินไปหรือบัญชีถูกล็อกชั่วคราว กรุณารอสักครู่แล้วลองใหม่' : 'Too many attempts, or the account is temporarily locked. Please wait a few minutes and try again.'
+  if (code === 'UNAVAILABLE' || status === 503)
+    return thai ? 'ระบบยังใช้งานไม่ได้ชั่วคราว กรุณาลองใหม่ในอีกสักครู่' : 'The service is temporarily unavailable. Please try again shortly.'
   if (code === 'DEFINITION_EXISTS')
     return thai ? 'มีรูปแบบรายงานประเภทและไฟล์นี้อยู่แล้ว' : 'A report format of this kind and file type already exists.'
   if (status === 401) return thai ? 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง' : 'Session expired. Please sign in again.'
@@ -63,7 +82,10 @@ export async function withRemoteRefresh<T>(
   catch (cause) {
     const status = (cause as { status?: number; data?: ApiError } | null)?.status ??
       (cause as { data?: ApiError } | null)?.data?.statusCode
-    if (status !== 401 || window.parent === window) throw cause
+    // A wrong or missing second-factor code is also a 401, but the session is fine: retrying with a
+    // fresh token would count the same wrong code twice toward the five-attempt lockout.
+    const code = (cause as { data?: ApiError } | null)?.data?.errorCode
+    if (status !== 401 || code === 'MFAREQUIRED' || code === 'MFAINVALID' || window.parent === window) throw cause
     const renewed = await requestShellRefresh(shellOrigin)
     if (!renewed) {
       window.parent.postMessage({ type: 'aiyara.sign-in-required' }, shellOrigin)

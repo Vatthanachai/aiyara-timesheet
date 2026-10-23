@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Aiyara.Identities.Services.Authentication;
 
-public sealed class AuthenticationService(
+public sealed partial class AuthenticationService(
     IdentityDbContext db, TenantScope tenantScope, IEncryptionService passwords,
     IPasetoTokenService tokens, ICredentialNotificationSender notifications,
     ISessionRevocationPublisher revocations, ICredentialAttemptLimiter attempts,
@@ -20,6 +20,9 @@ public sealed class AuthenticationService(
     public const string MfaIssuer = "Aiyara Timesheet";
     public const string MfaEnrolledAction = "platform_admin.mfa_enrolled";
     public const string RecoveryCodeUsedAction = "platform_admin.recovery_code_used";
+    public const string MemberMfaEnrolledAction = "member.mfa_enrolled";
+    public const string MemberRecoveryCodeUsedAction = "member.mfa_recovery_code_used";
+    public const string MemberMfaLockedAction = "member.mfa_locked";
 
     public async Task RequestActivationAsync(RequestCredentialEmail request,
         CancellationToken cancellationToken)
@@ -181,7 +184,8 @@ public sealed class AuthenticationService(
             ? requestedTenantId
             : await ResolveOrganizationCodeAsync(request.OrganizationCode, cancellationToken);
         return await LoginToTenantAsync(tenantId, request.Email, request.Password,
-            requiredRole: null, cancellationToken);
+            requiredRole: null, new MemberSecondFactor(request.TotpCode, request.RecoveryCode),
+            cancellationToken);
     }
 
     /// <summary>Signs a Platform Admin in with password and second factor. An admin without an
@@ -205,9 +209,11 @@ public sealed class AuthenticationService(
                 if (string.IsNullOrWhiteSpace(request.TotpCode))
                     return new PlatformAdminLoginResponse(null, await BeginMfaEnrollmentAsync(account,
                         cancellationToken), []);
-                recoveryCodes = await CompleteMfaEnrollmentAsync(account, request.TotpCode, cancellationToken);
+                recoveryCodes = await CompleteMfaEnrollmentAsync(account, request.TotpCode,
+                    PlatformAdminBootstrap.PlatformTenantId, MfaEnrolledAction, cancellationToken);
             }
-            else await VerifySecondFactorAsync(account, request, cancellationToken);
+            else await VerifySecondFactorAsync(account, request.TotpCode, request.RecoveryCode,
+                PlatformAdminBootstrap.PlatformTenantId, RecoveryCodeUsedAction, cancellationToken);
 
             account.MfaFailedCount = 0;
             var session = await StartSessionAsync(PlatformAdminBootstrap.PlatformTenantId, account,
@@ -248,12 +254,12 @@ public sealed class AuthenticationService(
     }
 
     private async Task<IReadOnlyList<string>> CompleteMfaEnrollmentAsync(Account account, string code,
-        CancellationToken cancellationToken)
+        Guid auditTenantId, string auditAction, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
         if (account.MfaPendingSecretProtected is null || account.MfaPendingCreatedAtUtc <= now - MfaEnrollmentLifetime ||
             !Totp.TryVerify(mfaSecrets.Unprotect(account.MfaPendingSecretProtected), code, now, 0, out var step))
-            throw await MfaFailureAsync(account, cancellationToken);
+            throw await MfaFailureAsync(account, auditTenantId, cancellationToken);
 
         account.MfaSecretProtected = account.MfaPendingSecretProtected;
         account.MfaPendingSecretProtected = null;
@@ -261,41 +267,44 @@ public sealed class AuthenticationService(
         account.MfaEnabledAtUtc = now;
         account.MfaLastUsedStep = step;
         var codes = await ReplaceRecoveryCodesAsync(account.Id, now, cancellationToken);
-        AddPlatformSignInAudit(MfaEnrolledAction, account.Id, account.Email);
+        AddMfaAudit(auditTenantId, auditAction, account.Id, account.Email);
         return codes;
     }
 
-    private async Task VerifySecondFactorAsync(Account account, PlatformAdminLoginRequest request,
-        CancellationToken cancellationToken)
+    /// <summary>Checks one authenticator code, or one unused recovery code, against an enrolled
+    /// account. The tenant and action say where a spent recovery code is audited; wrong codes count
+    /// toward the shared five-failure lockout.</summary>
+    private async Task VerifySecondFactorAsync(Account account, string? totpCode, string? recoveryCode,
+        Guid auditTenantId, string recoveryAuditAction, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        if (!string.IsNullOrWhiteSpace(request.TotpCode))
+        if (!string.IsNullOrWhiteSpace(totpCode))
         {
-            if (Totp.TryVerify(mfaSecrets.Unprotect(account.MfaSecretProtected!), request.TotpCode, now,
+            if (Totp.TryVerify(mfaSecrets.Unprotect(account.MfaSecretProtected!), totpCode, now,
                     account.MfaLastUsedStep, out var step))
             {
                 account.MfaLastUsedStep = step;
                 return;
             }
         }
-        else if (!string.IsNullOrWhiteSpace(request.RecoveryCode))
+        else if (!string.IsNullOrWhiteSpace(recoveryCode))
         {
-            var hash = InvitationCode.Hash(NormalizeRecoveryCode(request.RecoveryCode));
+            var hash = InvitationCode.Hash(NormalizeRecoveryCode(recoveryCode));
             // A conditional update, so two simultaneous sign-ins cannot both spend the same code.
             if (await db.MfaRecoveryCodes.Where(x => x.AccountId == account.Id && x.CodeHash == hash &&
                     x.UsedAtUtc == null)
                 .ExecuteUpdateAsync(x => x.SetProperty(c => c.UsedAtUtc, now), cancellationToken) == 1)
             {
-                AddPlatformSignInAudit(RecoveryCodeUsedAction, account.Id, account.Email);
+                AddMfaAudit(auditTenantId, recoveryAuditAction, account.Id, account.Email);
                 return;
             }
         }
         else throw new AuthenticationException(AuthenticationFailure.MfaRequired, "A second factor is required.");
 
-        throw await MfaFailureAsync(account, cancellationToken);
+        throw await MfaFailureAsync(account, auditTenantId, cancellationToken);
     }
 
-    private async Task<AuthenticationException> MfaFailureAsync(Account account,
+    private async Task<AuthenticationException> MfaFailureAsync(Account account, Guid auditTenantId,
         CancellationToken cancellationToken)
     {
         account.MfaFailedCount++;
@@ -303,6 +312,9 @@ public sealed class AuthenticationService(
         {
             account.LockedUntilUtc = DateTime.UtcNow.AddMinutes(15);
             account.MfaFailedCount = 0;
+            // Platform Admin failures are audited as failed sign-ins instead.
+            if (auditTenantId != PlatformAdminBootstrap.PlatformTenantId)
+                AddMfaAudit(auditTenantId, MemberMfaLockedAction, account.Id, account.Email);
         }
         await db.SaveChangesAsync(cancellationToken);
         return new AuthenticationException(AuthenticationFailure.MfaInvalid, "Invalid second factor.");
@@ -349,9 +361,13 @@ public sealed class AuthenticationService(
     }
 
     private void AddPlatformSignInAudit(string action, Guid accountId, string? email) =>
+        AddMfaAudit(PlatformAdminBootstrap.PlatformTenantId, action, accountId, email);
+
+    /// <summary>Adds an audit row in the tenant's log; it holds the email only, never a secret or code.</summary>
+    private void AddMfaAudit(Guid tenantId, string action, Guid accountId, string? email) =>
         db.PlatformOrganizationAudits.Add(new PlatformOrganizationAudit
         {
-            Id = IdentityGuid.New(), TenantId = PlatformAdminBootstrap.PlatformTenantId,
+            Id = IdentityGuid.New(), TenantId = tenantId,
             ActorAccountId = accountId, Action = action,
             AfterJson = System.Text.Json.JsonSerializer.Serialize(new { Email = email }),
             CreatedAtUtc = DateTime.UtcNow
@@ -373,16 +389,18 @@ public sealed class AuthenticationService(
             return new SignInResponse(null, organizations
                 .Select(x => new SignInOrganization(x.OrganizationCode, x.Name)).ToList());
         var session = await StartSessionAsync(organizations[0].Id, account, requiredRole: null,
-            cancellationToken);
+            cancellationToken, secondFactor: new MemberSecondFactor(request.TotpCode, request.RecoveryCode));
         return new SignInResponse(session, []);
     }
 
     private async Task<AuthenticationResponse> LoginToTenantAsync(Guid tenantId, string email,
-        string password, TenantRole? requiredRole, CancellationToken cancellationToken)
+        string password, TenantRole? requiredRole, MemberSecondFactor secondFactor,
+        CancellationToken cancellationToken)
     {
         if (tenantId == Guid.Empty) throw InvalidCredentials();
         var account = await VerifyCredentialsAsync(email, password, cancellationToken);
-        return await StartSessionAsync(tenantId, account, requiredRole, cancellationToken);
+        return await StartSessionAsync(tenantId, account, requiredRole, cancellationToken,
+            secondFactor: secondFactor);
     }
 
     // Accounts are global (one per email), so attempts and lockout are counted per email
@@ -415,7 +433,8 @@ public sealed class AuthenticationService(
     }
 
     private async Task<AuthenticationResponse> StartSessionAsync(Guid tenantId, Account account,
-        TenantRole? requiredRole, CancellationToken cancellationToken, bool secondFactorVerified = false)
+        TenantRole? requiredRole, CancellationToken cancellationToken, bool secondFactorVerified = false,
+        MemberSecondFactor? secondFactor = null)
     {
         tenantScope.TenantId = tenantId;
         var tenant = await db.Tenants.SingleOrDefaultAsync(cancellationToken);
@@ -428,11 +447,51 @@ public sealed class AuthenticationService(
         // second factor; only the system administrator sign-in verifies one.
         if (membership.Role == TenantRole.PlatformAdmin && !secondFactorVerified)
             throw new AuthenticationException(AuthenticationFailure.MfaRequired, "A second factor is required.");
+        // Members answer the second factor here too, before any token exists, so a member who must
+        // enroll gets no session until the enrollment is confirmed.
+        var recoveryCodes = membership.Role == TenantRole.PlatformAdmin ? null
+            : await RequireMemberSecondFactorAsync(tenant, account, secondFactor, cancellationToken);
         var mustChange = RequiresPasswordChange(account, membership, tenant);
         // Audit every new Platform Admin session, whichever sign-in route issued it.
         if (membership.Role == TenantRole.PlatformAdmin)
             AddPlatformSignInAudit(PlatformSignInAction, account.Id, account.Email);
-        return await CreateSessionAsync(account, membership, mustChange, cancellationToken);
+        var response = await CreateSessionAsync(account, membership, mustChange, cancellationToken);
+        return recoveryCodes is null ? response : response with { RecoveryCodes = recoveryCodes };
+    }
+
+    /// <summary>The second factor a member's sign-in needs: an enrolled authenticator is always
+    /// asked (the account is global, so it protects every organization it belongs to), and an
+    /// organization that requires MFA also makes an un-enrolled member enroll. Returns the new
+    /// recovery codes when this sign-in completed an enrollment, otherwise null.</summary>
+    private async Task<IReadOnlyList<string>?> RequireMemberSecondFactorAsync(Tenant tenant, Account account,
+        MemberSecondFactor? factor, CancellationToken cancellationToken)
+    {
+        var enrolled = account.MfaSecretProtected is not null;
+        if (!enrolled && !tenant.RequireMfa) return null;
+        try
+        {
+            if (enrolled)
+            {
+                await VerifySecondFactorAsync(account, factor?.TotpCode, factor?.RecoveryCode, tenant.Id,
+                    MemberRecoveryCodeUsedAction, cancellationToken);
+                account.MfaFailedCount = 0;
+                return null;
+            }
+            if (string.IsNullOrWhiteSpace(factor?.TotpCode))
+                throw new AuthenticationException(AuthenticationFailure.MfaEnrollmentRequired,
+                    "This organization requires an authenticator.");
+            var codes = await CompleteMfaEnrollmentAsync(account, factor.TotpCode, tenant.Id,
+                MemberMfaEnrolledAction, cancellationToken);
+            account.MfaFailedCount = 0;
+            return codes;
+        }
+        // A secret that cannot be decrypted means Mfa:EncryptionKey changed: a configuration fault,
+        // not a wrong code, so it must not count toward the lockout.
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            throw new AuthenticationException(AuthenticationFailure.Unavailable,
+                "The second factor cannot be verified.");
+        }
     }
 
     public async Task<AuthenticationResponse> RefreshAsync(RefreshRequest request,
@@ -468,6 +527,9 @@ public sealed class AuthenticationService(
         var membership = await db.Memberships.SingleOrDefaultAsync(x => x.AccountId == account.Id &&
             x.Status == MembershipStatus.Active, cancellationToken);
         if (membership is null) throw InvalidCredentials();
+        // A session that predates the requirement or an MFA reset cannot be renewed without a sign-in.
+        if (tenant.RequireMfa && membership.Role != TenantRole.PlatformAdmin &&
+            account.MfaSecretProtected is null) throw InvalidCredentials();
         var rotated = await db.RefreshSessions.Where(x => x.Id == session.Id &&
             x.RevokedAtUtc == null).ExecuteUpdateAsync(x => x.SetProperty(
                 s => s.RevokedAtUtc, DateTime.UtcNow), cancellationToken);

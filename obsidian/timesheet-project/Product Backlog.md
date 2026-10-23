@@ -11,8 +11,8 @@
 5. [[#5. Running timer|Running timer]] — `feature/running-timer` (done)
 - Tooling, outside the numbered order: a separate test stack and a deploy step for the main stack, on `feature/test-compose` (see [[Test Stack Plan]]).
 6. [[#6. Billable work and budgets|Billable work and budgets]] — `feature/billable-budgets` (done)
-7. [[#7. MFA for organization members|MFA for organization members]] — next, in progress
-- [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+7. [[#7. MFA for organization members|MFA for organization members]] — `feature/member-mfa` (done)
+8. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
