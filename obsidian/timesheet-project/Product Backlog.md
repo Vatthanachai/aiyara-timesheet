@@ -15,8 +15,8 @@
 8. [[#8. Tenant-facing audit log|Tenant-facing audit log]] — `feature/tenant-audit-log-ui` (done)
 9. [[#9. Session management|Session management]] — `feature/session-management-ui` (done)
 10. [[#10. Bulk invitations|Bulk invitations]] — `feature/bulk-invitations-ui` (done)
-10. [[#12. Backup and restore|Backup and restore]] — `feature/backup-restore` (done)
-11. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
+11. [[#12. Backup and restore|Backup and restore]] — `feature/backup-restore` (done)
+12. [[#11. Continuous integration|Continuous integration]] — deferred by the user until they have used the app themselves; not scheduled
 
 ## Workflow Gaps
 
