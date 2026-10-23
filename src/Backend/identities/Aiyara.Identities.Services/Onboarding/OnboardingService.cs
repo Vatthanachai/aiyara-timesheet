@@ -255,15 +255,16 @@ public sealed class OnboardingService(IdentityDbContext db, TenantScope tenantSc
         return account;
     }
 
-    private static string NormalizeEmail(string? email)
+    private static string NormalizeEmail(string? email) =>
+        TryNormalizeEmail(email)
+        ?? throw new OnboardingException(OnboardingFailure.InvalidInput, "Invalid email address.");
+
+    /// <summary>The trimmed, lower-cased address, or null when it is not a plain valid address.</summary>
+    internal static string? TryNormalizeEmail(string? email)
     {
         var normalized = email?.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(normalized) || normalized.Length > 320 ||
-            !MailAddress.TryCreate(normalized, out var parsed) || parsed.Address != normalized)
-        {
-            throw new OnboardingException(OnboardingFailure.InvalidInput, "Invalid email address.");
-        }
-
-        return normalized;
+        return string.IsNullOrWhiteSpace(normalized) || normalized.Length > 320 ||
+            !MailAddress.TryCreate(normalized, out var parsed) || parsed.Address != normalized
+            ? null : normalized;
     }
 }

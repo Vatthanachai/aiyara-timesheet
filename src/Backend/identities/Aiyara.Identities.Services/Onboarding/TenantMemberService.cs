@@ -233,6 +233,86 @@ public sealed class TenantMemberService(IdentityDbContext db, TenantScope tenant
                 x.MemberGroupId is { } groupId ? groups.GetValueOrDefault(groupId) : null)).ToArray();
     }
 
+    /// <summary>Invites up to <see cref="BulkInvitationLimits.MaxRows"/> people at once with the single
+    /// invitation's rules. Each row is judged on its own and skipped with a reason (the first of a
+    /// repeated email wins; an email that already has a pending invitation is left alone, since a
+    /// resend replaces it); the rows that pass are saved together with one <c>member.invited</c> audit
+    /// row each. No invitation is created for an invalid address. <paramref name="deliver"/> emails the
+    /// code after the save and returns false when delivery is unavailable.</summary>
+    public async Task<BulkInvitationResponse> InviteBulkAsync(Guid tenantId, Guid actorAccountId,
+        long actorSessionVersion, BulkInvitationRequest request,
+        Func<string, string, CancellationToken, Task<bool>> deliver, CancellationToken cancellationToken)
+    {
+        if (request.Rows is not { Count: > 0 and <= BulkInvitationLimits.MaxRows } rows || rows.Any(x => x is null))
+            throw new TenantMemberException(TenantMemberFailure.InvalidInput);
+        await EnsureAdminAsync(tenantId, actorAccountId, actorSessionVersion, cancellationToken);
+
+        var now = DateTime.UtcNow;
+        var emails = rows.Select(x => OnboardingService.TryNormalizeEmail(x.Email)).ToList();
+        var wanted = emails.OfType<string>().Distinct().ToList();
+        var accounts = (await db.Accounts.AsNoTracking().Where(x => wanted.Contains(x.Email))
+            .Select(x => new { x.Id, x.Email, x.IsPlatformAdmin }).ToListAsync(cancellationToken))
+            .ToDictionary(x => x.Email);
+        var accountIds = accounts.Values.Select(x => x.Id).ToList();
+        var members = (await db.Memberships.AsNoTracking().Where(x => accountIds.Contains(x.AccountId))
+            .Select(x => x.AccountId).ToListAsync(cancellationToken)).ToHashSet();
+        var invited = (await db.Invitations.AsNoTracking().Where(x => wanted.Contains(x.Email) &&
+            x.AcceptedAtUtc == null && x.ExpiresAtUtc > now).Select(x => x.Email)
+            .ToListAsync(cancellationToken)).ToHashSet();
+        var groups = await db.MemberGroups.AsNoTracking().ToListAsync(cancellationToken);
+
+        var results = new BulkInvitationRowResult[rows.Count];
+        var created = new List<(int Index, string Email, string Code)>();
+        var seen = new HashSet<string>();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var email = emails[index];
+            var reason = email is null ? "InvalidEmail" : !seen.Add(email) ? "DuplicateInBatch" : null;
+            TenantRole? role = row.Role?.Trim().ToLowerInvariant() switch
+            {
+                "employee" => TenantRole.Employee,
+                "tenantadmin" => TenantRole.TenantAdmin,
+                _ => null
+            };
+            if (reason is null && role is null) reason = "InvalidRole";
+            MemberGroup? group = null;
+            if (reason is null && (row.GroupId is not null || !string.IsNullOrWhiteSpace(row.GroupName)))
+            {
+                group = row.GroupId is { } groupId ? groups.SingleOrDefault(x => x.Id == groupId)
+                    : groups.SingleOrDefault(x => string.Equals(x.Name, row.GroupName!.Trim(),
+                        StringComparison.CurrentCultureIgnoreCase));
+                if (group is null) reason = "UnknownGroup";
+            }
+            if (reason is null && accounts.TryGetValue(email!, out var account))
+            {
+                if (account.IsPlatformAdmin) reason = "NotInvitable";
+                else if (members.Contains(account.Id)) reason = "AlreadyMember";
+            }
+            if (reason is null && invited.Contains(email!)) reason = "AlreadyInvited";
+
+            if (reason is not null)
+            {
+                results[index] = new BulkInvitationRowResult(index, email ?? row.Email?.Trim() ?? "", "Skipped",
+                    reason, null, false);
+                continue;
+            }
+            var (invitation, code) = await onboarding.ReplaceInvitationAsync(tenantId, email!, role!.Value,
+                group?.Id, actorAccountId, now, cancellationToken);
+            organizations.AddAudit(tenantId, actorAccountId, "member.invited", null, null,
+                JsonSerializer.Serialize(new { Email = email, Role = role.Value.ToString(), Group = group?.Name }), now);
+            results[index] = new BulkInvitationRowResult(index, email!, "Created", null, invitation.Id, false);
+            created.Add((index, email!, code));
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        foreach (var (index, email, code) in created)
+            results[index] = results[index] with { EmailSent = await deliver(email, code, cancellationToken) };
+        return new BulkInvitationResponse(created.Count, rows.Count - created.Count, results);
+    }
+
     /// <summary>Replaces a pending invitation with a new code for the same email and role. The
     /// caller emails the returned code.</summary>
     public async Task<(string Email, IssueInvitationResponse Invitation)> ResendInvitationAsync(

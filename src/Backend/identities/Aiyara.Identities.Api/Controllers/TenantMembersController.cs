@@ -5,6 +5,7 @@ using Aiyara.Timesheet.Component.Abstractions.Securities;
 using Aiyara.Timesheet.Component.Abstractions.ServiceResponses;
 using Aiyara.Timesheet.Contracts.Onboarding.V1;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Aiyara.Identities.Api.Controllers;
 
@@ -44,6 +45,27 @@ public sealed class TenantMembersController(TenantMemberService members,
         new ServiceOkResponse<TenantAuditListResponse>(await members.ListAuditAsync(actor.TenantId,
             actor.UserId, actor.SessionVersion, action, fromUtc?.ToUniversalTime(),
             toUtc?.ToUniversalTime(), page, pageSize, ct)));
+
+    /// <summary>Invites up to 100 people at once. Rows are judged one by one and the response lists
+    /// each as Created or Skipped with a reason, so a partly bad batch still invites the good rows.
+    /// More than 100 rows, or none, is 400 <c>VALIDATION_FAILED</c>. Gateway exposes it as
+    /// <c>/api/v1/identity/members/invitations/bulk</c>.</summary>
+    [HttpPost("invitations/bulk", Name = "BulkInviteTenantMembersV1")]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(ServiceOkResponse<BulkInvitationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ServiceErrorResponse), StatusCodes.Status429TooManyRequests)]
+    public Task<IActionResult> BulkInvite([FromBody] BulkInvitationRequest request,
+        CancellationToken ct) => Run(async actor =>
+        new ServiceOkResponse<BulkInvitationResponse>(await members.InviteBulkAsync(actor.TenantId,
+            actor.UserId, actor.SessionVersion, request, async (email, code, token) =>
+            {
+                try { await notifications.SendAsync(email, "invitation", code, token); return true; }
+                catch (AuthenticationException exception) when (exception.Failure is
+                    AuthenticationFailure.Unavailable or AuthenticationFailure.RateLimited) { return false; }
+            }, ct)));
 
     /// <summary>Emails a new code for a pending invitation; the old code stops working.</summary>
     [HttpPost("invitations/{invitationId:guid}/resend", Name = "ResendTenantInvitationV1")]

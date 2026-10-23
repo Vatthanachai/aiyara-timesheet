@@ -178,6 +178,44 @@ public sealed class TenantMembersHttpTests : IAsyncLifetime
         Assert.Equal(["member.mfa_reset", "organization.mfa_requirement_changed"], audits.Order());
     }
 
+    [Fact]
+    public async Task Bulk_invitations_answer_with_the_documented_status_codes_and_never_return_codes()
+    {
+        var admin = Token(adminId, acme, "TenantAdmin");
+        var path = "/api/v1/members/invitations/bulk";
+        var body = new { rows = new object[]
+        {
+            new { email = "bulk1@acme.test", role = "Employee" },
+            new { email = "somchai@acme.test", role = "Employee" },
+            new { email = "bad", role = "Employee" }
+        } };
+
+        using var byEmployee = await Send(HttpMethod.Post, path, Token(employeeId, acme, "Employee"), body);
+        using var anonymous = await Send(HttpMethod.Post, path, "not-a-token", body);
+        using var wrongTenant = await Send(HttpMethod.Post, path, Token(adminId, beta, "TenantAdmin"), body);
+        using var empty = await Send(HttpMethod.Post, path, admin, new { rows = Array.Empty<object>() });
+        using var missing = await Send(HttpMethod.Post, path, admin, new { });
+        using var tooMany = await Send(HttpMethod.Post, path, admin, new
+        {
+            rows = Enumerable.Range(0, 101).Select(i => new { email = $"u{i}@acme.test", role = "Employee" })
+        });
+        using var ok = await Send(HttpMethod.Post, path, admin, body);
+
+        Assert.Equal(HttpStatusCode.Forbidden, byEmployee.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongTenant.StatusCode);
+        Assert.Equal((HttpStatusCode.BadRequest, "VALIDATION_FAILED"), (empty.StatusCode, await ErrorCode(empty)));
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal("no-store", ok.Headers.CacheControl?.ToString());
+        var result = await Result(ok);
+        Assert.Equal((1, 2), (result.GetProperty("createdCount").GetInt32(), result.GetProperty("skippedCount").GetInt32()));
+        Assert.Equal(["Created", "AlreadyMember", "InvalidEmail"], result.GetProperty("rows").EnumerateArray()
+            .Select(x => x.GetProperty("reason").ValueKind == JsonValueKind.Null ? "Created" : x.GetProperty("reason").GetString()));
+        Assert.DoesNotContain("code", result.GetRawText().Replace("createdCount", ""), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<JsonElement> Result(HttpResponseMessage response) =>
         (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("result");
 

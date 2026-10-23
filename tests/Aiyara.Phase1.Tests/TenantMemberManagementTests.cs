@@ -552,6 +552,93 @@ public sealed class TenantMemberManagementTests
             await Failure(PlatformAdminBootstrap.PlatformTenantId, fixture.AdminId, 0));
     }
 
+    [Fact]
+    public async Task Bulk_invitations_report_each_row_and_invite_only_the_valid_ones()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.AddMemberAsync(fixture.TenantId, "member@acme.test", TenantRole.Employee);
+        var group = await fixture.Members.CreateGroupAsync(fixture.TenantId, fixture.AdminId, 0,
+            new SaveTenantMemberGroupRequest("Outsource"), default);
+        await fixture.Onboarding.IssueInvitationAuthorizedAsync(fixture.TenantId, fixture.AdminId, 0,
+            new IssueInvitationRequest("waiting@acme.test", "Employee"), default);
+        var other = await fixture.CreateTenantAsync("Globex", "globex", "owner@globex.test");
+        var sent = new List<(string Email, string Code)>();
+
+        var result = await fixture.Members.InviteBulkAsync(fixture.TenantId, fixture.AdminId, 0,
+            new BulkInvitationRequest([
+                new("New.One@Acme.test ", "employee", group.Id),
+                new("two@acme.test", "TenantAdmin", null, "outSOURCE"),
+                new("one@acme.test", "Employee"),
+                new("new.one@acme.test", "Employee"),
+                new("member@acme.test", "Employee"),
+                new("waiting@acme.test", "Employee"),
+                new("not-an-email", "Employee"),
+                new("", "Employee"),
+                new("role@acme.test", "Owner"),
+                new("group@acme.test", "Employee", Guid.NewGuid()),
+                new("group2@acme.test", "Employee", null, "Nope"),
+                new("owner@globex.test", "Employee")
+            ]), (email, code, _) => { sent.Add((email, code)); return Task.FromResult(true); }, default);
+
+        Assert.Equal((4, 8), (result.CreatedCount, result.SkippedCount));
+        Assert.Equal(["Created", "Created", "Created", "Skipped", "Skipped", "Skipped", "Skipped", "Skipped",
+            "Skipped", "Skipped", "Skipped", "Created"], result.Rows.Select(x => x.Status));
+        Assert.Equal([null, null, null, "DuplicateInBatch", "AlreadyMember", "AlreadyInvited", "InvalidEmail",
+            "InvalidEmail", "InvalidRole", "UnknownGroup", "UnknownGroup", null], result.Rows.Select(x => x.Reason));
+        Assert.Equal(Enumerable.Range(0, 12), result.Rows.Select(x => x.Index));
+        Assert.Equal("new.one@acme.test", result.Rows[0].Email);
+        Assert.All(result.Rows.Where(x => x.Status == "Created"), x => Assert.True(x.EmailSent && x.InvitationId is not null));
+        Assert.Equal(["new.one@acme.test", "two@acme.test", "one@acme.test", "owner@globex.test"], sent.Select(x => x.Email));
+
+        var pending = await fixture.Members.ListInvitationsAsync(fixture.TenantId, fixture.AdminId, 0, default);
+        Assert.Equal(["new.one@acme.test", "one@acme.test", "owner@globex.test", "two@acme.test", "waiting@acme.test"],
+            pending.Select(x => x.Email).Order());
+        Assert.Equal("Outsource", pending.Single(x => x.Email == "two@acme.test").GroupName);
+        Assert.Equal("TenantAdmin", pending.Single(x => x.Email == "two@acme.test").Role);
+        Assert.Null(pending.Single(x => x.Email == "one@acme.test").GroupName);
+        Assert.Equal(5, await fixture.Audits("member.invited").CountAsync());
+        Assert.DoesNotContain(await fixture.Audits("member.invited").Select(x => x.AfterJson).ToListAsync(),
+            x => x!.Contains(sent[0].Code));
+        // The invited address is accepted with the emailed code, which is not returned in the response.
+        var accepted = await fixture.Onboarding.AcceptInvitationAsync(new AcceptInvitationRequest(sent[1].Code), default);
+        Assert.Equal("TenantAdmin", accepted.Role);
+        // The other organization sees none of Acme's invitations, including the one to its own owner.
+        fixture.Scope.TenantId = other.TenantId;
+        Assert.Equal(0, await fixture.Db.Invitations.CountAsync());
+    }
+
+    [Fact]
+    public async Task Bulk_invitations_refuse_empty_oversized_and_unauthorized_batches_and_report_failed_delivery()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var employee = await fixture.AddMemberAsync(fixture.TenantId, "member@acme.test", TenantRole.Employee);
+        Task<bool> Deliver(string email, string code, CancellationToken ct) => Task.FromResult(false);
+        async Task<TenantMemberFailure> Failure(Guid actor, int count, Guid? tenant = null) =>
+            (await Assert.ThrowsAsync<TenantMemberException>(() => fixture.Members.InviteBulkAsync(
+                tenant ?? fixture.TenantId, actor, 0,
+                new BulkInvitationRequest(Enumerable.Range(0, count).Select(i =>
+                    new BulkInvitationRow($"u{i}@acme.test", "Employee")).ToList()), Deliver, default))).Failure;
+
+        Assert.Equal(TenantMemberFailure.InvalidInput, await Failure(fixture.AdminId, 0));
+        Assert.Equal(TenantMemberFailure.InvalidInput, await Failure(fixture.AdminId, BulkInvitationLimits.MaxRows + 1));
+        Assert.Equal(TenantMemberFailure.Unauthorized, await Failure(employee, 1));
+        Assert.Equal(TenantMemberFailure.Unauthorized, await Failure(fixture.AdminId, 1, Guid.NewGuid()));
+        Assert.Equal(TenantMemberFailure.InvalidInput, (await Assert.ThrowsAsync<TenantMemberException>(() =>
+            fixture.Members.InviteBulkAsync(fixture.TenantId, fixture.AdminId, 0, new BulkInvitationRequest(null),
+                Deliver, default))).Failure);
+        Assert.Empty(await fixture.Members.ListInvitationsAsync(fixture.TenantId, fixture.AdminId, 0, default));
+
+        var full = await fixture.Members.InviteBulkAsync(fixture.TenantId, fixture.AdminId, 0,
+            new BulkInvitationRequest(Enumerable.Range(0, BulkInvitationLimits.MaxRows).Select(i =>
+                new BulkInvitationRow($"u{i}@acme.test", "Employee")).ToList()), Deliver, default);
+
+        // Delivery failed, but the invitations exist so the admin can resend them.
+        Assert.Equal(BulkInvitationLimits.MaxRows, full.CreatedCount);
+        Assert.All(full.Rows, x => Assert.False(x.EmailSent));
+        Assert.Equal(BulkInvitationLimits.MaxRows,
+            (await fixture.Members.ListInvitationsAsync(fixture.TenantId, fixture.AdminId, 0, default)).Count);
+    }
+
     private sealed class RecordingRevocations : ISessionRevocationPublisher
     {
         public List<(Guid TenantId, Guid AccountId, long Version)> Accounts { get; } = [];

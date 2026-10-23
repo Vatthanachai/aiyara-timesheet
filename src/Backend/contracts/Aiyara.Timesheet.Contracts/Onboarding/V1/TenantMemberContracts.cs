@@ -65,3 +65,34 @@ public sealed record TenantAuditListResponse(
     int Page,
     int PageSize,
     IReadOnlyList<TenantAuditEntry> Items);
+
+/// <summary>One row of a bulk invitation. Role is Employee or TenantAdmin. The group is optional:
+/// GroupId, or else GroupName (matched ignoring case, as a CSV import has names, not IDs).</summary>
+public sealed record BulkInvitationRow(string? Email, string? Role, Guid? GroupId = null, string? GroupName = null);
+
+/// <summary>Up to <c>BulkInvitationLimits.MaxRows</c> rows, each handled on its own.</summary>
+public sealed record BulkInvitationRequest(IReadOnlyList<BulkInvitationRow>? Rows);
+
+public static class BulkInvitationLimits
+{
+    public const int MaxRows = 100;
+}
+
+/// <summary>The outcome of one row, in request order. Index is the 0-based row position. Status is
+/// <c>Created</c> or <c>Skipped</c>. Reason is null when created, otherwise one of AlreadyMember,
+/// AlreadyInvited, InvalidEmail, InvalidRole, UnknownGroup, DuplicateInBatch, NotInvitable. Email is
+/// the normalized address, or the trimmed input when it is not valid. EmailSent is false when the
+/// invitation was created but Notification was unavailable; resend it from the invitation list.
+/// Invitation codes are never returned: they go only to the invitee's email.</summary>
+public sealed record BulkInvitationRowResult(
+    int Index,
+    string Email,
+    string Status,
+    string? Reason,
+    Guid? InvitationId,
+    bool EmailSent);
+
+public sealed record BulkInvitationResponse(
+    int CreatedCount,
+    int SkippedCount,
+    IReadOnlyList<BulkInvitationRowResult> Rows);
